@@ -13,6 +13,7 @@ public:
         Symbol,
         NumericLiteral,
         StringLiteral,
+        EndOfFile,
         Undefined,
     };
 

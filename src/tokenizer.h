@@ -11,6 +11,7 @@ public:
     ~Tokenizer() = default;
 
     bool Finished();
+    bool ReachedEOF();
     Token NextToken();
 
 private:
@@ -19,6 +20,7 @@ private:
     char PreviousChar();
 
     Token MakeNumericLiteral();
+    Token MakeStringLiteral();
 
     std::string_view m_string;
     size_t m_pos = 0;
