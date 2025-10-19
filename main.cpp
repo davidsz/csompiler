@@ -1,4 +1,5 @@
 #include "src/lexer.h"
+#include "src/token.h"
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -20,7 +21,10 @@ int main(int argc, char **argv)
     std::string file_content((std::istreambuf_iterator<char>(file)),
                                 std::istreambuf_iterator<char>());
 
-    std::cout << file_content << std::endl;
+    std::list<Token> tokens = lexer::tokenize(file_content);
+    for (auto it = tokens.begin(); it != tokens.end(); it++) {
+        std::cout << *it << std::endl;
+    }
 
     return 0;
 }

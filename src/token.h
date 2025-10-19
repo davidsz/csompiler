@@ -1,6 +1,8 @@
 #ifndef TOKEN_H
 #define TOKEN_H
 
+#include <string>
+
 class Token
 {
 public:
@@ -11,20 +13,22 @@ public:
         Symbol,
         NumericLiteral,
         StringLiteral,
+        Undefined,
     };
 
-    Token(Type type)
-        : m_type(type) {}
+    Token();
+    Token(Type type, std::string value = "");
     ~Token() = default;
 
-    Type type() { return m_type; }
+    Type type() const { return m_type; }
+    std::string value() const { return m_value; }
+    void setValue(const std::string &value) { m_value = value; }
 
-    // TODO:
-    // value
-    // pretty print
+    friend std::ostream &operator<<(std::ostream &os, const Token &t);
 
 private:
     Type m_type;
+    std::string m_value;
 };
 
 #endif // TOKEN_H

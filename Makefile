@@ -6,6 +6,7 @@ CC     := g++
 CFLAGS := -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wdouble-promotion \
 		-Wnull-dereference -Wformat=2 -Wmissing-include-dirs -Wswitch-enum -Wuninitialized -Werror \
 		-g -std=c++20
+#		-DNDEBUG=1
 
 .PHONY: all
 

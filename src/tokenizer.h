@@ -11,14 +11,15 @@ public:
     ~Tokenizer() = default;
 
     bool Finished();
-
-    char NextChar();
-    char PeekNextChar();
-    char PreviousChar();
-
     Token NextToken();
 
 private:
+    char Step();
+    char PeekNextChar();
+    char PreviousChar();
+
+    Token MakeNumericLiteral();
+
     std::string_view m_string;
     size_t m_pos = 0;
 };
