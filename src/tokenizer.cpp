@@ -1,10 +1,34 @@
 #include "tokenizer.h"
 #include <cassert>
 #include <cctype>
+#include <format>
+
+Tokenizer::Tokenizer(std::string_view s)
+    : m_string(s)
+    , m_pos(0)
+    , m_error(0)
+    , m_message("")
+{
+}
+
+bool Tokenizer::IsRunning()
+{
+    return !ReachedEOF() && m_error == 0;
+}
 
 bool Tokenizer::ReachedEOF()
 {
     return m_pos >= m_string.length();
+}
+
+int Tokenizer::ErrorCode()
+{
+    return m_error;
+}
+
+std::string Tokenizer::ErrorMessage()
+{
+    return m_message;
 }
 
 char Tokenizer::Step()
@@ -71,9 +95,9 @@ Token Tokenizer::MakeStringLiteral()
     return Token(Token::StringLiteral, literal);
 }
 
-Token Tokenizer::NextToken()
+std::optional<Token> Tokenizer::NextToken()
 {
-    while (!ReachedEOF()) {
+    while (IsRunning()) {
         char c = PeekNextChar();
 
         if (std::isdigit(c))
@@ -82,14 +106,13 @@ Token Tokenizer::NextToken()
         if (c == '"')
             return MakeStringLiteral();
 
-        if (std::isblank(c)) {
+        if (std::isblank(c) || c == '\n') {
             Step();
             continue;
         }
 
-        // TODO: Error, we can't recognize the currect character
-        Step();
+        m_error = 1;
+        m_message = std::format("Can't recognize the character '{}' yet.", c);
     }
-
-    return Token(Token::EndOfFile);
+    return std::nullopt;
 }

@@ -4,16 +4,17 @@
 
 namespace lexer {
 
-std::list<Token> tokenize(std::string_view source_code)
+Result tokenize(std::string_view source_code)
 {
-    std::list<Token> ret;
+    Result res;
 
     Tokenizer tokenizer(source_code);
-    while (!tokenizer.ReachedEOF()) {
-        ret.push_back(tokenizer.NextToken());
-    }
+    while (auto token = tokenizer.NextToken())
+        res.tokens.push_back(*token);
 
-    return ret;
+    res.return_code = tokenizer.ErrorCode();
+    res.error_message = tokenizer.ErrorMessage();
+    return res;
 }
 
 };

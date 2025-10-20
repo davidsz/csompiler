@@ -7,12 +7,28 @@
 
 int main(int argc, char **argv)
 {
-    if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <filename>" << std::endl;
+    // Command line arguments
+    std::list<std::string> inputs;
+    std::list<std::string> flags;
+    auto has_flag = [&](const std::string &name) -> bool {
+        return std::find(flags.begin(), flags.end(), name) != flags.end();
+    };
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg.rfind("--", 0) == 0)
+            flags.push_back(arg.substr(2)); // --arg
+        else
+            inputs.push_back(arg); // input arg
+    }
+
+    if (inputs.empty()) {
+        std::cerr << "Missing input file from arguments. Usage: " << argv[0] << " <filename>" << std::endl;
         return 1;
     }
 
-    std::ifstream file(argv[1]);
+    // Reading the input file
+    std::ifstream file(inputs.front());
     if (!file) {
         std::cerr << "Could not open the file." << std::endl;
         return 1;
@@ -21,10 +37,34 @@ int main(int argc, char **argv)
     std::string file_content((std::istreambuf_iterator<char>(file)),
                                 std::istreambuf_iterator<char>());
 
-    std::list<Token> tokens = lexer::tokenize(file_content);
-    for (auto it = tokens.begin(); it != tokens.end(); it++) {
+    // Lexer
+    lexer::Result lexer_result = lexer::tokenize(file_content);
+    if (lexer_result.return_code) {
+        std::cout << lexer_result.error_message << std::endl;
+        return lexer_result.return_code;
+    }
+
+    for (auto it = lexer_result.tokens.begin(); it != lexer_result.tokens.end(); it++) {
         std::cout << *it << std::endl;
     }
+
+    if (has_flag("lex"))
+        return 0;
+
+    // Parser
+    // TODO
+
+    if (has_flag("parse"))
+        return 0;
+
+    // Code generator
+    // TODO
+
+    if (has_flag("codegen"))
+        return 0;
+
+    // Code emission
+    // TODO
 
     return 0;
 }

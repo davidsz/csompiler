@@ -16,8 +16,6 @@ static std::string toString(Token::Type type)
         return "NumericLiteral";
     case Token::StringLiteral:
         return "StringLiteral";
-    case Token::EndOfFile:
-        return "EndOfFile";
     case Token::Undefined:
         return "Undefined";
     default:
