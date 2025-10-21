@@ -1,6 +1,7 @@
 #ifndef TOKENIZER_H
 #define TOKENIZER_H
 
+#include "error.h"
 #include "token.h"
 #include <optional>
 #include <string_view>
@@ -22,13 +23,17 @@ private:
     char PeekNextChar();
     char PreviousChar();
 
+    void AbortAtPosition(Error error, std::string_view);
+
     Token MakeNumericLiteral();
     Token MakeStringLiteral();
     Token MakeWhitespace();
 
     std::string_view m_string;
     size_t m_pos;
-    int m_error;
+    size_t m_line;
+    size_t m_col;
+    Error m_error;
     std::string m_message;
 };
 

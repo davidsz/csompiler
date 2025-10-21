@@ -30,7 +30,9 @@ static bool is_whitespace(char c) {
 Tokenizer::Tokenizer(std::string_view s)
     : m_string(s)
     , m_pos(0)
-    , m_error(0)
+    , m_line(1)
+    , m_col(1)
+    , m_error(ALL_OK)
     , m_message("")
 {
 }
@@ -59,6 +61,7 @@ char Tokenizer::Step()
 {
     if (m_string.length() == m_pos - 1)
         return 0;
+    m_col++;
     return m_string[m_pos++];
 }
 
@@ -74,6 +77,12 @@ char Tokenizer::PreviousChar()
     if (m_pos == 0)
         return 0;
     return m_string[m_pos - 1];
+}
+
+void Tokenizer::AbortAtPosition(Error error, std::string_view message)
+{
+    m_error = error;
+    m_message = std::format("{} (line: {}, column: {})", message, m_line, m_col);
 }
 
 Token Tokenizer::MakeNumericLiteral()
@@ -113,7 +122,7 @@ Token Tokenizer::MakeStringLiteral()
         literal += next;
 
         if (ReachedEOF()) {
-            // TODO: Error: we haven't found an ending "
+            AbortAtPosition(LEXER_ERROR, "Unclosed string literal");
             break;
         }
 
@@ -131,8 +140,14 @@ Token Tokenizer::MakeStringLiteral()
 Token Tokenizer::MakeWhitespace()
 {
     assert(is_whitespace(PeekNextChar()));
-    while (is_whitespace(PeekNextChar()))
-        Step();
+    char c;
+    while (is_whitespace(PeekNextChar())) {
+        c = Step();
+        if (c == '\n') {
+            m_line++;
+            m_col = 1;
+        }
+    }
     return Token(Token::Whitespace, "");
 }
 
@@ -156,8 +171,7 @@ std::optional<Token> Tokenizer::NextToken()
         if (is_punctator(c))
             return Token(Token::Punctator, std::string(1, Step()));
 
-        m_error = 1;
-        m_message = std::format("Can't recognize the character '{}' yet.", c);
+        AbortAtPosition(LEXER_ERROR, std::format("Can't recognize the character '{}' yet.", c));
     }
     return std::nullopt;
 }
