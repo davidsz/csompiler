@@ -119,6 +119,10 @@ Token Tokenizer::MakeStringLiteral()
     assert(next == '"');
     do {
         next = Step();
+        if (next == '\n') {
+            m_line++;
+            m_col = 1;
+        }
         literal += next;
 
         if (ReachedEOF()) {
