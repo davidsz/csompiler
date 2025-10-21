@@ -2,8 +2,25 @@
 #include <cassert>
 #include <cctype>
 #include <format>
+#include <unordered_set>
 
-static bool is_operator(char c) {
+static bool is_keyword(std::string_view word)
+{
+    static const std::unordered_set<std::string> keywords = {
+        "alignas", "alignof", "auto", "bool", "break", "case", "char", "const",
+        "constexpr", "continue", "default", "do", "double", "else", "enum", "extern",
+        "false", "float", "for", "goto", "if", "inline", "int", "long", "nullptr",
+        "register", "restrict", "return", "short", "signed", "sizeof", "static",
+        "static_assert", "struct", "switch", "thread_local", "true", "typedef", "typeof",
+        "typeof_unqual", "union", "unsigned", "void", "volatile", "while", "_Alignas",
+        "_Alignof", "_Atomic", "_BitInt", "_Bool", "_Complex", "_Decimal128", "_Decimal32",
+        "_Decimal64", "_Generic", "_Imaginary", "_Noreturn", "_Static_assert", "_Thread_local"
+    };
+    return keywords.contains(std::string(word));
+}
+
+static bool is_operator(char c)
+{
     static const bool lookup[256] = {
         ['+'] = true, ['-'] = true, ['*'] = true, ['/'] = true,
         ['<'] = true, ['>'] = true, ['^'] = true, ['?'] = true,
@@ -14,7 +31,8 @@ static bool is_operator(char c) {
     return lookup[(unsigned char)c];
 }
 
-static bool is_punctator(char c) {
+static bool is_punctator(char c)
+{
     static const bool lookup[256] = {
         ['('] = true, ['['] = true, ['{'] = true,
         [')'] = true, [']'] = true, ['}'] = true,
@@ -23,7 +41,8 @@ static bool is_punctator(char c) {
     return lookup[(unsigned char)c];
 }
 
-static bool is_whitespace(char c) {
+static bool is_whitespace(char c)
+{
     return std::isblank(c) || c == '\n';
 }
 
@@ -105,6 +124,7 @@ Token Tokenizer::MakeNumericLiteral()
     } while (std::isdigit(next));
 
     // TODO: It should end with whitespace, separator or semicolon
+    // Identifiers like 123abc are not allowed.
 
     return Token(Token::NumericLiteral, literal);
 }
@@ -154,6 +174,23 @@ Token Tokenizer::MakeWhitespace()
     return Token(Token::Whitespace, "");
 }
 
+Token Tokenizer::MakeIdentifierOrKeyword()
+{
+    std::string word;
+    word.reserve(10);
+
+    char next = PeekNextChar();
+    // They can't start with numbers
+    assert(next == '_' || std::isalpha(next));
+    do {
+        Step();
+        word += next;
+        next = PeekNextChar();
+    } while (next == '_' || std::isalnum(next));
+
+    return Token(is_keyword(word) ? Token::Keyword :  Token::Identifier, word);
+}
+
 std::optional<Token> Tokenizer::NextToken()
 {
     while (IsRunning()) {
@@ -164,6 +201,9 @@ std::optional<Token> Tokenizer::NextToken()
 
         if (c == '"')
             return MakeStringLiteral();
+
+        if (c == '_' || std::isalpha(c))
+            return MakeIdentifierOrKeyword();
 
         if (is_whitespace(c))
             return MakeWhitespace();

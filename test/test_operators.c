@@ -4,8 +4,7 @@
 
 (10 * 25) - 3 = ?
 
-
-123
-"      aaaaaa
-aaaaaaa
-"
+int variable = 5;
+sizeof(variable);
+char a = "a";
+variable += a;
