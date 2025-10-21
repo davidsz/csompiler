@@ -6,5 +6,5 @@
 
 int variable = 5;
 sizeof(variable);
-char a = "a";
+char a = 'a';
 variable += a;

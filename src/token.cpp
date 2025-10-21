@@ -12,12 +12,12 @@ static std::string toString(Token::Type type)
         return "Operator";
     case Token::Punctator:
         return "Punctator";
-    case Token::Symbol:
-        return "Symbol";
     case Token::NumericLiteral:
         return "NumericLiteral";
     case Token::StringLiteral:
         return "StringLiteral";
+    case Token::CharLiteral:
+        return "CharLiteral";
     case Token::Whitespace:
         return "Whitespace";
     case Token::Undefined:

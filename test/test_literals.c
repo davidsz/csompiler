@@ -3,8 +3,13 @@
 
 "This is a \"string.\""  "Another string..."
 
+'c'
 
 100
 0
 1
 "And we end the \"file\" with \a string literal."
+
+"Multiline \
+Multiline  \
+Multiline"

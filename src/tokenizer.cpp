@@ -162,6 +162,29 @@ Token Tokenizer::MakeStringLiteral()
     return Token(Token::StringLiteral, literal);
 }
 
+Token Tokenizer::MakeCharLiteral()
+{
+    if (m_pos > m_string.length() - 3) {
+        AbortAtPosition(LEXER_ERROR, "Invalid char literal");
+        return Token();
+    }
+
+    // We won't include the trailing ''
+    char next = Step();
+    assert(next == '\'');
+
+    char character = 0;
+    next = Step();
+    if (next == '\\')
+        next = Step();
+    character = next;
+
+    next = Step();
+    if (next != '\'')
+        AbortAtPosition(LEXER_ERROR, "Unclosed char literal");
+    return Token(Token::CharLiteral, std::string(1, character));
+}
+
 Token Tokenizer::MakeWhitespace()
 {
     assert(is_whitespace(PeekNextChar()));
@@ -201,6 +224,9 @@ std::optional<Token> Tokenizer::NextToken()
 
         if (c == '"')
             return MakeStringLiteral();
+
+        if (c == '\'')
+            return MakeCharLiteral();
 
         if (c == '_' || std::isalpha(c))
             return MakeIdentifierOrKeyword();

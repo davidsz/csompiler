@@ -27,6 +27,7 @@ private:
 
     Token MakeNumericLiteral();
     Token MakeStringLiteral();
+    Token MakeCharLiteral();
     Token MakeWhitespace();
     Token MakeIdentifierOrKeyword();
 
