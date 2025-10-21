@@ -119,6 +119,8 @@ Token Tokenizer::MakeStringLiteral()
     assert(next == '"');
     do {
         next = Step();
+        if (next == '\\')
+            next = Step();
         if (next == '\n') {
             m_line++;
             m_col = 1;
@@ -131,7 +133,6 @@ Token Tokenizer::MakeStringLiteral()
         }
 
         next = PeekNextChar();
-        // TODO: If the previous char was '\', don't break
         if (next == '"') {
             Step();
             break;
@@ -144,14 +145,12 @@ Token Tokenizer::MakeStringLiteral()
 Token Tokenizer::MakeWhitespace()
 {
     assert(is_whitespace(PeekNextChar()));
-    char c;
-    while (is_whitespace(PeekNextChar())) {
-        c = Step();
-        if (c == '\n') {
+    do {
+        if (Step() == '\n') {
             m_line++;
             m_col = 1;
         }
-    }
+    } while (is_whitespace(PeekNextChar()));
     return Token(Token::Whitespace, "");
 }
 
