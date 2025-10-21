@@ -23,6 +23,10 @@ static bool is_punctator(char c) {
     return lookup[(unsigned char)c];
 }
 
+static bool is_whitespace(char c) {
+    return std::isblank(c) || c == '\n';
+}
+
 Tokenizer::Tokenizer(std::string_view s)
     : m_string(s)
     , m_pos(0)
@@ -124,6 +128,14 @@ Token Tokenizer::MakeStringLiteral()
     return Token(Token::StringLiteral, literal);
 }
 
+Token Tokenizer::MakeWhitespace()
+{
+    assert(is_whitespace(PeekNextChar()));
+    while (is_whitespace(PeekNextChar()))
+        Step();
+    return Token(Token::Whitespace, "");
+}
+
 std::optional<Token> Tokenizer::NextToken()
 {
     while (IsRunning()) {
@@ -135,11 +147,8 @@ std::optional<Token> Tokenizer::NextToken()
         if (c == '"')
             return MakeStringLiteral();
 
-        // TODO: Create whitespace token (one token for multiple ws in series)
-        if (std::isblank(c) || c == '\n') {
-            Step();
-            continue;
-        }
+        if (is_whitespace(c))
+            return MakeWhitespace();
 
         if (is_operator(c))
             return Token(Token::Operator, std::string(1, Step()));

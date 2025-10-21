@@ -24,6 +24,7 @@ private:
 
     Token MakeNumericLiteral();
     Token MakeStringLiteral();
+    Token MakeWhitespace();
 
     std::string_view m_string;
     size_t m_pos;

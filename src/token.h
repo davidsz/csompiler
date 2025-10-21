@@ -11,9 +11,10 @@ public:
         Keyword,
         Operator,
         Punctator,
-        Symbol,
+        Symbol, // TODO: Remove?
         NumericLiteral,
         StringLiteral,
+        Whitespace,
         Undefined,
     };
 

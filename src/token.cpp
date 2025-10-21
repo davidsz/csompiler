@@ -18,6 +18,8 @@ static std::string toString(Token::Type type)
         return "NumericLiteral";
     case Token::StringLiteral:
         return "StringLiteral";
+    case Token::Whitespace:
+        return "Whitespace";
     case Token::Undefined:
         return "Undefined";
     default:
