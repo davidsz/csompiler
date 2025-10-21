@@ -3,6 +3,26 @@
 #include <cctype>
 #include <format>
 
+static bool is_operator(char c) {
+    static const bool lookup[256] = {
+        ['+'] = true, ['-'] = true, ['*'] = true, ['/'] = true,
+        ['<'] = true, ['>'] = true, ['^'] = true, ['?'] = true,
+        ['%'] = true, ['!'] = true, ['='] = true, ['~'] = true,
+        ['|'] = true, ['&'] = true, [','] = true, ['.'] = true,
+        [':'] = true,
+    };
+    return lookup[(unsigned char)c];
+}
+
+static bool is_punctator(char c) {
+    static const bool lookup[256] = {
+        ['('] = true, ['['] = true, ['{'] = true,
+        [')'] = true, [']'] = true, ['}'] = true,
+        [';'] = true,
+    };
+    return lookup[(unsigned char)c];
+}
+
 Tokenizer::Tokenizer(std::string_view s)
     : m_string(s)
     , m_pos(0)
@@ -59,11 +79,19 @@ Token Tokenizer::MakeNumericLiteral()
 
     char next = PeekNextChar();
     assert(std::isdigit(next));
+
+    // TODO: Handle different types
+    // - Binary: [0b/0B][0-1]
+    // - Octal: 0[0-7]
+    // - Hexadecimal [0x/0X][0-9a-fA-F]
+
     do {
         Step();
         literal += next;
         next = PeekNextChar();
     } while (std::isdigit(next));
+
+    // TODO: It should end with whitespace, separator or semicolon
 
     return Token(Token::NumericLiteral, literal);
 }
@@ -86,6 +114,7 @@ Token Tokenizer::MakeStringLiteral()
         }
 
         next = PeekNextChar();
+        // TODO: If the previous char was '\', don't break
         if (next == '"') {
             Step();
             break;
@@ -106,10 +135,17 @@ std::optional<Token> Tokenizer::NextToken()
         if (c == '"')
             return MakeStringLiteral();
 
+        // TODO: Create whitespace token (one token for multiple ws in series)
         if (std::isblank(c) || c == '\n') {
             Step();
             continue;
         }
+
+        if (is_operator(c))
+            return Token(Token::Operator, std::string(1, Step()));
+
+        if (is_punctator(c))
+            return Token(Token::Punctator, std::string(1, Step()));
 
         m_error = 1;
         m_message = std::format("Can't recognize the character '{}' yet.", c);

@@ -10,6 +10,7 @@ public:
         Identifier,
         Keyword,
         Operator,
+        Punctator,
         Symbol,
         NumericLiteral,
         StringLiteral,
@@ -17,7 +18,7 @@ public:
     };
 
     Token();
-    Token(Type type, std::string value = "");
+    Token(Type type, std::string_view value = "");
     ~Token() = default;
 
     Type type() const { return m_type; }

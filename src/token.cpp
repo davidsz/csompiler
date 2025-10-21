@@ -10,6 +10,8 @@ static std::string toString(Token::Type type)
         return "Keyword";
     case Token::Operator:
         return "Operator";
+    case Token::Punctator:
+        return "Punctator";
     case Token::Symbol:
         return "Symbol";
     case Token::NumericLiteral:
@@ -29,7 +31,7 @@ Token::Token()
 {
 }
 
-Token::Token(Type type, std::string value)
+Token::Token(Type type, std::string_view value)
     : m_type(type)
     , m_value(value)
 {
