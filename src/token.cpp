@@ -18,8 +18,6 @@ static std::string toString(Token::Type type)
         return "StringLiteral";
     case Token::CharLiteral:
         return "CharLiteral";
-    case Token::Whitespace:
-        return "Whitespace";
     case Token::Comment:
         return "Comment";
     case Token::Undefined:
@@ -31,12 +29,16 @@ static std::string toString(Token::Type type)
 
 Token::Token()
     : m_type(Type::Undefined)
+    , m_line(0)
+    , m_col(0)
     , m_value("")
 {
 }
 
-Token::Token(Type type, std::string_view value)
+Token::Token(Type type, std::string_view value, size_t line, size_t col)
     : m_type(type)
+    , m_line(line)
+    , m_col(col)
     , m_value(value)
 {
 }

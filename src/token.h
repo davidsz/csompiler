@@ -14,13 +14,12 @@ public:
         NumericLiteral,
         StringLiteral,
         CharLiteral,
-        Whitespace,
         Comment,
         Undefined,
     };
 
     Token();
-    Token(Type type, std::string_view value = "");
+    Token(Type type, std::string_view value, size_t line, size_t col);
     ~Token() = default;
 
     Type type() const { return m_type; }
@@ -31,6 +30,8 @@ public:
 
 private:
     Type m_type;
+    size_t m_line;
+    size_t m_col;
     std::string m_value;
 };
 

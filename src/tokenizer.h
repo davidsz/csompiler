@@ -24,11 +24,12 @@ private:
     char PreviousChar();
 
     void AbortAtPosition(std::string_view);
+    Token CreateToken(Token::Type type, std::string_view content);
 
+    void SkipWhitespace();
     Token MakeNumericLiteral();
     Token MakeStringLiteral();
     Token MakeCharLiteral();
-    Token MakeWhitespace();
     Token MakeIdentifierOrKeyword();
     Token MakeComment();
 

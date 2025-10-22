@@ -80,8 +80,13 @@ char Tokenizer::Step()
 {
     if (m_string.length() == m_pos - 1)
         return 0;
-    m_col++;
-    return m_string[m_pos++];
+    char ret = m_string[m_pos++];
+    if (ret == '\n') {
+        m_line++;
+        m_col = 1;
+    } else
+        m_col++;
+    return ret;
 }
 
 char Tokenizer::PeekNextChar()
@@ -104,6 +109,11 @@ void Tokenizer::AbortAtPosition(std::string_view message)
     m_message = std::format("{} (line: {}, column: {})", message, m_line, m_col);
 }
 
+Token Tokenizer::CreateToken(Token::Type type, std::string_view content)
+{
+    return Token(type, content, m_line, m_col);
+}
+
 Token Tokenizer::MakeNumericLiteral()
 {
     std::string literal;
@@ -116,6 +126,7 @@ Token Tokenizer::MakeNumericLiteral()
     // - Binary: [0b/0B][0-1]
     // - Octal: 0[0-7]
     // - Hexadecimal [0x/0X][0-9a-fA-F]
+    // - Combinations of Uu and Ll suffixes
 
     do {
         Step();
@@ -127,7 +138,7 @@ Token Tokenizer::MakeNumericLiteral()
     if (!is_whitespace(next) && !is_operator(next) && !is_punctator(next))
         AbortAtPosition("Identifiers can't start with numbers.");
 
-    return Token(Token::NumericLiteral, literal);
+    return CreateToken(Token::NumericLiteral, literal);
 }
 
 Token Tokenizer::MakeStringLiteral()
@@ -142,10 +153,6 @@ Token Tokenizer::MakeStringLiteral()
         next = Step();
         if (next == '\\')
             next = Step();
-        if (next == '\n') {
-            m_line++;
-            m_col = 1;
-        }
         literal += next;
 
         if (ReachedEOF()) {
@@ -160,7 +167,7 @@ Token Tokenizer::MakeStringLiteral()
         }
     } while (true);
 
-    return Token(Token::StringLiteral, literal);
+    return CreateToken(Token::StringLiteral, literal);
 }
 
 Token Tokenizer::MakeCharLiteral()
@@ -183,19 +190,14 @@ Token Tokenizer::MakeCharLiteral()
     next = Step();
     if (next != '\'')
         AbortAtPosition("Invalid char literal");
-    return Token(Token::CharLiteral, std::string(1, character));
+    return CreateToken(Token::CharLiteral, std::string(1, character));
 }
 
-Token Tokenizer::MakeWhitespace()
+void Tokenizer::SkipWhitespace()
 {
     assert(is_whitespace(PeekNextChar()));
-    do {
-        if (Step() == '\n') {
-            m_line++;
-            m_col = 1;
-        }
-    } while (is_whitespace(PeekNextChar()));
-    return Token(Token::Whitespace, "");
+    while (is_whitespace(PeekNextChar()))
+        Step();
 }
 
 Token Tokenizer::MakeIdentifierOrKeyword()
@@ -212,7 +214,7 @@ Token Tokenizer::MakeIdentifierOrKeyword()
         next = PeekNextChar();
     } while (next == '_' || std::isalnum(next));
 
-    return Token(is_keyword(word) ? Token::Keyword :  Token::Identifier, word);
+    return CreateToken(is_keyword(word) ? Token::Keyword :  Token::Identifier, word);
 }
 
 Token Tokenizer::MakeComment()
@@ -247,13 +249,18 @@ Token Tokenizer::MakeComment()
             AbortAtPosition("Unclosed comment block");
     } while (IsRunning());
 
-    return Token(Token::Comment, comment);
+    return CreateToken(Token::Comment, comment);
 }
 
 std::optional<Token> Tokenizer::NextToken()
 {
     while (IsRunning()) {
         char c = PeekNextChar();
+
+        if (is_whitespace(c)) {
+            SkipWhitespace();
+            continue;
+        }
 
         if (std::isdigit(c))
             return MakeNumericLiteral();
@@ -267,9 +274,6 @@ std::optional<Token> Tokenizer::NextToken()
         if (c == '_' || std::isalpha(c))
             return MakeIdentifierOrKeyword();
 
-        if (is_whitespace(c))
-            return MakeWhitespace();
-
         if (is_operator(c)) {
             char op = Step();
             if (op == '/') {
@@ -277,11 +281,11 @@ std::optional<Token> Tokenizer::NextToken()
                 if (c == '/' || c == '*')
                     return MakeComment();
             }
-            return Token(Token::Operator, std::string(1, op));
+            return CreateToken(Token::Operator, std::string(1, op));
         }
 
         if (is_punctator(c))
-            return Token(Token::Punctator, std::string(1, Step()));
+            return CreateToken(Token::Punctator, std::string(1, Step()));
 
         AbortAtPosition(std::format("Can't recognize the character '{}'.", c));
     }
