@@ -23,7 +23,7 @@ private:
     char PeekNextChar();
     char PreviousChar();
 
-    void AbortAtPosition(Error error, std::string_view);
+    void AbortAtPosition(std::string_view);
 
     Token MakeNumericLiteral();
     Token MakeStringLiteral();

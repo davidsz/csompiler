@@ -98,9 +98,9 @@ char Tokenizer::PreviousChar()
     return m_string[m_pos - 1];
 }
 
-void Tokenizer::AbortAtPosition(Error error, std::string_view message)
+void Tokenizer::AbortAtPosition(std::string_view message)
 {
-    m_error = error;
+    m_error = LEXER_ERROR;
     m_message = std::format("{} (line: {}, column: {})", message, m_line, m_col);
 }
 
@@ -123,8 +123,9 @@ Token Tokenizer::MakeNumericLiteral()
         next = PeekNextChar();
     } while (std::isdigit(next));
 
-    // TODO: It should end with whitespace, separator or semicolon
-    // Identifiers like 123abc are not allowed.
+    // We started to process an identifier starting with a number, it's invalid.
+    if (!is_whitespace(next) && !is_operator(next) && !is_punctator(next))
+        AbortAtPosition("Identifiers can't start with numbers.");
 
     return Token(Token::NumericLiteral, literal);
 }
@@ -148,7 +149,7 @@ Token Tokenizer::MakeStringLiteral()
         literal += next;
 
         if (ReachedEOF()) {
-            AbortAtPosition(LEXER_ERROR, "Unclosed string literal");
+            AbortAtPosition("Unclosed string literal");
             break;
         }
 
@@ -165,7 +166,7 @@ Token Tokenizer::MakeStringLiteral()
 Token Tokenizer::MakeCharLiteral()
 {
     if (m_pos > m_string.length() - 3) {
-        AbortAtPosition(LEXER_ERROR, "Invalid char literal");
+        AbortAtPosition("Invalid char literal");
         return Token();
     }
 
@@ -181,7 +182,7 @@ Token Tokenizer::MakeCharLiteral()
 
     next = Step();
     if (next != '\'')
-        AbortAtPosition(LEXER_ERROR, "Unclosed char literal");
+        AbortAtPosition("Invalid char literal");
     return Token(Token::CharLiteral, std::string(1, character));
 }
 
@@ -241,6 +242,9 @@ Token Tokenizer::MakeComment()
 
         comment += next;
         Step();
+
+        if (!oneliner && ReachedEOF())
+            AbortAtPosition("Unclosed comment block");
     } while (IsRunning());
 
     return Token(Token::Comment, comment);
@@ -279,7 +283,7 @@ std::optional<Token> Tokenizer::NextToken()
         if (is_punctator(c))
             return Token(Token::Punctator, std::string(1, Step()));
 
-        AbortAtPosition(LEXER_ERROR, std::format("Can't recognize the character '{}' yet.", c));
+        AbortAtPosition(std::format("Can't recognize the character '{}'.", c));
     }
     return std::nullopt;
 }
