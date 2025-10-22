@@ -10,6 +10,11 @@
 1
 "And we end the \"file\" with \a string literal."
 
+/*
+ * This is a comment block
+ * with multi line text.
+ */
+
 "Multiline \
 Multiline  \
 Multiline"

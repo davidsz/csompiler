@@ -15,6 +15,7 @@ public:
         StringLiteral,
         CharLiteral,
         Whitespace,
+        Comment,
         Undefined,
     };
 

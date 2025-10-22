@@ -30,6 +30,7 @@ private:
     Token MakeCharLiteral();
     Token MakeWhitespace();
     Token MakeIdentifierOrKeyword();
+    Token MakeComment();
 
     std::string_view m_string;
     size_t m_pos;
