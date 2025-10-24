@@ -46,6 +46,8 @@ static bool is_whitespace(char c)
     return std::isblank(c) || c == '\n';
 }
 
+namespace lexer {
+
 Tokenizer::Tokenizer(std::string_view s)
     : m_string(s)
     , m_pos(0)
@@ -291,3 +293,5 @@ std::optional<Token> Tokenizer::NextToken()
     }
     return std::nullopt;
 }
+
+}; // namespace lexer

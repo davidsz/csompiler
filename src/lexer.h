@@ -3,9 +3,9 @@
 
 #include <list>
 
-class Token;
-
 namespace lexer {
+
+class Token;
 
 struct Result
 {

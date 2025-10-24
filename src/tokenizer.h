@@ -6,6 +6,8 @@
 #include <optional>
 #include <string_view>
 
+namespace lexer {
+
 class Tokenizer
 {
 public:
@@ -40,5 +42,7 @@ private:
     Error m_error;
     std::string m_message;
 };
+
+}; // namespace lexer
 
 #endif // TOKENIZER_H

@@ -3,6 +3,8 @@
 
 #include <string>
 
+namespace lexer {
+
 class Token
 {
 public:
@@ -18,11 +20,15 @@ public:
         Undefined,
     };
 
+    static std::string ToString(Type type);
+
     Token();
     Token(Type type, std::string_view value, size_t line, size_t col);
     ~Token() = default;
 
     Type type() const { return m_type; }
+    size_t line() const { return m_line; }
+    size_t col() const { return m_col; }
     std::string value() const { return m_value; }
     void setValue(const std::string &value) { m_value = value; }
 
@@ -34,5 +40,7 @@ private:
     size_t m_col;
     std::string m_value;
 };
+
+}; // namespace lexer
 
 #endif // TOKEN_H

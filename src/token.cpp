@@ -1,6 +1,8 @@
 #include "token.h"
 #include <iostream>
 
+namespace lexer {
+
 static std::string toString(Token::Type type)
 {
     switch (type) {
@@ -27,6 +29,11 @@ static std::string toString(Token::Type type)
     }
 }
 
+std::string Token::ToString(Type type)
+{
+    return toString(type);
+}
+
 Token::Token()
     : m_type(Type::Undefined)
     , m_line(0)
@@ -51,3 +58,5 @@ std::ostream &operator<<(std::ostream &os, const Token &t)
     os << ">";
     return os;
 }
+
+}; // namespace lexer

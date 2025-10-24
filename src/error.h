@@ -4,6 +4,7 @@
 enum Error {
     ALL_OK = 0,
     LEXER_ERROR = 1,
+    PARSER_ERROR = 2,
 };
 
 #endif // ERROR_H

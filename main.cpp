@@ -1,4 +1,5 @@
 #include "src/lexer.h"
+#include "src/parser.h"
 #include "src/token.h"
 #include <fstream>
 #include <iostream>
@@ -44,15 +45,22 @@ int main(int argc, char **argv)
         return lexer_result.return_code;
     }
 
-    for (auto it = lexer_result.tokens.begin(); it != lexer_result.tokens.end(); it++) {
+#if 0
+    for (auto it = lexer_result.tokens.begin(); it != lexer_result.tokens.end(); it++)
         std::cout << *it << std::endl;
-    }
+#endif
 
     if (has_flag("lex"))
         return 0;
 
     // Parser
-    // TODO
+    parser::Result parser_result = parser::parse(lexer_result.tokens);
+    if (parser_result.return_code) {
+        std::cout << parser_result.error_message << std::endl;
+        return parser_result.return_code;
+    } else {
+        std::cout << "Parsed successfully." << std::endl;
+    }
 
     if (has_flag("parse"))
         return 0;
