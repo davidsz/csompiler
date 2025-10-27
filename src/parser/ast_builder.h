@@ -3,7 +3,7 @@
 
 #include "ast_nodes.h"
 #include "error.h"
-#include "token.h"
+#include "lexer/token.h"
 #include <list>
 
 namespace parser {

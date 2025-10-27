@@ -1,6 +1,6 @@
-#include "src/lexer.h"
-#include "src/parser.h"
-#include "src/token.h"
+#include "lexer/lexer.h"
+#include "lexer/token.h"
+#include "parser/parser.h"
 #include <fstream>
 #include <iostream>
 #include <iterator>

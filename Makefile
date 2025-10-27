@@ -6,7 +6,7 @@ COMPILER_OBJECTS  := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%_cpp.o,$(COMPILER
 CC     := g++
 CFLAGS := -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wdouble-promotion \
 		-Wnull-dereference -Wformat=2 -Wmissing-include-dirs -Wswitch-enum -Wuninitialized -Werror \
-		-g -std=c++20 -MMD -MP
+		-g -std=c++20 -MMD -MP -Isrc \
 #		-DNDEBUG=1
 
 .PHONY: all clean
