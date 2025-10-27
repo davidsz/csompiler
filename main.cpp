@@ -45,7 +45,7 @@ int main(int argc, char **argv)
         return lexer_result.return_code;
     }
 
-#if 0
+#if 1
     for (auto it = lexer_result.tokens.begin(); it != lexer_result.tokens.end(); it++)
         std::cout << *it << std::endl;
 #endif

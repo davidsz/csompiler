@@ -3,8 +3,13 @@
 #include <cassert>
 #include <iostream>
 #include <ranges>
+#include <stdexcept>
 
 namespace parser {
+
+struct SyntaxError : public std::runtime_error {
+    explicit SyntaxError(const std::string &message) : std::runtime_error(message) {}
+};
 
 ASTBuilder::ASTBuilder(const std::list<lexer::Token> &tokens)
     : m_tokens(tokens)
@@ -26,24 +31,24 @@ std::string ASTBuilder::ErrorMessage()
 
 std::string ASTBuilder::Consume(TokenType e_type, std::string_view e_value)
 {
+    // TODO: Maybe the lexer should omit the comments?
+    while (m_pos->type() == TokenType::Comment)
+        m_pos++;
+
     if (m_pos == m_tokens.end()) {
-        std::cout << "The ASTBuilder reached the end of tokens." << std::endl;
+        Abort("ASTBuilder reached the end of tokens.");
         return "";
     }
+
     if (m_pos->type() != e_type) {
-        Abort(std::format("Error: Expected {} at line {}, but found {}.",
+        Abort(std::format("Expected {}, but found {}",
             lexer::Token::ToString(e_type),
-            static_cast<unsigned long>(m_pos->line()),
             lexer::Token::ToString(m_pos->type())
-        ));
+        ), m_pos->line());
         return "";
     }
     if (e_value.length() > 0 && m_pos->value() != e_value) {
-        Abort(std::format("Error: Expected {} at line {}, but found {}.",
-            e_value,
-            static_cast<unsigned long>(m_pos->line()),
-            m_pos->value()
-        ));
+        Abort(std::format("Expected {}, but {} found", e_value, m_pos->value()), m_pos->line());
         return "";
     }
     return (m_pos++)->value();
@@ -61,7 +66,6 @@ std::unique_ptr<ReturnStatement> ASTBuilder::ParseReturn()
 
 std::unique_ptr<BlockStatement> ASTBuilder::ParseBlock()
 {
-    Consume(TokenType::Comment);
     ParseReturn();
     return std::make_unique<BlockStatement>();
 }
@@ -84,20 +88,25 @@ std::unique_ptr<FunctionDeclaration> ASTBuilder::ParseFunction()
     return func;
 }
 
-void ASTBuilder::Abort(std::string_view message)
+void ASTBuilder::Abort(std::string_view message, size_t line)
 {
     m_error = PARSER_ERROR;
-    m_message = message;
+    auto l = static_cast<unsigned long>(line);
+    if (line)
+        m_message = std::format("Syntax error at line {}: {}", l, message);
+    else
+        m_message = std::format("Syntax error: {}", message);
+    throw SyntaxError(m_message);
 }
 
 std::unique_ptr<ASTRoot> ASTBuilder::Build()
 {
     std::unique_ptr<ASTRoot> root = std::make_unique<ASTRoot>();
-
-    auto func = ParseFunction();
-    auto node = std::make_unique<OuterNode>(std::move(*func));
-    root->nodes.push_back(std::move(node));
-
+    try {
+        auto func = ParseFunction();
+        auto node = std::make_unique<OuterNode>(std::move(*func));
+        root->nodes.push_back(std::move(node));
+    } catch (const SyntaxError &e) {}
     return root;
 }
 

@@ -7,23 +7,23 @@ static std::string toString(Token::Type type)
 {
     switch (type) {
     case Token::Identifier:
-        return "Identifier";
+        return "identifier";
     case Token::Keyword:
-        return "Keyword";
+        return "keyword";
     case Token::Operator:
-        return "Operator";
+        return "operator";
     case Token::Punctator:
-        return "Punctator";
+        return "punctator";
     case Token::NumericLiteral:
-        return "NumericLiteral";
+        return "numeric literal";
     case Token::StringLiteral:
-        return "StringLiteral";
+        return "string literal";
     case Token::CharLiteral:
-        return "CharLiteral";
+        return "char literal";
     case Token::Comment:
-        return "Comment";
+        return "comment";
     case Token::Undefined:
-        return "Undefined";
+        return "undefined";
     default:
         return "";
     }
@@ -53,6 +53,7 @@ Token::Token(Type type, std::string_view value, size_t line, size_t col)
 std::ostream &operator<<(std::ostream &os, const Token &t)
 {
     os << "<" << toString(t.type());
+    os << " (" << t.line() << ", " << t.col() << ")";
     if (!t.value().empty())
         os << ", \"" << t.value() << "\"";
     os << ">";

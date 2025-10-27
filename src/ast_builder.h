@@ -16,7 +16,7 @@ public:
     ASTBuilder(const std::list<lexer::Token> &token_list);
     ~ASTBuilder() = default;
 
-    void Abort(std::string_view);
+    void Abort(std::string_view, size_t line = 0);
     std::unique_ptr<ASTRoot> Build();
 
     int ErrorCode();
