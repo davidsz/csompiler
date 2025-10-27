@@ -59,11 +59,13 @@ int main(int argc, char **argv)
     if (parser_result.return_code) {
         std::cout << parser_result.error_message << std::endl;
         return parser_result.return_code;
-    } else {
-        parser::ASTPrinter printer;
-        printer(*(parser_result.root.get()));
-        std::cout << "Success!" << std::endl;
     }
+
+#if 1
+    parser::ASTPrinter printer;
+    printer(*(parser_result.root.get()));
+    std::cout << "Success!" << std::endl;
+#endif
 
     if (has_flag("parse"))
         return 0;

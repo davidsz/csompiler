@@ -20,6 +20,7 @@ struct ASTPrinter {
         std::visit(*this, *e.rhs);
         indent -= 2;
     }
+
     void operator()(const CallExpression &e) {
         pad(); std::cout << "Call(" << e.callee << ")" << std::endl;
         indent += 2;
@@ -35,14 +36,27 @@ struct ASTPrinter {
         if (s.init) std::visit(*this, *s.init);
         indent -= 2;
     }
+
+    void operator()(const FuncDeclStatement &f) {
+        pad(); std::cout << "Function(" << f.name << ")" << std::endl;
+        indent += 2;
+        pad(); std::cout << "Params: ";
+        for (auto &p : f.params) std::cout << p << " ";
+        std::cout << std::endl;
+        std::visit(*this, *f.body);
+        indent -= 2;
+    }
+
     void operator()(const ExpressionStatement &s) {
         pad(); std::cout << "ExpressionStatement" << std::endl;
         indent += 2; std::visit(*this, *s.expr); indent -= 2;
     }
+
     void operator()(const ReturnStatement &s) {
         pad(); std::cout << "ReturnStatement" << std::endl;
         indent += 2; std::visit(*this, *s.expr); indent -= 2;
     }
+
     void operator()(const IfStatement &s) {
         pad(); std::cout << "If" << std::endl;
         indent += 2;
@@ -51,30 +65,12 @@ struct ASTPrinter {
         pad(); std::cout << "Else:" << std::endl; indent += 2; std::visit(*this, *s.elseBranch); indent -= 2;
         indent -= 2;
     }
+
     void operator()(const BlockStatement &s) {
         pad(); std::cout << "Block" << std::endl;
         indent += 2;
         for (auto &stmt : s.statements)
             std::visit(*this, *stmt);
-        indent -= 2;
-    }
-
-    void operator()(const FunctionDeclaration &f) {
-        pad(); std::cout << "Function(" << f.name << ")" << std::endl;
-        indent += 2;
-        pad(); std::cout << "Params: ";
-        for (auto &p : f.params) std::cout << p << " ";
-        std::cout << std::endl;
-        (*this)(*f.body);
-        indent -= 2;
-    }
-
-    void operator()(const ASTRoot &r) {
-        pad(); std::cout << "ASTRoot" << std::endl;
-        indent += 2;
-        for (auto &node : r.nodes)
-            std::visit(*this, *node);
-        std::cout << std::endl;
         indent -= 2;
     }
 };

@@ -16,7 +16,6 @@ public:
         NumericLiteral,
         StringLiteral,
         CharLiteral,
-        Comment,
         Undefined,
     };
 

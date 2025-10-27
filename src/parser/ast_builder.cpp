@@ -31,10 +31,6 @@ std::string ASTBuilder::ErrorMessage()
 
 std::string ASTBuilder::Consume(TokenType e_type, std::string_view e_value)
 {
-    // TODO: Maybe the lexer should omit the comments?
-    while (m_pos->type() == TokenType::Comment)
-        m_pos++;
-
     if (m_pos == m_tokens.end()) {
         Abort("ASTBuilder reached the end of tokens.");
         return "";
@@ -54,27 +50,34 @@ std::string ASTBuilder::Consume(TokenType e_type, std::string_view e_value)
     return (m_pos++)->value();
 }
 
-std::unique_ptr<ReturnStatement> ASTBuilder::ParseReturn()
+std::optional<lexer::Token> ASTBuilder::Peek(long n)
+{
+    if (std::distance(m_pos, m_tokens.end()) <= n)
+        return std::nullopt;
+    return *std::next(m_pos, n);
+}
+
+std::unique_ptr<Statement> ASTBuilder::ParseReturn()
 {
     auto ret = std::make_unique<ReturnStatement>();
     Consume(TokenType::Keyword, "return");
     double value = std::stod(Consume(TokenType::NumericLiteral));
     ret->expr = make_expression<NumberExpression>(value);
     Consume(TokenType::Punctator, ";");
-    return ret;
+    return wrap_statement(std::move(ret));
 }
 
-std::unique_ptr<BlockStatement> ASTBuilder::ParseBlock()
+std::unique_ptr<Statement> ASTBuilder::ParseBlock()
 {
     auto block = std::make_unique<BlockStatement>();
     auto ret = ParseReturn();
     block->statements.push_back(wrap_statement(std::move(ret)));
-    return block;
+    return wrap_statement(std::move(block));
 }
 
-std::unique_ptr<FunctionDeclaration> ASTBuilder::ParseFunction()
+std::unique_ptr<Statement> ASTBuilder::ParseFunction()
 {
-    auto func = std::make_unique<FunctionDeclaration>();
+    auto func = std::make_unique<FuncDeclStatement>();
 
     Consume(TokenType::Keyword);
     func->name = Consume(TokenType::Identifier);
@@ -87,7 +90,30 @@ std::unique_ptr<FunctionDeclaration> ASTBuilder::ParseFunction()
     func->body = ParseBlock();
     Consume(TokenType::Punctator, "}");
 
-    return func;
+    return wrap_statement(std::move(func));
+}
+
+std::unique_ptr<Statement> ASTBuilder::ParseStatement()
+{
+    auto next = Peek();
+    if (!next)
+        Abort("No more tokens.");
+
+    if (next->type() == TokenType::Keyword) {
+        if (next->value() == "return")
+            return ParseReturn();
+        // TODO
+        if (next->value() == "int")
+            return ParseFunction();
+
+        Abort("Not implemented yet.", next->line());
+    }
+
+    if (next->type() == TokenType::Identifier) {
+        Abort("Not implemented yet.", next->line());
+    }
+
+    return nullptr;
 }
 
 void ASTBuilder::Abort(std::string_view message, size_t line)
@@ -101,14 +127,15 @@ void ASTBuilder::Abort(std::string_view message, size_t line)
     throw SyntaxError(m_message);
 }
 
-std::unique_ptr<ASTRoot> ASTBuilder::Build()
+std::unique_ptr<BlockStatement> ASTBuilder::Build()
 {
-    std::unique_ptr<ASTRoot> root = std::make_unique<ASTRoot>();
+    std::unique_ptr<BlockStatement> root = std::make_unique<BlockStatement>();
     try {
-        auto func = ParseFunction();
-        auto node = std::make_unique<OuterNode>(std::move(*func));
-        root->nodes.push_back(std::move(node));
-    } catch (const SyntaxError &e) {}
+        while (Peek())
+            root->statements.push_back(ParseStatement());
+    } catch (const SyntaxError &e) {
+        // Setting the error code and message were handled already.
+    }
     return root;
 }
 

@@ -29,11 +29,11 @@ private:
     Token CreateToken(Token::Type type, std::string_view content);
 
     void SkipWhitespace();
+    void SkipComment();
     Token MakeNumericLiteral();
     Token MakeStringLiteral();
     Token MakeCharLiteral();
     Token MakeIdentifierOrKeyword();
-    Token MakeComment();
 
     std::string_view m_string;
     size_t m_pos;

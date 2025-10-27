@@ -20,8 +20,6 @@ static std::string toString(Token::Type type)
         return "string literal";
     case Token::CharLiteral:
         return "char literal";
-    case Token::Comment:
-        return "comment";
     case Token::Undefined:
         return "undefined";
     default:

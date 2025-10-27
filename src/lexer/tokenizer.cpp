@@ -219,12 +219,9 @@ Token Tokenizer::MakeIdentifierOrKeyword()
     return CreateToken(is_keyword(word) ? Token::Keyword :  Token::Identifier, word);
 }
 
-Token Tokenizer::MakeComment()
+void Tokenizer::SkipComment()
 {
     bool oneliner = true;
-    std::string comment;
-    comment.reserve(20);
-
     char next = Step();
     // We already jumped over the initial /
     assert(next == '/' || next == '*');
@@ -243,15 +240,10 @@ Token Tokenizer::MakeComment()
                 break;
             }
         }
-
-        comment += next;
         Step();
-
         if (!oneliner && ReachedEOF())
             AbortAtPosition("Unclosed comment block");
     } while (IsRunning());
-
-    return CreateToken(Token::Comment, comment);
 }
 
 std::optional<Token> Tokenizer::NextToken()
@@ -280,8 +272,10 @@ std::optional<Token> Tokenizer::NextToken()
             char op = Step();
             if (op == '/') {
                 c = PeekNextChar();
-                if (c == '/' || c == '*')
-                    return MakeComment();
+                if (c == '/' || c == '*') {
+                    SkipComment();
+                    continue;
+                }
             }
             return CreateToken(Token::Operator, std::string(1, op));
         }

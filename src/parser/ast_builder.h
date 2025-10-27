@@ -17,17 +17,19 @@ public:
     ~ASTBuilder() = default;
 
     void Abort(std::string_view, size_t line = 0);
-    std::unique_ptr<ASTRoot> Build();
+    std::unique_ptr<BlockStatement> Build();
 
     int ErrorCode();
     std::string ErrorMessage();
 
 private:
     std::string Consume(TokenType type, std::string_view value = "");
+    std::optional<lexer::Token> Peek(long n = 0);
 
-    std::unique_ptr<ReturnStatement> ParseReturn();
-    std::unique_ptr<BlockStatement> ParseBlock();
-    std::unique_ptr<FunctionDeclaration> ParseFunction();
+    std::unique_ptr<Statement> ParseReturn();
+    std::unique_ptr<Statement> ParseBlock();
+    std::unique_ptr<Statement> ParseFunction();
+    std::unique_ptr<Statement> ParseStatement();
 
     const std::list<lexer::Token> &m_tokens;
     std::list<lexer::Token>::const_iterator m_pos;

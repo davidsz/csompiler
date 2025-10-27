@@ -42,10 +42,16 @@ struct CallExpression {
     std::vector<std::unique_ptr<Expression>> args;
 };
 
+template <typename T, typename... Args>
+std::unique_ptr<Expression> make_expression(Args&&... args) {
+    return std::make_unique<Expression>(T{std::forward<Args>(args)...});
+}
+
 
 // Statements
 
 struct VarDeclStatement;
+struct FuncDeclStatement;
 struct ExpressionStatement;
 struct ReturnStatement;
 struct IfStatement;
@@ -53,21 +59,22 @@ struct BlockStatement;
 
 using Statement = std::variant<
     VarDeclStatement,
+    FuncDeclStatement,
     ExpressionStatement,
     ReturnStatement,
     IfStatement,
     BlockStatement
 >;
 
-template <typename T, typename... Args>
-std::unique_ptr<Expression> make_expression(Args&&... args) {
-    return std::make_unique<Expression>(T{std::forward<Args>(args)...});
-}
-
-
 struct VarDeclStatement {
     std::string name;
     std::unique_ptr<Expression> init;
+};
+
+struct FuncDeclStatement {
+    std::string name;
+    std::vector<std::string> params;
+    std::unique_ptr<Statement> body;
 };
 
 struct ExpressionStatement {
@@ -97,26 +104,6 @@ template <typename T>
 std::unique_ptr<Statement> wrap_statement(std::unique_ptr<T> stmt) {
     return std::make_unique<Statement>(std::move(*stmt));
 }
-
-
-struct FunctionDeclaration {
-    std::string name;
-    std::vector<std::string> params;
-    std::unique_ptr<BlockStatement> body;
-};
-
-using OuterNode = std::variant<
-    VarDeclStatement,
-    ExpressionStatement,
-    ReturnStatement,
-    IfStatement,
-    BlockStatement,
-    FunctionDeclaration
->;
-
-struct ASTRoot {
-    std::vector<std::unique_ptr<OuterNode>> nodes;
-};
 
 }; // namespace parser
 
