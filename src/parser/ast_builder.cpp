@@ -66,8 +66,10 @@ std::unique_ptr<ReturnStatement> ASTBuilder::ParseReturn()
 
 std::unique_ptr<BlockStatement> ASTBuilder::ParseBlock()
 {
-    ParseReturn();
-    return std::make_unique<BlockStatement>();
+    auto block = std::make_unique<BlockStatement>();
+    auto ret = ParseReturn();
+    block->statements.push_back(wrap_statement(std::move(ret)));
+    return block;
 }
 
 std::unique_ptr<FunctionDeclaration> ASTBuilder::ParseFunction()

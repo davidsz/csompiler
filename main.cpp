@@ -1,5 +1,6 @@
 #include "lexer/lexer.h"
 #include "lexer/token.h"
+#include "parser/ast_printer.h"
 #include "parser/parser.h"
 #include <fstream>
 #include <iostream>
@@ -59,7 +60,9 @@ int main(int argc, char **argv)
         std::cout << parser_result.error_message << std::endl;
         return parser_result.return_code;
     } else {
-        std::cout << "Parsed successfully." << std::endl;
+        parser::ASTPrinter printer;
+        printer(*(parser_result.root.get()));
+        std::cout << "Success!" << std::endl;
     }
 
     if (has_flag("parse"))

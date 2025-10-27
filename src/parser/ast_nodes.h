@@ -93,6 +93,11 @@ std::unique_ptr<Statement> make_statement(Args&&... args) {
     return std::make_unique<Statement>(T{std::forward<Args>(args)...});
 }
 
+template <typename T>
+std::unique_ptr<Statement> wrap_statement(std::unique_ptr<T> stmt) {
+    return std::make_unique<Statement>(std::move(*stmt));
+}
+
 
 struct FunctionDeclaration {
     std::string name;
@@ -100,7 +105,14 @@ struct FunctionDeclaration {
     std::unique_ptr<BlockStatement> body;
 };
 
-using OuterNode = std::variant<Statement, FunctionDeclaration>;
+using OuterNode = std::variant<
+    VarDeclStatement,
+    ExpressionStatement,
+    ReturnStatement,
+    IfStatement,
+    BlockStatement,
+    FunctionDeclaration
+>;
 
 struct ASTRoot {
     std::vector<std::unique_ptr<OuterNode>> nodes;
