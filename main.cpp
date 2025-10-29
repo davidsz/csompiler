@@ -1,3 +1,4 @@
+#include "assembly/asm_builder.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
 #include "parser/ast_printer.h"
@@ -71,7 +72,8 @@ int main(int argc, char **argv)
         return 0;
 
     // Code generator
-    // TODO
+    assembly::ASMBuilder astToAsm;
+    astToAsm.Convert(parser_result.root.get());
 
     if (has_flag("codegen"))
         return 0;

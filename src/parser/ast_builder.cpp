@@ -136,6 +136,7 @@ std::unique_ptr<BlockStatement> ASTBuilder::Build()
     } catch (const SyntaxError &e) {
         // Setting the error code and message were handled already.
     }
+    assert(m_pos == m_tokens.end());
     return root;
 }
 
