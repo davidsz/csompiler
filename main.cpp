@@ -3,6 +3,7 @@
 #include "lexer/token.h"
 #include "parser/ast_printer.h"
 #include "parser/parser.h"
+#include "tac/tac_builder.h"
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -69,6 +70,13 @@ int main(int argc, char **argv)
 #endif
 
     if (has_flag("parse"))
+        return 0;
+
+    // Intermediate representation
+    tac::TACBuilder astToTac;
+    astToTac.Convert(parser_result.root.get());
+
+    if (has_flag("tacky"))
         return 0;
 
     // Code generator

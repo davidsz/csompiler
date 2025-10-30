@@ -3,7 +3,6 @@
 
 #include "asm_nodes.h"
 #include "parser/ast_visitor.h"
-#include <memory>
 
 namespace assembly {
 
