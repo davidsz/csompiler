@@ -1,97 +1,41 @@
 #ifndef AST_NODES_H
 #define AST_NODES_H
 
+#include "macro.h"
 #include <string>
 #include <variant>
 #include <vector>
 
 namespace parser {
 
-// Expressions
+struct Empty {};
 
-struct NumberExpression;
-struct VariableExpression;
-struct BinaryExpression;
-struct CallExpression;
+#define AST_STATEMENT_LIST(X) \
+    X(FuncDeclStatement, std::string name; std::vector<std::string> params; std::unique_ptr<Statement> body;) \
+    X(ReturnStatement, std::unique_ptr<Expression> expr;) \
+    X(BlockStatement, std::vector<std::unique_ptr<Statement>> statements;)
 
+#define AST_EXPRESSION_LIST(X) \
+    X(NumberExpression, double value;)
+
+
+AST_EXPRESSION_LIST(DEFINE_NODE)
 using Expression = std::variant<
-    NumberExpression,
-    VariableExpression,
-    BinaryExpression,
-    CallExpression
+    AST_EXPRESSION_LIST(ADD_TO_VARIANT)
+    Empty
 >;
-
-struct NumberExpression {
-    double value;
-};
-
-struct VariableExpression {
-    std::string name;
-};
-
-struct BinaryExpression {
-    std::string op;
-    std::unique_ptr<Expression> lhs;
-    std::unique_ptr<Expression> rhs;
-};
-
-struct CallExpression {
-    std::string callee;
-    std::vector<std::unique_ptr<Expression>> args;
-};
 
 template <typename T, typename... Args>
 std::unique_ptr<Expression> make_expression(Args&&... args) {
     return std::make_unique<Expression>(T{std::forward<Args>(args)...});
 }
 
-
-// Statements
-
-struct VarDeclStatement;
-struct FuncDeclStatement;
-struct ExpressionStatement;
-struct ReturnStatement;
-struct IfStatement;
-struct BlockStatement;
-
+AST_STATEMENT_LIST(FORWARD_DECL_NODE)
 using Statement = std::variant<
-    VarDeclStatement,
-    FuncDeclStatement,
-    ExpressionStatement,
-    ReturnStatement,
-    IfStatement,
-    BlockStatement
+    AST_STATEMENT_LIST(ADD_TO_VARIANT)
+    Empty
 >;
-
-struct VarDeclStatement {
-    std::string name;
-    std::unique_ptr<Expression> init;
-};
-
-struct FuncDeclStatement {
-    std::string name;
-    std::vector<std::string> params;
-    std::unique_ptr<Statement> body;
-};
-
-struct ExpressionStatement {
-    std::unique_ptr<Expression> expr;
-};
-
-struct ReturnStatement {
-    std::unique_ptr<Expression> expr;
-};
-
-struct IfStatement {
-    std::unique_ptr<Expression> condition;
-    std::unique_ptr<Statement> thenBranch;
-    std::unique_ptr<Statement> elseBranch;
-};
-
-struct BlockStatement {
-    std::vector<std::unique_ptr<Statement>> statements;
-};
+AST_STATEMENT_LIST(DEFINE_NODE)
 
 template <typename T, typename... Args>
 std::unique_ptr<Statement> make_statement(Args&&... args) {

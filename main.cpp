@@ -1,9 +1,10 @@
-#include "assembly/asm_builder.h"
+// #include "assembly/asm_builder.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
 #include "parser/ast_printer.h"
 #include "parser/parser.h"
 #include "tac/tac_builder.h"
+#include "tac/tac_printer.h"
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -48,7 +49,7 @@ int main(int argc, char **argv)
         return lexer_result.return_code;
     }
 
-#if 1
+#if 0
     for (auto it = lexer_result.tokens.begin(); it != lexer_result.tokens.end(); it++)
         std::cout << *it << std::endl;
 #endif
@@ -64,9 +65,9 @@ int main(int argc, char **argv)
     }
 
 #if 1
-    parser::ASTPrinter printer;
-    printer(*(parser_result.root.get()));
-    std::cout << "Success!" << std::endl;
+    std::cout << std::endl << "AST:" << std::endl;
+    parser::ASTPrinter astPrinter;
+    astPrinter(*(parser_result.root.get()));
 #endif
 
     if (has_flag("parse"))
@@ -74,14 +75,21 @@ int main(int argc, char **argv)
 
     // Intermediate representation
     tac::TACBuilder astToTac;
-    astToTac.Convert(parser_result.root.get());
+    auto f = astToTac.Convert(parser_result.root.get());
+
+#if 1
+    std::cout << std::endl << "TAC:" << std::endl;
+    tac::TACPrinter tacPrinter;
+    tacPrinter(f);
+#endif
 
     if (has_flag("tacky"))
         return 0;
 
     // Code generator
-    assembly::ASMBuilder astToAsm;
-    astToAsm.Convert(parser_result.root.get());
+    // assembly::ASMBuilder astToAsm;
+    // TODO
+    // astToAsm.Convert(nullptr);
 
     if (has_flag("codegen"))
         return 0;

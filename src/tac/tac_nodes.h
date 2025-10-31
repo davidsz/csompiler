@@ -1,6 +1,8 @@
 #ifndef TAC_NODES_H
 #define TAC_NODES_H
 
+#include "macro.h"
+#include <cassert>
 #include <string>
 #include <variant>
 #include <vector>
@@ -9,50 +11,53 @@ namespace tac {
 
 struct Empty {};
 
-#define STATEMENT_LIST(X) \
-    X(FunctionDef, std::string name; std::vector<Instruction> instructions;)
-
-#define INSTRUCTION_LIST(X) \
-    X(Return, Val value;) \
-    X(Unary, UnaryOperator op; Val src; Val dst;)
-
-#define VALUE_TYPE_LIST(X) \
-    X(Constant, int value;) \
-    X(Identifier, std::string name;)
-
 enum UnaryOperator {
-    Complement,
     Negate,
+    Increment,
+    Decrement,
 };
 
-#define FORWARD_DECL_NODE(name, members) \
-    struct name;
+#define TAC_INSTRUCTION_LIST(X) \
+    X(Return, Value val;) \
+    X(Unary, UnaryOperator op; Value src; Value dst;)
 
-#define DEFINE_NODE(name, members) \
-    struct name { members };
+#define TAC_VALUE_TYPE_LIST(X) \
+    X(Constant, int value;) \
+    X(Variant, std::string name;)
 
-#define ADD_TO_VARIANT(name, members) name,
+#define TAC_OTHER_TYPE_LIST(X) \
+    X(FunctionDefinition, std::string name; std::vector<Instruction> inst;)
 
-VALUE_TYPE_LIST(DEFINE_NODE)
-using Val = std::variant<
-    VALUE_TYPE_LIST(ADD_TO_VARIANT)
+
+TAC_VALUE_TYPE_LIST(DEFINE_NODE)
+using Value = std::variant<
+    TAC_VALUE_TYPE_LIST(ADD_TO_VARIANT)
     Empty
 >;
 
-INSTRUCTION_LIST(DEFINE_NODE)
+TAC_INSTRUCTION_LIST(DEFINE_NODE)
 using Instruction = std::variant<
-    INSTRUCTION_LIST(ADD_TO_VARIANT)
+    TAC_INSTRUCTION_LIST(ADD_TO_VARIANT)
     Empty
 >;
 
-STATEMENT_LIST(DEFINE_NODE)
+TAC_OTHER_TYPE_LIST(DEFINE_NODE)
 
 using Any = std::variant<
-    STATEMENT_LIST(ADD_TO_VARIANT)
-    INSTRUCTION_LIST(ADD_TO_VARIANT)
-    VALUE_TYPE_LIST(ADD_TO_VARIANT)
+    TAC_VALUE_TYPE_LIST(ADD_TO_VARIANT)
+    TAC_INSTRUCTION_LIST(ADD_TO_VARIANT)
+    TAC_OTHER_TYPE_LIST(ADD_TO_VARIANT)
     Empty
 >;
+
+template <typename T>
+T unwrap(Any &&value)
+{
+    if (auto ptr = std::get_if<T>(&value))
+        return std::move(*ptr);
+    assert(false);
+    return T{};
+}
 
 }; // tac
 

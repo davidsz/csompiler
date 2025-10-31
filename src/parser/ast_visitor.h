@@ -7,19 +7,9 @@ namespace parser {
 
 template <typename T>
 struct IASTVisitor {
-    // --- Expressions ---
-    virtual T operator()(const parser::NumberExpression &) = 0;
-    virtual T operator()(const parser::VariableExpression &) = 0;
-    virtual T operator()(const parser::BinaryExpression &) = 0;
-    virtual T operator()(const parser::CallExpression &) = 0;
-
-    // --- Statements ---
-    virtual T operator()(const parser::VarDeclStatement &) = 0;
-    virtual T operator()(const parser::FuncDeclStatement &) = 0;
-    virtual T operator()(const parser::ExpressionStatement &) = 0;
-    virtual T operator()(const parser::ReturnStatement &) = 0;
-    virtual T operator()(const parser::IfStatement &) = 0;
-    virtual T operator()(const parser::BlockStatement &) = 0;
+    AST_STATEMENT_LIST(ADD_TO_VISITOR)
+    AST_EXPRESSION_LIST(ADD_TO_VISITOR)
+    virtual T operator()(const parser::Empty &) = 0;
 };
 
 }; // parser
