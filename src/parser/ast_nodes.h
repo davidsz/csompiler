@@ -1,6 +1,7 @@
 #ifndef AST_NODES_H
 #define AST_NODES_H
 
+#include "common/operator.h"
 #include "macro.h"
 #include <string>
 #include <variant>
@@ -16,14 +17,16 @@ struct Empty {};
     X(BlockStatement, std::vector<std::unique_ptr<Statement>> statements;)
 
 #define AST_EXPRESSION_LIST(X) \
-    X(NumberExpression, double value;)
+    X(NumberExpression, double value;) \
+    X(UnaryExpression, UnaryOperator op; std::unique_ptr<Expression> expr;)
 
 
-AST_EXPRESSION_LIST(DEFINE_NODE)
+AST_EXPRESSION_LIST(FORWARD_DECL_NODE)
 using Expression = std::variant<
     AST_EXPRESSION_LIST(ADD_TO_VARIANT)
     Empty
 >;
+AST_EXPRESSION_LIST(DEFINE_NODE)
 
 template <typename T, typename... Args>
 std::unique_ptr<Expression> make_expression(Args&&... args) {

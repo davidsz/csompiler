@@ -2,12 +2,12 @@
 #include "ast_nodes.h"
 #include <cassert>
 #include <iostream>
-#include <ranges>
 #include <stdexcept>
 
 namespace parser {
 
-struct SyntaxError : public std::runtime_error {
+struct SyntaxError : public std::runtime_error
+{
     explicit SyntaxError(const std::string &message) : std::runtime_error(message) {}
 };
 
@@ -57,12 +57,32 @@ std::optional<lexer::Token> ASTBuilder::Peek(long n)
     return *std::next(m_pos, n);
 }
 
+std::unique_ptr<Expression> ASTBuilder::ParseExpression()
+{
+    auto next = Peek();
+    if (next->type() == TokenType::Punctator && next->value() == "(") {
+        Consume(TokenType::Punctator, "(");
+        auto expr = ParseExpression();
+        Consume(TokenType::Punctator, ")");
+        return expr;
+    }
+    if (next->type() == TokenType::NumericLiteral) {
+        double value = std::stod(Consume(TokenType::NumericLiteral));
+        return make_expression<NumberExpression>(value);
+    }
+    if (next->type() == TokenType::Operator) {
+        UnaryOperator op = toUnaryOperator(Consume(TokenType::Operator));
+        auto expr = ParseExpression();
+        return make_expression<UnaryExpression>(op, std::move(expr));
+    }
+    assert(false);
+}
+
 std::unique_ptr<Statement> ASTBuilder::ParseReturn()
 {
     auto ret = std::make_unique<ReturnStatement>();
     Consume(TokenType::Keyword, "return");
-    double value = std::stod(Consume(TokenType::NumericLiteral));
-    ret->expr = make_expression<NumberExpression>(value);
+    ret->expr = ParseExpression();
     Consume(TokenType::Punctator, ";");
     return wrap_statement(std::move(ret));
 }
@@ -96,9 +116,6 @@ std::unique_ptr<Statement> ASTBuilder::ParseFunction()
 std::unique_ptr<Statement> ASTBuilder::ParseStatement()
 {
     auto next = Peek();
-    if (!next)
-        Abort("No more tokens.");
-
     if (next->type() == TokenType::Keyword) {
         if (next->value() == "return")
             return ParseReturn();

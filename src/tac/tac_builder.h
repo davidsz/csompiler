@@ -6,25 +6,29 @@
 
 namespace tac {
 
-struct TACBuilder : public parser::IASTVisitor<Any> {
-    Any operator()(const parser::NumberExpression &) override {
+struct TACBuilder : public parser::IASTVisitor<tac::Value> {
+    Value operator()(const parser::NumberExpression &n) override {
+        return Constant{ static_cast<int>(n.value) };
+    }
+    Value operator()(const parser::UnaryExpression &) override {
+        return Constant{ 0 };
+    }
+    Value operator()(const parser::FuncDeclStatement &) override {
         return Empty{};
     }
-    Any operator()(const parser::FuncDeclStatement &) override {
+    Value operator()(const parser::ReturnStatement &) override {
         return Empty{};
     }
-    Any operator()(const parser::ReturnStatement &) override {
+    Value operator()(const parser::BlockStatement &) override {
         return Empty{};
     }
-    Any operator()(const parser::BlockStatement &) override {
-        return Empty{};
-    }
-    Any operator()(const parser::Empty &) override {
+    Value operator()(const parser::Empty &) override {
         return Empty{};
     }
 
     FunctionDefinition Convert(parser::BlockStatement *) {
-        return FunctionDefinition{};
+        auto f = FunctionDefinition{};
+        return f;
     }
 };
 

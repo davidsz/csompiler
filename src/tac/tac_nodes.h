@@ -1,6 +1,7 @@
 #ifndef TAC_NODES_H
 #define TAC_NODES_H
 
+#include "common/operator.h"
 #include "macro.h"
 #include <cassert>
 #include <string>
@@ -10,12 +11,6 @@
 namespace tac {
 
 struct Empty {};
-
-enum UnaryOperator {
-    Negate,
-    Increment,
-    Decrement,
-};
 
 #define TAC_INSTRUCTION_LIST(X) \
     X(Return, Value val;) \

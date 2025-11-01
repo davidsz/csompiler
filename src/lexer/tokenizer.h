@@ -34,6 +34,7 @@ private:
     Token MakeStringLiteral();
     Token MakeCharLiteral();
     Token MakeIdentifierOrKeyword();
+    Token MakeOperator(char first);
 
     std::string_view m_string;
     size_t m_pos;

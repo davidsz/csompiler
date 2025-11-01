@@ -26,6 +26,8 @@ private:
     std::string Consume(TokenType type, std::string_view value = "");
     std::optional<lexer::Token> Peek(long n = 0);
 
+    std::unique_ptr<Expression> ParseExpression();
+
     std::unique_ptr<Statement> ParseReturn();
     std::unique_ptr<Statement> ParseBlock();
     std::unique_ptr<Statement> ParseFunction();

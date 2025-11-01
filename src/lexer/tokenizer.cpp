@@ -219,6 +219,22 @@ Token Tokenizer::MakeIdentifierOrKeyword()
     return CreateToken(is_keyword(word) ? Token::Keyword :  Token::Identifier, word);
 }
 
+Token Tokenizer::MakeOperator(char first)
+{
+    char next = PeekNextChar();
+    switch (first) {
+        case '-':
+            if (next == '-') { Step(); return CreateToken(Token::Operator, "--"); }
+            if (next == '=') { Step(); return CreateToken(Token::Operator, "-="); }
+            break;
+        case '+':
+            if (next == '+') { Step(); return CreateToken(Token::Operator, "++"); }
+            if (next == '=') { Step(); return CreateToken(Token::Operator, "+-"); }
+            break;
+    }
+    return CreateToken(Token::Operator, std::string(1, first));
+}
+
 void Tokenizer::SkipComment()
 {
     bool oneliner = true;
@@ -277,7 +293,7 @@ std::optional<Token> Tokenizer::NextToken()
                     continue;
                 }
             }
-            return CreateToken(Token::Operator, std::string(1, op));
+            return MakeOperator(op);
         }
 
         if (is_punctator(c))

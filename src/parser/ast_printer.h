@@ -9,10 +9,17 @@ namespace parser {
 struct ASTPrinter : public IASTVisitor<void> {
     size_t indent = 0;
     void pad() const { std::cout << std::string(indent, ' '); }
+    void tab() { indent += 2; }
+    void shift_tab() { indent -= 2; }
 
     // --- Expressions ---
     void operator()(const NumberExpression &e) override {
         pad(); std::cout << "NumberExpression(" << e.value << ")" << std::endl;
+    }
+    void operator()(const UnaryExpression &e) override {
+        pad(); std::cout << "UnaryExpression(" << toString(e.op) << std::endl;
+        tab(); std::visit(*this, *e.expr); shift_tab();
+        pad(); std::cout << ")" << std::endl;
     }
 
     // --- Statements ---
