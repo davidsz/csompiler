@@ -13,36 +13,39 @@ struct TACPrinter : public ITACVisitor<void> {
     void shift_tab() { indent -= 2; }
 
     void operator()(const tac::Return &r) override {
-        std::cout << "Return(";
-        std::visit(*this, r.val);
-        std::cout << ")" << std::endl;
+        pad(); std::cout << "Return(" << std::endl;
+        tab(); std::visit(*this, r.val); shift_tab();
+        pad(); std::cout << ")" << std::endl;
     }
     void operator()(const tac::Unary &u) override {
-        std::cout << "Unary(" << (int)u.op;
+        pad(); std::cout << "Unary(" << toString(u.op) << std::endl;
         tab();
-        std::visit(*this, u.src); std::cout << std::endl;
-        std::visit(*this, u.dst); std::cout << std::endl;
+        std::visit(*this, u.src);
+        std::visit(*this, u.dst);
         shift_tab();
-        std::cout << ")" << std::endl;
+        pad(); std::cout << ")" << std::endl;
     }
     void operator()(const tac::Constant &c) override {
-        std::cout << "Constant(" << c.value << ")";
+        pad(); std::cout << "Constant(" << c.value << ")" << std::endl;
     }
     void operator()(const tac::Variant &v) override {
-        std::cout << "Variant(" << v.name << ")";
+        pad(); std::cout << "Variant(" << v.name << ")" << std::endl;
     }
     void operator()(const tac::FunctionDefinition &f) override {
-        std::cout << "Function(" << f.name << ") {" << std::endl;
+        pad(); std::cout << "Function(" << f.name << ") {" << std::endl;
         tab();
-        for (auto &i : f.inst) {
-            std::visit(*this, i); std::cout << std::endl;
-        }
+        for (auto &i : f.inst)
+            std::visit(*this, i);
         shift_tab();
-        std::cout << "}" << std::endl;
+        pad(); std::cout << "}" << std::endl;
     }
-
     void operator()(const tac::Empty &) override {
         assert(false);
+    }
+
+    void print(std::vector<Instruction> instructions) {
+        for (auto &i : instructions)
+            std::visit(*this, i);
     }
 };
 

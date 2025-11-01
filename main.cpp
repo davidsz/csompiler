@@ -75,12 +75,12 @@ int main(int argc, char **argv)
 
     // Intermediate representation
     tac::TACBuilder astToTac;
-    auto f = astToTac.Convert(parser_result.root.get());
+    std::vector<tac::Instruction> tacVector = astToTac.Convert(parser_result.root.get());
 
 #if 1
     std::cout << std::endl << "TAC:" << std::endl;
     tac::TACPrinter tacPrinter;
-    tacPrinter(f);
+    tacPrinter.print(tacVector);
 #endif
 
     if (has_flag("tacky"))

@@ -14,14 +14,12 @@ struct Empty {};
 
 #define TAC_INSTRUCTION_LIST(X) \
     X(Return, Value val;) \
-    X(Unary, UnaryOperator op; Value src; Value dst;)
+    X(Unary, UnaryOperator op; Value src; Value dst;) \
+    X(FunctionDefinition, std::string name; std::vector<Instruction> inst;)
 
 #define TAC_VALUE_TYPE_LIST(X) \
     X(Constant, int value;) \
     X(Variant, std::string name;)
-
-#define TAC_OTHER_TYPE_LIST(X) \
-    X(FunctionDefinition, std::string name; std::vector<Instruction> inst;)
 
 
 TAC_VALUE_TYPE_LIST(DEFINE_NODE)
@@ -30,18 +28,16 @@ using Value = std::variant<
     Empty
 >;
 
-TAC_INSTRUCTION_LIST(DEFINE_NODE)
+TAC_INSTRUCTION_LIST(FORWARD_DECL_NODE)
 using Instruction = std::variant<
     TAC_INSTRUCTION_LIST(ADD_TO_VARIANT)
     Empty
 >;
-
-TAC_OTHER_TYPE_LIST(DEFINE_NODE)
+TAC_INSTRUCTION_LIST(DEFINE_NODE)
 
 using Any = std::variant<
     TAC_VALUE_TYPE_LIST(ADD_TO_VARIANT)
     TAC_INSTRUCTION_LIST(ADD_TO_VARIANT)
-    TAC_OTHER_TYPE_LIST(ADD_TO_VARIANT)
     Empty
 >;
 

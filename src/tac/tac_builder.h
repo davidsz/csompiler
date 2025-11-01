@@ -3,33 +3,21 @@
 
 #include "parser/ast_visitor.h"
 #include "tac_nodes.h"
+#include <vector>
 
 namespace tac {
 
 struct TACBuilder : public parser::IASTVisitor<tac::Value> {
-    Value operator()(const parser::NumberExpression &n) override {
-        return Constant{ static_cast<int>(n.value) };
-    }
-    Value operator()(const parser::UnaryExpression &) override {
-        return Constant{ 0 };
-    }
-    Value operator()(const parser::FuncDeclStatement &) override {
-        return Empty{};
-    }
-    Value operator()(const parser::ReturnStatement &) override {
-        return Empty{};
-    }
-    Value operator()(const parser::BlockStatement &) override {
-        return Empty{};
-    }
-    Value operator()(const parser::Empty &) override {
-        return Empty{};
-    }
+    Value operator()(const parser::NumberExpression &n) override;
+    Value operator()(const parser::UnaryExpression &u) override;
+    Value operator()(const parser::FuncDeclStatement &f) override;
+    Value operator()(const parser::ReturnStatement &r) override;
+    Value operator()(const parser::BlockStatement &b) override;
+    Value operator()(const parser::Empty &) override;
 
-    FunctionDefinition Convert(parser::BlockStatement *) {
-        auto f = FunctionDefinition{};
-        return f;
-    }
+    std::vector<Instruction> Convert(parser::BlockStatement *b);
+
+    std::vector<Instruction> m_instructions;
 };
 
 }; // tac
