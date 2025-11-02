@@ -1,5 +1,4 @@
-#ifndef ERROR_H
-#define ERROR_H
+#pragma once
 
 enum Error {
     ALL_OK = 0,
@@ -7,5 +6,3 @@ enum Error {
     LEXER_ERROR = 2,
     PARSER_ERROR = 3,
 };
-
-#endif // ERROR_H

@@ -1,5 +1,4 @@
-#ifndef AST_VISITOR_H
-#define AST_VISITOR_H
+#pragma once
 
 #include "ast_nodes.h"
 
@@ -13,5 +12,3 @@ struct IASTVisitor {
 };
 
 }; // parser
-
-#endif // AST_VISITOR_H

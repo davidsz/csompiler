@@ -1,5 +1,4 @@
-#ifndef ASM_BUILDER_H
-#define ASM_BUILDER_H
+#pragma once
 
 #include "asm_nodes.h"
 #include "tac/tac_visitor.h"
@@ -20,5 +19,3 @@ struct ASMBuilder : public tac::ITACVisitor<Operand> {
 };
 
 }; // assembly
-
-#endif // ASM_BUILDER_H

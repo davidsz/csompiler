@@ -1,5 +1,4 @@
-#ifndef TAC_VISITOR_H
-#define TAC_VISITOR_H
+#pragma once
 
 #include "tac_nodes.h"
 
@@ -13,5 +12,3 @@ struct ITACVisitor {
 };
 
 }; // tac
-
-#endif // TAC_VISITOR_H

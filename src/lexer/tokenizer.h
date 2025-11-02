@@ -1,5 +1,4 @@
-#ifndef TOKENIZER_H
-#define TOKENIZER_H
+#pragma once
 
 #include "error.h"
 #include "token.h"
@@ -45,5 +44,3 @@ private:
 };
 
 }; // namespace lexer
-
-#endif // TOKENIZER_H

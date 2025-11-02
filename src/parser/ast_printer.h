@@ -1,5 +1,4 @@
-#ifndef AST_PRINTER_H
-#define AST_PRINTER_H
+#pragma once
 
 #include "ast_visitor.h"
 #include <iostream>
@@ -47,5 +46,3 @@ struct ASTPrinter : public IASTVisitor<void> {
 };
 
 } // namespace parser
-
-#endif // AST_PRINTER_H

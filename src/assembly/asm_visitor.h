@@ -1,5 +1,4 @@
-#ifndef ASM_VISITOR_H
-#define ASM_VISITOR_H
+#pragma once
 
 #include "asm_nodes.h"
 
@@ -13,5 +12,3 @@ struct IASMVisitor {
 };
 
 }; // assembly
-
-#endif // ASM_VISITOR_H

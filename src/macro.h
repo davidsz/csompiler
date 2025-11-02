@@ -1,3 +1,5 @@
+#pragma once
+
 #include <variant>
 
 #define FORWARD_DECL_NODE(name, members) \

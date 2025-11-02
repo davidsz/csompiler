@@ -1,5 +1,4 @@
-#ifndef ASM_NODES_H
-#define ASM_NODES_H
+#pragma once
 
 #include "macro.h"
 #include <string>
@@ -20,5 +19,3 @@ DEFINE_NODES_WITH_COMMON_VARIANT(Operand, ASM_OPERAND_LIST);
 DEFINE_NODES_WITH_COMMON_VARIANT(Instruction, ASM_INSTRUCTION_LIST);
 
 }; // assembly
-
-#endif // ASM_NODES_H

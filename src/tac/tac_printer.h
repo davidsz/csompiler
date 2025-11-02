@@ -1,5 +1,4 @@
-#ifndef TAC_PRINTER_H
-#define TAC_PRINTER_H
+#pragma once
 
 #include "tac_visitor.h"
 #include <iostream>
@@ -50,5 +49,3 @@ struct TACPrinter : public ITACVisitor<void> {
 };
 
 } // namespace tac
-
-#endif // TAC_PRINTER_H

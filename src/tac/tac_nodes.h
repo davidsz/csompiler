@@ -1,5 +1,4 @@
-#ifndef TAC_NODES_H
-#define TAC_NODES_H
+#pragma once
 
 #include "common/operator.h"
 #include "macro.h"
@@ -38,5 +37,3 @@ T unwrap(Any &&value)
 }
 */
 }; // tac
-
-#endif // TAC_NODES_H

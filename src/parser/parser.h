@@ -1,5 +1,4 @@
-#ifndef PARSER_H
-#define PARSER_H
+#pragma once
 
 #include "ast_nodes.h"
 #include "lexer/token.h"
@@ -18,4 +17,4 @@ Result parse(const std::list<lexer::Token> &token_list);
 
 }; // parser
 
-#endif // PARSER_H
+#pragma once

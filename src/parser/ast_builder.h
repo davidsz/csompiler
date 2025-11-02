@@ -1,5 +1,4 @@
-#ifndef AST_BUILDER_H
-#define AST_BUILDER_H
+#pragma once
 
 #include "ast_nodes.h"
 #include "error.h"
@@ -40,5 +39,3 @@ private:
 };
 
 }; // namespace parser
-
-#endif // AST_BUILDER_H

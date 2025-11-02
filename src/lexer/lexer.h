@@ -1,5 +1,4 @@
-#ifndef LEXER_H
-#define LEXER_H
+#pragma once
 
 #include <list>
 
@@ -17,5 +16,3 @@ struct Result
 Result tokenize(std::string_view code);
 
 }; // lexer
-
-#endif // LEXER_H

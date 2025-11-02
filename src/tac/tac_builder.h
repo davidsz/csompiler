@@ -1,5 +1,4 @@
-#ifndef TAC_BUILDER_H
-#define TAC_BUILDER_H
+#pragma once
 
 #include "parser/ast_visitor.h"
 #include "tac_nodes.h"
@@ -21,5 +20,3 @@ struct TACBuilder : public parser::IASTVisitor<tac::Value> {
 };
 
 }; // tac
-
-#endif // TAC_BUILDER_H

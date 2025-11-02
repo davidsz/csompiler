@@ -1,5 +1,4 @@
-#ifndef AST_NODES_H
-#define AST_NODES_H
+#pragma once
 
 #include "common/operator.h"
 #include "macro.h"
@@ -37,5 +36,3 @@ std::unique_ptr<Statement> wrap_statement(std::unique_ptr<T> stmt) {
 }
 
 }; // namespace parser
-
-#endif // AST_NODES_H

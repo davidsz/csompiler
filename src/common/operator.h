@@ -1,5 +1,4 @@
-#ifndef OPERATOR_H
-#define OPERATOR_H
+#pragma once
 
 #include <string_view>
 
@@ -16,5 +15,3 @@ enum UnaryOperator {
 
 UnaryOperator toUnaryOperator(std::string_view s);
 std::string_view toString(UnaryOperator op);
-
-#endif // OPERATOR_H

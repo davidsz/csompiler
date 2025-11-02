@@ -1,5 +1,4 @@
-#ifndef TOKEN_H
-#define TOKEN_H
+#pragma once
 
 #include <string>
 
@@ -41,5 +40,3 @@ private:
 };
 
 }; // namespace lexer
-
-#endif // TOKEN_H

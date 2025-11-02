@@ -1,5 +1,4 @@
-#ifndef ASM_PRINTER_H
-#define ASM_PRINTER_H
+#pragma once
 
 #include "asm_visitor.h"
 #include <sstream>
@@ -20,5 +19,3 @@ struct ASMPrinter : public IASMVisitor<void> {
 };
 
 }; // assembly
-
-#endif // ASM_PRINTER_H
