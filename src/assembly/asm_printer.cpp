@@ -1,20 +1,21 @@
 #include "asm_printer.h"
+#include <cassert>
 
 namespace assembly {
 
 void ASMPrinter::operator()(const Reg &r)
 {
-    m_codeStream << r.name;
+    m_codeStream << "%" << r.name;
 }
 
 void ASMPrinter::operator()(const Imm &i)
 {
-    m_codeStream << std::to_string(i.value);
+    m_codeStream << "$" << std::to_string(i.value);
 }
 
 void ASMPrinter::operator()(const Mov &m)
 {
-    m_codeStream << "    mov ";
+    m_codeStream << "    movl ";
     std::visit(*this, m.src);
     m_codeStream << ", ";
     std::visit(*this, m.dst);
@@ -28,7 +29,8 @@ void ASMPrinter::operator()(const Ret &)
 
 void ASMPrinter::operator()(const Function &f)
 {
-    m_codeStream << f.name << ":" << std::endl;
+    m_codeStream << "    .global _" << f.name << std::endl;
+    m_codeStream << "_" << f.name << ":" << std::endl;
     for (auto &i: f.instructions)
         std::visit(*this, i);
 }

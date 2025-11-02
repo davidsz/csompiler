@@ -2,7 +2,6 @@
 #define ASM_PRINTER_H
 
 #include "asm_visitor.h"
-#include <cassert>
 #include <sstream>
 
 namespace assembly {

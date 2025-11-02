@@ -1,6 +1,13 @@
 #include "tac_builder.h"
+#include <format>
 
 namespace tac {
+
+static std::string generateTempVariableName()
+{
+    static size_t counter = 0;
+    return std::format("tmp.{}", counter++);
+}
 
 Value TACBuilder::operator()(const parser::NumberExpression &n)
 {
@@ -12,7 +19,7 @@ Value TACBuilder::operator()(const parser::UnaryExpression &u)
     auto unary = Unary{};
     unary.op = u.op;
     unary.src = std::visit(*this, *u.expr);
-    Variant dst{ "dst_temp" };
+    Variant dst{ generateTempVariableName() };
     unary.dst = dst;
     m_instructions.push_back(unary);
     return dst;

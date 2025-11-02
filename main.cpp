@@ -1,15 +1,29 @@
 #include "assembly/asm_builder.h"
 #include "assembly/asm_printer.h"
+#include "error.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
 #include "parser/ast_printer.h"
 #include "parser/parser.h"
 #include "tac/tac_builder.h"
 #include "tac/tac_printer.h"
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <string>
+
+static void deleteFile(std::filesystem::path file_path)
+{
+    try {
+        if (!std::filesystem::remove(file_path))
+            std::cout << "Couldn't delete file: " << file_path << std::endl;
+        else
+            std::cout << "File doesn't exist: " << file_path << std::endl;
+    } catch (const std::filesystem::filesystem_error& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+}
 
 int main(int argc, char **argv)
 {
@@ -30,18 +44,35 @@ int main(int argc, char **argv)
 
     if (inputs.empty()) {
         std::cerr << "Missing input file from arguments. Usage: " << argv[0] << " <filename>" << std::endl;
-        return 1;
+        return Error::DRIVER_ERROR;
+    }
+
+    // Preprocessor
+    std::filesystem::path output_preprocessed(inputs.front());
+    output_preprocessed.replace_extension(".i");
+    std::string preproc_command = std::format(
+        "gcc -E -P {} -o {}",
+        inputs.front(),
+        output_preprocessed.string());
+    if (std::system(preproc_command.c_str()) != 0) {
+        std::cout << "Can't preprocess with gcc." << std::endl;
+        return Error::DRIVER_ERROR;
     }
 
     // Reading the input file
-    std::ifstream file(inputs.front());
+    std::ifstream file(output_preprocessed);
     if (!file) {
         std::cerr << "Could not open the file." << std::endl;
-        return 1;
+        return Error::DRIVER_ERROR;
     }
-
     std::string file_content((std::istreambuf_iterator<char>(file)),
                                 std::istreambuf_iterator<char>());
+    deleteFile(output_preprocessed);
+
+#if 1
+    std::cout << "Source code:" << std::endl;
+    std::cout << file_content << std::endl;
+#endif
 
     // Lexer
     lexer::Result lexer_result = lexer::tokenize(file_content);
@@ -56,7 +87,7 @@ int main(int argc, char **argv)
 #endif
 
     if (has_flag("lex"))
-        return 0;
+        return Error::ALL_OK;
 
     // Parser
     parser::Result parser_result = parser::parse(lexer_result.tokens);
@@ -72,7 +103,7 @@ int main(int argc, char **argv)
 #endif
 
     if (has_flag("parse"))
-        return 0;
+        return Error::ALL_OK;
 
     // Intermediate representation
     tac::TACBuilder astToTac;
@@ -85,23 +116,44 @@ int main(int argc, char **argv)
 #endif
 
     if (has_flag("tacky"))
-        return 0;
+        return Error::ALL_OK;
 
     // Assembly generation
     assembly::ASMBuilder tacToAsm;
     std::vector<assembly::Instruction> asmVector = tacToAsm.Convert(tacVector);
 
+    assembly::ASMPrinter asmPrinter;
+    std::string assembly_source = asmPrinter.ToText(asmVector);
+
 #if 1
     std::cout << std::endl << "ASM:" << std::endl;
-    assembly::ASMPrinter asmPrinter;
-    std::cout << asmPrinter.ToText(asmVector);
+    std::cout << assembly_source;
 #endif
 
     if (has_flag("codegen"))
-        return 0;
+        return Error::ALL_OK;
 
     // Code emission
-    // TODO
+    std::filesystem::path output_assembly_path(inputs.front());
+    output_assembly_path.replace_extension(".s");
+    std::ofstream output_assembly_file(output_assembly_path);
+    if (!output_assembly_file)
+        throw std::runtime_error("Can't open file: " + output_assembly_path.string());
+    output_assembly_file << assembly_source;
+    output_assembly_file.close();
+
+    // Compile
+    std::filesystem::path output_compiled(output_assembly_path);
+    output_compiled.replace_extension();
+    std::string compile_command = std::format(
+        "gcc {} -o {}",
+        output_assembly_path.string(),
+        output_compiled.string());
+    if (std::system(compile_command.c_str()) != 0) {
+        std::cout << "Can't compile with gcc." << std::endl;
+        return Error::DRIVER_ERROR;
+    }
+    deleteFile(output_assembly_path);
 
     return 0;
 }
