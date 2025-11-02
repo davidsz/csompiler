@@ -5,12 +5,9 @@
 #include "macro.h"
 #include <cassert>
 #include <string>
-#include <variant>
 #include <vector>
 
 namespace tac {
-
-struct Empty {};
 
 #define TAC_INSTRUCTION_LIST(X) \
     X(Return, Value val;) \
@@ -21,20 +18,10 @@ struct Empty {};
     X(Constant, int value;) \
     X(Variant, std::string name;)
 
+DEFINE_NODES_WITH_COMMON_VARIANT(Value, TAC_VALUE_TYPE_LIST);
+DEFINE_NODES_WITH_COMMON_VARIANT(Instruction, TAC_INSTRUCTION_LIST);
 
-TAC_VALUE_TYPE_LIST(DEFINE_NODE)
-using Value = std::variant<
-    TAC_VALUE_TYPE_LIST(ADD_TO_VARIANT)
-    Empty
->;
-
-TAC_INSTRUCTION_LIST(FORWARD_DECL_NODE)
-using Instruction = std::variant<
-    TAC_INSTRUCTION_LIST(ADD_TO_VARIANT)
-    Empty
->;
-TAC_INSTRUCTION_LIST(DEFINE_NODE)
-
+/*
 using Any = std::variant<
     TAC_VALUE_TYPE_LIST(ADD_TO_VARIANT)
     TAC_INSTRUCTION_LIST(ADD_TO_VARIANT)
@@ -49,7 +36,7 @@ T unwrap(Any &&value)
     assert(false);
     return T{};
 }
-
+*/
 }; // tac
 
 #endif // TAC_NODES_H

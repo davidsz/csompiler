@@ -1,45 +1,23 @@
 #ifndef ASM_NODES_H
 #define ASM_NODES_H
 
-#include <cassert>
+#include "macro.h"
 #include <string>
-#include <variant>
 #include <vector>
 
 namespace assembly {
 
-using Register = std::string;
-using Imm = int; // Immediate value
-using Operand = std::variant<Imm, Register>;
+#define ASM_OPERAND_LIST(X) \
+    X(Reg, std::string name;) \
+    X(Imm, int value;)
 
-struct Mov {
-    Operand src;
-    Operand dst;
-};
+#define ASM_INSTRUCTION_LIST(X) \
+    X(Mov, Operand src; Operand dst;) \
+    X(Ret, /* no op */) \
+    X(Function, std::string name; std::vector<Instruction> instructions;)
 
-struct Ret {};
-
-using Instruction = std::variant<
-    Mov,
-    Ret
->;
-using InstructionList = std::vector<Instruction>;
-
-struct FuncDecl {
-    std::string name;
-    InstructionList instructions;
-};
-
-using Any = std::variant<Register, Imm, Mov, Ret, FuncDecl, InstructionList>;
-
-template <typename T>
-T unwrap(Any &&value)
-{
-    if (auto ptr = std::get_if<T>(&value))
-        return std::move(*ptr);
-    assert(false);
-    return T{};
-}
+DEFINE_NODES_WITH_COMMON_VARIANT(Operand, ASM_OPERAND_LIST);
+DEFINE_NODES_WITH_COMMON_VARIANT(Instruction, ASM_INSTRUCTION_LIST);
 
 }; // assembly
 

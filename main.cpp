@@ -1,4 +1,5 @@
-// #include "assembly/asm_builder.h"
+#include "assembly/asm_builder.h"
+#include "assembly/asm_printer.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
 #include "parser/ast_printer.h"
@@ -86,10 +87,15 @@ int main(int argc, char **argv)
     if (has_flag("tacky"))
         return 0;
 
-    // Code generator
-    // assembly::ASMBuilder astToAsm;
-    // TODO
-    // astToAsm.Convert(nullptr);
+    // Assembly generation
+    assembly::ASMBuilder tacToAsm;
+    std::vector<assembly::Instruction> asmVector = tacToAsm.Convert(tacVector);
+
+#if 1
+    std::cout << std::endl << "ASM:" << std::endl;
+    assembly::ASMPrinter asmPrinter;
+    std::cout << asmPrinter.ToText(asmVector);
+#endif
 
     if (has_flag("codegen"))
         return 0;

@@ -1,0 +1,48 @@
+#include "asm_printer.h"
+
+namespace assembly {
+
+void ASMPrinter::operator()(const Reg &r)
+{
+    m_codeStream << r.name;
+}
+
+void ASMPrinter::operator()(const Imm &i)
+{
+    m_codeStream << std::to_string(i.value);
+}
+
+void ASMPrinter::operator()(const Mov &m)
+{
+    m_codeStream << "    mov ";
+    std::visit(*this, m.src);
+    m_codeStream << ", ";
+    std::visit(*this, m.dst);
+    m_codeStream << std::endl;
+}
+
+void ASMPrinter::operator()(const Ret &)
+{
+    m_codeStream << "    ret" << std::endl;
+}
+
+void ASMPrinter::operator()(const Function &f)
+{
+    m_codeStream << f.name << ":" << std::endl;
+    for (auto &i: f.instructions)
+        std::visit(*this, i);
+}
+
+void ASMPrinter::operator()(std::monostate)
+{
+    assert(false);
+}
+
+std::string ASMPrinter::ToText(std::vector<Instruction> instructions)
+{
+    for (auto &i: instructions)
+        std::visit(*this, i);
+    return m_codeStream.str();
+}
+
+}; // assembly

@@ -1,0 +1,17 @@
+#ifndef ASM_VISITOR_H
+#define ASM_VISITOR_H
+
+#include "asm_nodes.h"
+
+namespace assembly {
+
+template <typename T>
+struct IASMVisitor {
+    ASM_OPERAND_LIST(ADD_TO_VISITOR)
+    ASM_INSTRUCTION_LIST(ADD_TO_VISITOR)
+    virtual T operator()(std::monostate) = 0;
+};
+
+}; // assembly
+
+#endif // ASM_VISITOR_H

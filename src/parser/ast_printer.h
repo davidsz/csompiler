@@ -43,7 +43,7 @@ struct ASTPrinter : public IASTVisitor<void> {
             std::visit(*this, *stmt);
         indent -= 2;
     }
-    void operator()(const Empty &) override {}
+    void operator()(std::monostate) override {}
 };
 
 } // namespace parser

@@ -39,7 +39,7 @@ struct TACPrinter : public ITACVisitor<void> {
         shift_tab();
         pad(); std::cout << "}" << std::endl;
     }
-    void operator()(const tac::Empty &) override {
+    void operator()(std::monostate) override {
         assert(false);
     }
 

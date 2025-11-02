@@ -9,7 +9,7 @@ template <typename T>
 struct IASTVisitor {
     AST_STATEMENT_LIST(ADD_TO_VISITOR)
     AST_EXPRESSION_LIST(ADD_TO_VISITOR)
-    virtual T operator()(const parser::Empty &) = 0;
+    virtual T operator()(std::monostate) = 0;
 };
 
 }; // parser

@@ -13,7 +13,7 @@ struct TACBuilder : public parser::IASTVisitor<tac::Value> {
     Value operator()(const parser::FuncDeclStatement &f) override;
     Value operator()(const parser::ReturnStatement &r) override;
     Value operator()(const parser::BlockStatement &b) override;
-    Value operator()(const parser::Empty &) override;
+    Value operator()(std::monostate) override;
 
     std::vector<Instruction> Convert(parser::BlockStatement *b);
 

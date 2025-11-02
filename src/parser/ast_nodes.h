@@ -4,12 +4,9 @@
 #include "common/operator.h"
 #include "macro.h"
 #include <string>
-#include <variant>
 #include <vector>
 
 namespace parser {
-
-struct Empty {};
 
 #define AST_STATEMENT_LIST(X) \
     X(FuncDeclStatement, std::string name; std::vector<std::string> params; std::unique_ptr<Statement> body;) \
@@ -20,25 +17,14 @@ struct Empty {};
     X(NumberExpression, double value;) \
     X(UnaryExpression, UnaryOperator op; std::unique_ptr<Expression> expr;)
 
-
-AST_EXPRESSION_LIST(FORWARD_DECL_NODE)
-using Expression = std::variant<
-    AST_EXPRESSION_LIST(ADD_TO_VARIANT)
-    Empty
->;
-AST_EXPRESSION_LIST(DEFINE_NODE)
+DEFINE_NODES_WITH_COMMON_VARIANT(Expression, AST_EXPRESSION_LIST);
 
 template <typename T, typename... Args>
 std::unique_ptr<Expression> make_expression(Args&&... args) {
     return std::make_unique<Expression>(T{std::forward<Args>(args)...});
 }
 
-AST_STATEMENT_LIST(FORWARD_DECL_NODE)
-using Statement = std::variant<
-    AST_STATEMENT_LIST(ADD_TO_VARIANT)
-    Empty
->;
-AST_STATEMENT_LIST(DEFINE_NODE)
+DEFINE_NODES_WITH_COMMON_VARIANT(Statement, AST_STATEMENT_LIST);
 
 template <typename T, typename... Args>
 std::unique_ptr<Statement> make_statement(Args&&... args) {

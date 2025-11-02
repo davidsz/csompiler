@@ -26,7 +26,7 @@ Value TACBuilder::operator()(const parser::FuncDeclStatement &f)
     auto &block = std::get<parser::BlockStatement>(*f.body);
     func.inst = builder.Convert(&block);
     m_instructions.push_back(func);
-    return Empty{};
+    return std::monostate();
 }
 
 Value TACBuilder::operator()(const parser::ReturnStatement &r)
@@ -34,19 +34,20 @@ Value TACBuilder::operator()(const parser::ReturnStatement &r)
     auto ret = Return{};
     ret.val = std::visit(*this, *r.expr);
     m_instructions.push_back(ret);
-    return Empty{};
+    return std::monostate();
 }
 
 Value TACBuilder::operator()(const parser::BlockStatement &b)
 {
     for (auto &s : b.statements)
         std::visit(*this, *s);
-    return Empty{};
+    return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::Empty &)
+Value TACBuilder::operator()(std::monostate)
 {
-    return Empty{};
+    assert(false);
+    return std::monostate();
 }
 
 std::vector<Instruction> TACBuilder::Convert(parser::BlockStatement *b) {
