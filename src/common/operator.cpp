@@ -25,3 +25,27 @@ std::string_view toString(UnaryOperator op)
     assert(false);
     return "";
 }
+
+std::string_view toString(ASMUnaryOperator op)
+{
+    switch (op) {
+#define CASE_TO_STRING(name, str) case ASMUnaryOperator::name: return str;
+        ASM_UNARY_OPERATOR_LIST(CASE_TO_STRING)
+#undef CASE_TO_STRING
+    }
+    assert(false);
+    return "";
+}
+
+ASMUnaryOperator toASMUnaryOperator(UnaryOperator op)
+{
+    switch (op) {
+#define CASE_TO_STRING(op1, op2) \
+    case UnaryOperator::op1: \
+        return ASMUnaryOperator::op2;
+    UNARY_CONVERSION_LIST(CASE_TO_STRING)
+#undef CASE_TO_STRING
+    default:
+        return ASMUnaryOperator::Unknown;
+    }
+}

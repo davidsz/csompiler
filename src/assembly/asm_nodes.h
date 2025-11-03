@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/operator.h"
 #include "macro.h"
 #include <string>
 #include <vector>
@@ -8,12 +9,15 @@ namespace assembly {
 
 #define ASM_OPERAND_LIST(X) \
     X(Reg, std::string name;) \
-    X(Imm, int value;)
+    X(Imm, int value;) \
+    X(Pseudo, std::string name;) \
+    X(Stack, int offset;)
 
 #define ASM_INSTRUCTION_LIST(X) \
     X(Mov, Operand src; Operand dst;) \
     X(Ret, /* no op */) \
-    X(Function, std::string name; std::vector<Instruction> instructions;)
+    X(Unary, ASMUnaryOperator op; Operand src;) \
+    X(Function, std::string name; int stackSize; std::vector<Instruction> instructions;)
 
 DEFINE_NODES_WITH_COMMON_VARIANT(Operand, ASM_OPERAND_LIST);
 DEFINE_NODES_WITH_COMMON_VARIANT(Instruction, ASM_INSTRUCTION_LIST);

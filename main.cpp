@@ -1,11 +1,10 @@
-#include "assembly/asm_builder.h"
-#include "assembly/asm_printer.h"
+#include "assembly/assembly.h"
 #include "error.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
 #include "parser/ast_printer.h"
 #include "parser/parser.h"
-#include "tac/tac_builder.h"
+#include "tac/tac.h"
 #include "tac/tac_printer.h"
 #include <cstdlib>
 #include <fstream>
@@ -18,8 +17,6 @@ static void deleteFile(std::filesystem::path file_path)
     try {
         if (!std::filesystem::remove(file_path))
             std::cout << "Couldn't delete file: " << file_path << std::endl;
-        else
-            std::cout << "File doesn't exist: " << file_path << std::endl;
     } catch (const std::filesystem::filesystem_error& e) {
         std::cerr << "Error: " << e.what() << std::endl;
     }
@@ -106,9 +103,7 @@ int main(int argc, char **argv)
         return Error::ALL_OK;
 
     // Intermediate representation
-    tac::TACBuilder astToTac;
-    std::vector<tac::Instruction> tacVector = astToTac.Convert(parser_result.root.get());
-
+    std::vector<tac::Instruction> tacVector = tac::from_ast(parser_result.root.get());
 #if 1
     std::cout << std::endl << "TAC:" << std::endl;
     tac::TACPrinter tacPrinter;
@@ -119,15 +114,10 @@ int main(int argc, char **argv)
         return Error::ALL_OK;
 
     // Assembly generation
-    assembly::ASMBuilder tacToAsm;
-    std::vector<assembly::Instruction> asmVector = tacToAsm.Convert(tacVector);
-
-    assembly::ASMPrinter asmPrinter;
-    std::string assembly_source = asmPrinter.ToText(asmVector);
-
+    std::string assemblySource = assembly::from_tac(tacVector);
 #if 1
     std::cout << std::endl << "ASM:" << std::endl;
-    std::cout << assembly_source;
+    std::cout << assemblySource;
 #endif
 
     if (has_flag("codegen"))
@@ -139,10 +129,10 @@ int main(int argc, char **argv)
     std::ofstream output_assembly_file(output_assembly_path);
     if (!output_assembly_file)
         throw std::runtime_error("Can't open file: " + output_assembly_path.string());
-    output_assembly_file << assembly_source;
+    output_assembly_file << assemblySource;
     output_assembly_file.close();
 
-    // Compile
+    // Compilation
     std::filesystem::path output_compiled(output_assembly_path);
     output_compiled.replace_extension();
     std::string compile_command = std::format(

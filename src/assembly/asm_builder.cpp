@@ -22,8 +22,16 @@ Operand ASMBuilder::operator()(const tac::Return &r)
     return std::monostate();
 }
 
-Operand ASMBuilder::operator()(const tac::Unary &)
+Operand ASMBuilder::operator()(const tac::Unary &u)
 {
+    m_instructions.push_back(Mov{
+        std::visit(*this, u.src),
+        std::visit(*this, u.dst)
+    });
+    m_instructions.push_back(Unary{
+        toASMUnaryOperator(u.op),
+        std::visit(*this, u.dst)
+    });
     return std::monostate();
 }
 
@@ -32,9 +40,9 @@ Operand ASMBuilder::operator()(const tac::Constant &c)
     return Imm{ c.value };
 }
 
-Operand ASMBuilder::operator()(const tac::Variant &)
+Operand ASMBuilder::operator()(const tac::Variant &v)
 {
-    return Imm{};
+    return Pseudo{ v.name };
 }
 
 std::vector<Instruction> ASMBuilder::Convert(const std::vector<tac::Instruction> instructions)
