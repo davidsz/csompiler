@@ -20,6 +20,14 @@ struct ASTPrinter : public IASTVisitor<void> {
         tab(); std::visit(*this, *e.expr); shift_tab();
         pad(); std::cout << ")" << std::endl;
     }
+    void operator()(const BinaryExpression &e) override {
+        pad(); std::cout << "BinaryExpression(" << toString(e.op) << std::endl;
+        tab();
+        std::visit(*this, *e.lhs);
+        std::visit(*this, *e.rhs);
+        shift_tab();
+        pad(); std::cout << ")" << std::endl;
+    }
 
     // --- Statements ---
     void operator()(const FuncDeclStatement &f) override {

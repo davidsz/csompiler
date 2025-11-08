@@ -31,6 +31,11 @@ static int postprocessStackVariables(std::vector<Instruction> &asmVector)
                 resolvePseudo(obj.dst);
             } else if constexpr (std::is_same_v<T, Unary>)
                 resolvePseudo(obj.src);
+            else if constexpr (std::is_same_v<T, Binary>) {
+                resolvePseudo(obj.src);
+                resolvePseudo(obj.dst);
+            } else if constexpr (std::is_same_v<T, Idiv>)
+                resolvePseudo(obj.src);
             else if constexpr (std::is_same_v<T, Function>)
                 obj.stackSize = postprocessStackVariables(obj.instructions);
         }, inst);
@@ -39,9 +44,7 @@ static int postprocessStackVariables(std::vector<Instruction> &asmVector)
     return currentOffset;
 }
 
-// MOV instruction can't have memory addresses both in source and destination;
-// fix these cases by moving into a temporary register first.
-static void eliminateInvalidMovs(std::vector<Instruction> &asmVector)
+static void postprocessInvalidInstructions(std::vector<Instruction> &asmVector)
 {
     std::vector<Instruction> newAsm;
     newAsm.reserve(asmVector.size() + 10);
@@ -50,15 +53,42 @@ static void eliminateInvalidMovs(std::vector<Instruction> &asmVector)
         std::visit([&](auto &obj) {
             using T = std::decay_t<decltype(obj)>;
             if constexpr (std::is_same_v<T, Mov>) {
+                // MOV instruction can't have memory addresses both in source and destination
                 if (std::holds_alternative<Stack>(obj.src) &&
                     std::holds_alternative<Stack>(obj.dst)) {
                     newAsm.push_back(Mov{obj.src, Reg{"r10d"}});
                     newAsm.push_back(Mov{Reg{"r10d"}, obj.dst});
                 } else
                     newAsm.push_back(inst);
+            } else if constexpr (std::is_same_v<T, Binary>) {
+                if (obj.op == AddAB || obj.op == SubAB) {
+                    // ADD and SUB can't have memory addresses both in source and destination
+                    if (std::holds_alternative<Stack>(obj.src) &&
+                        std::holds_alternative<Stack>(obj.dst)) {
+                        newAsm.push_back(Mov{obj.src, Reg{"r10d"}});
+                        newAsm.push_back(Mov{Reg{"r10d"}, obj.dst});
+                    } else
+                        newAsm.push_back(inst);
+                } else if (obj.op == MultAB) {
+                    // IMUL can't use memory address as its destination
+                    if (std::holds_alternative<Stack>(obj.dst)) {
+                        newAsm.push_back(Mov{obj.dst, Reg{"r11d"}});
+                        newAsm.push_back(Binary{obj.op, obj.src, Reg{"r11d"}});
+                        newAsm.push_back(Mov{Reg{"r11d"}, obj.dst});
+                    } else
+                        newAsm.push_back(inst);
+                } else
+                    newAsm.push_back(inst);
+            } else if constexpr (std::is_same_v<T, Idiv>) {
+                // IDIV can't have constant operand
+                if (std::holds_alternative<Imm>(obj.src)) {
+                    newAsm.push_back(Mov{obj.src, Reg{"r10d"}});
+                    newAsm.push_back(Idiv{Reg{"r10d"}});
+                } else
+                    newAsm.push_back(inst);
             } else if constexpr (std::is_same_v<T, Function>) {
                 auto newFunc = obj;
-                eliminateInvalidMovs(newFunc.instructions);
+                postprocessInvalidInstructions(newFunc.instructions);
                 newAsm.push_back(newFunc);
             } else {
                 newAsm.push_back(inst);
@@ -74,7 +104,7 @@ std::string from_tac(std::vector<tac::Instruction> tacVector)
     std::vector<Instruction> asmVector = tacToAsm.Convert(tacVector);
 
     postprocessStackVariables(asmVector);
-    eliminateInvalidMovs(asmVector);
+    postprocessInvalidInstructions(asmVector);
 
     ASMPrinter asmPrinter;
     return asmPrinter.ToText(asmVector);

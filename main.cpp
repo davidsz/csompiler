@@ -16,7 +16,7 @@ static void deleteFile(std::filesystem::path file_path)
 {
     try {
         if (!std::filesystem::remove(file_path))
-            std::cout << "Couldn't delete file: " << file_path << std::endl;
+            std::cerr << "Couldn't delete file: " << file_path << std::endl;
     } catch (const std::filesystem::filesystem_error& e) {
         std::cerr << "Error: " << e.what() << std::endl;
     }
@@ -52,7 +52,7 @@ int main(int argc, char **argv)
         inputs.front(),
         output_preprocessed.string());
     if (std::system(preproc_command.c_str()) != 0) {
-        std::cout << "Can't preprocess with gcc." << std::endl;
+        std::cerr << "Can't preprocess with gcc." << std::endl;
         return Error::DRIVER_ERROR;
     }
 
@@ -140,7 +140,7 @@ int main(int argc, char **argv)
         output_assembly_path.string(),
         output_compiled.string());
     if (std::system(compile_command.c_str()) != 0) {
-        std::cout << "Can't compile with gcc." << std::endl;
+        std::cerr << "Can't compile with gcc." << std::endl;
         return Error::DRIVER_ERROR;
     }
     deleteFile(output_assembly_path);

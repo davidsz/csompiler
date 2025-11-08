@@ -11,7 +11,7 @@
 #define ADD_TO_VARIANT(name, members) \
     name,
 
-#define ADD_TO_ENUM(name, value) \
+#define ADD_TO_ENUM(name, value, precedence) \
     name,
 
 #define ADD_TO_VISITOR(name, members) \

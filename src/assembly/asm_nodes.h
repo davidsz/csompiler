@@ -17,6 +17,9 @@ namespace assembly {
     X(Mov, Operand src; Operand dst;) \
     X(Ret, /* no op */) \
     X(Unary, ASMUnaryOperator op; Operand src;) \
+    X(Binary, ASMBinaryOperator op; Operand src; Operand dst;) \
+    X(Idiv, Operand src;) \
+    X(Cdq, /* no op */) \
     X(Function, std::string name; int stackSize; std::vector<Instruction> instructions;)
 
 DEFINE_NODES_WITH_COMMON_VARIANT(Operand, ASM_OPERAND_LIST);

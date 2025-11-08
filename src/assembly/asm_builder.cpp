@@ -1,11 +1,12 @@
 #include "asm_builder.h"
+#include <format>
 
 namespace assembly {
 
 Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
 {
     auto func = Function{};
-    func.name = f.name;
+    func.name = std::format("_{}", f.name);
     ASMBuilder builder;
     func.instructions = builder.Convert(f.inst);
     m_instructions.push_back(std::move(func));
@@ -32,6 +33,41 @@ Operand ASMBuilder::operator()(const tac::Unary &u)
         toASMUnaryOperator(u.op),
         std::visit(*this, u.dst)
     });
+    return std::monostate();
+}
+
+Operand ASMBuilder::operator()(const tac::Binary &b)
+{
+    ASMBinaryOperator op = toASMBinaryOperator(b.op);
+    // Easier binary operators with common format:
+    // addition, substraction, multiplication...
+    if (op != ASMBinaryOperator::UnknownAB) {
+        m_instructions.push_back(Mov{
+            std::visit(*this, b.src1),
+            std::visit(*this, b.dst)
+        });
+        m_instructions.push_back(Binary{
+            op,
+            std::visit(*this, b.src2),
+            std::visit(*this, b.dst)
+        });
+        return std::monostate();
+    }
+
+    // Division, remainder
+    if (b.op == BinaryOperator::Divide || b.op == BinaryOperator::Remainder) {
+        m_instructions.push_back(Mov{
+            std::visit(*this, b.src1),
+            Reg{"eax"}
+        });
+        m_instructions.push_back(Cdq{});
+        m_instructions.push_back(Idiv{std::visit(*this, b.src2)});
+        m_instructions.push_back(Mov{
+            (b.op == BinaryOperator::Divide ? Reg{"eax"} : Reg{"edx"}),
+            std::visit(*this, b.dst),
+        });
+    }
+
     return std::monostate();
 }
 

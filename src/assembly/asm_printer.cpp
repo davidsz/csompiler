@@ -47,10 +47,31 @@ void ASMPrinter::operator()(const Unary &u)
     m_codeStream << std::endl;
 }
 
+void ASMPrinter::operator()(const Binary &b)
+{
+    m_codeStream << "    " << toString(b.op) << " ";
+    std::visit(*this, b.src);
+    m_codeStream << ", ";
+    std::visit(*this, b.dst);
+    m_codeStream << std::endl;
+}
+
+void ASMPrinter::operator()(const Idiv &d)
+{
+    m_codeStream << "    idivl ";
+    std::visit(*this, d.src);
+    m_codeStream << std::endl;
+}
+
+void ASMPrinter::operator()(const Cdq &)
+{
+    m_codeStream << "    cdq" << std::endl;
+}
+
 void ASMPrinter::operator()(const Function &f)
 {
-    m_codeStream << "    .global _" << f.name << std::endl;
-    m_codeStream << "_" << f.name << ":" << std::endl;
+    m_codeStream << "    .global " << f.name << std::endl;
+    m_codeStream << f.name << ":" << std::endl;
 
     // Prologue
     m_codeStream << "    pushq %rbp" << std::endl;

@@ -11,6 +11,7 @@ namespace tac {
 #define TAC_INSTRUCTION_LIST(X) \
     X(Return, Value val;) \
     X(Unary, UnaryOperator op; Value src; Value dst;) \
+    X(Binary, BinaryOperator op; Value src1; Value src2; Value dst;) \
     X(FunctionDefinition, std::string name; std::vector<Instruction> inst;)
 
 #define TAC_VALUE_TYPE_LIST(X) \

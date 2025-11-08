@@ -14,7 +14,8 @@ namespace parser {
 
 #define AST_EXPRESSION_LIST(X) \
     X(NumberExpression, double value;) \
-    X(UnaryExpression, UnaryOperator op; std::unique_ptr<Expression> expr;)
+    X(UnaryExpression, UnaryOperator op; std::unique_ptr<Expression> expr;) \
+    X(BinaryExpression, BinaryOperator op; std::unique_ptr<Expression> lhs; std::unique_ptr<Expression> rhs;)
 
 DEFINE_NODES_WITH_COMMON_VARIANT(Expression, AST_EXPRESSION_LIST);
 

@@ -19,10 +19,20 @@ Value TACBuilder::operator()(const parser::UnaryExpression &u)
     auto unary = Unary{};
     unary.op = u.op;
     unary.src = std::visit(*this, *u.expr);
-    Variant dst{ generateTempVariableName() };
-    unary.dst = dst;
+    unary.dst = Variant{ generateTempVariableName() };
     m_instructions.push_back(unary);
-    return dst;
+    return unary.dst;
+}
+
+Value TACBuilder::operator()(const parser::BinaryExpression &b)
+{
+    auto binary = Binary{};
+    binary.op = b.op;
+    binary.src1 = std::visit(*this, *b.lhs);
+    binary.src2 = std::visit(*this, *b.rhs);
+    binary.dst = Variant{ generateTempVariableName() };
+    m_instructions.push_back(binary);
+    return binary.dst;
 }
 
 Value TACBuilder::operator()(const parser::FuncDeclStatement &f)

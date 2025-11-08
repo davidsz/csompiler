@@ -13,6 +13,9 @@ struct ASMPrinter : public IASMVisitor<void> {
     void operator()(const Mov &) override;
     void operator()(const Ret &) override;
     void operator()(const Unary &) override;
+    void operator()(const Binary &) override;
+    void operator()(const Idiv &) override;
+    void operator()(const Cdq &) override;
     void operator()(const Function &) override;
     void operator()(std::monostate) override;
 

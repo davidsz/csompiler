@@ -24,6 +24,15 @@ struct TACPrinter : public ITACVisitor<void> {
         shift_tab();
         pad(); std::cout << ")" << std::endl;
     }
+    void operator()(const tac::Binary &b) override {
+        pad(); std::cout << "Binary(" << toString(b.op) << std::endl;
+        tab();
+        std::visit(*this, b.src1);
+        std::visit(*this, b.src2);
+        std::visit(*this, b.dst);
+        shift_tab();
+        pad(); std::cout << ")" << std::endl;
+    }
     void operator()(const tac::Constant &c) override {
         pad(); std::cout << "Constant(" << c.value << ")" << std::endl;
     }

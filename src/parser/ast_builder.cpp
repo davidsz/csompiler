@@ -57,12 +57,29 @@ std::optional<lexer::Token> ASTBuilder::Peek(long n)
     return *std::next(m_pos, n);
 }
 
-std::unique_ptr<Expression> ASTBuilder::ParseExpression()
+std::unique_ptr<Expression> ASTBuilder::ParseExpression(int min_precedence)
+{
+    auto left = ParseFactor();
+    auto next = Peek();
+    BinaryOperator op = toBinaryOperator(next->value());
+    int precedence = getPrecedence(op);
+    while (op && precedence >= min_precedence) {
+        Consume(TokenType::Operator);
+        auto right = ParseExpression(precedence + 1);
+        left = make_expression<BinaryExpression>(op, std::move(left), std::move(right));
+        next = Peek();
+        op = toBinaryOperator(next->value());
+        precedence = getPrecedence(op);
+    }
+    return left;
+}
+
+std::unique_ptr<Expression> ASTBuilder::ParseFactor()
 {
     auto next = Peek();
     if (next->type() == TokenType::Punctator && next->value() == "(") {
         Consume(TokenType::Punctator, "(");
-        auto expr = ParseExpression();
+        auto expr = ParseExpression(0);
         Consume(TokenType::Punctator, ")");
         return expr;
     }
@@ -70,9 +87,9 @@ std::unique_ptr<Expression> ASTBuilder::ParseExpression()
         double value = std::stod(Consume(TokenType::NumericLiteral));
         return make_expression<NumberExpression>(value);
     }
-    if (next->type() == TokenType::Operator) {
+    if (next->type() == TokenType::Operator && isUnaryOperator(next->value())) {
         UnaryOperator op = toUnaryOperator(Consume(TokenType::Operator));
-        auto expr = ParseExpression();
+        auto expr = ParseExpression(0);
         return make_expression<UnaryExpression>(op, std::move(expr));
     }
     assert(false);
@@ -82,7 +99,7 @@ std::unique_ptr<Statement> ASTBuilder::ParseReturn()
 {
     auto ret = std::make_unique<ReturnStatement>();
     Consume(TokenType::Keyword, "return");
-    ret->expr = ParseExpression();
+    ret->expr = ParseExpression(0);
     Consume(TokenType::Punctator, ";");
     return wrap_statement(std::move(ret));
 }
