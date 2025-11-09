@@ -66,7 +66,7 @@ static void postprocessInvalidInstructions(std::vector<Instruction> &asmVector)
                     if (std::holds_alternative<Stack>(obj.src) &&
                         std::holds_alternative<Stack>(obj.dst)) {
                         newAsm.push_back(Mov{obj.src, Reg{"r10d"}});
-                        newAsm.push_back(Mov{Reg{"r10d"}, obj.dst});
+                        newAsm.push_back(Binary{obj.op, Reg{"r10d"}, obj.dst});
                     } else
                         newAsm.push_back(inst);
                 } else if (obj.op == MultAB) {

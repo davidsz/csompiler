@@ -89,7 +89,7 @@ std::unique_ptr<Expression> ASTBuilder::ParseFactor()
     }
     if (next->type() == TokenType::Operator && isUnaryOperator(next->value())) {
         UnaryOperator op = toUnaryOperator(Consume(TokenType::Operator));
-        auto expr = ParseExpression(0);
+        auto expr = ParseFactor();
         return make_expression<UnaryExpression>(op, std::move(expr));
     }
     assert(false);
