@@ -61,8 +61,12 @@ static void postprocessInvalidInstructions(std::vector<Instruction> &asmVector)
                 } else
                     newAsm.push_back(inst);
             } else if constexpr (std::is_same_v<T, Binary>) {
-                if (obj.op == AddAB || obj.op == SubAB) {
-                    // ADD and SUB can't have memory addresses both in source and destination
+                if (obj.op == AddAB
+                    || obj.op == SubAB
+                    || obj.op == BWAndAB
+                    || obj.op == BWXorAB
+                    || obj.op == BWOrAB) {
+                    // These instructions can't have memory addresses both in source and destination
                     if (std::holds_alternative<Stack>(obj.src) &&
                         std::holds_alternative<Stack>(obj.dst)) {
                         newAsm.push_back(Mov{obj.src, Reg{"r10d"}});
@@ -75,6 +79,13 @@ static void postprocessInvalidInstructions(std::vector<Instruction> &asmVector)
                         newAsm.push_back(Mov{obj.dst, Reg{"r11d"}});
                         newAsm.push_back(Binary{obj.op, obj.src, Reg{"r11d"}});
                         newAsm.push_back(Mov{Reg{"r11d"}, obj.dst});
+                    } else
+                        newAsm.push_back(inst);
+                } else if (obj.op == ShiftLAB || obj.op == ShiftRUAB || obj.op == ShiftRSAB) {
+                    // SHL, SHR and SAR can only have constant or CL register on their left (count)
+                    if (std::holds_alternative<Stack>(obj.src)) {
+                        newAsm.push_back(Mov{obj.src, Reg{"ecx"}});
+                        newAsm.push_back(Binary{obj.op, Reg{"cl"}, obj.dst});
                     } else
                         newAsm.push_back(inst);
                 } else

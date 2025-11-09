@@ -229,7 +229,13 @@ Token Tokenizer::MakeOperator(char first)
             break;
         case '+':
             if (next == '+') { Step(); return CreateToken(Token::Operator, "++"); }
-            if (next == '=') { Step(); return CreateToken(Token::Operator, "+-"); }
+            if (next == '=') { Step(); return CreateToken(Token::Operator, "+="); }
+            break;
+        case '<':
+            if (next == '<') { Step(); return CreateToken(Token::Operator, "<<"); }
+            break;
+        case '>':
+            if (next == '>') { Step(); return CreateToken(Token::Operator, ">>"); }
             break;
     }
     return CreateToken(Token::Operator, std::string(1, first));
