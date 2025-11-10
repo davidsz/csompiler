@@ -1,6 +1,6 @@
 #pragma once
 
-#include "error.h"
+#include "common/error.h"
 #include "token.h"
 #include <optional>
 #include <string_view>

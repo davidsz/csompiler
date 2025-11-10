@@ -61,11 +61,11 @@ static void postprocessInvalidInstructions(std::vector<Instruction> &asmVector)
                 } else
                     newAsm.push_back(inst);
             } else if constexpr (std::is_same_v<T, Binary>) {
-                if (obj.op == AddAB
-                    || obj.op == SubAB
-                    || obj.op == BWAndAB
-                    || obj.op == BWXorAB
-                    || obj.op == BWOrAB) {
+                if (obj.op == Add_AB
+                    || obj.op == Sub_AB
+                    || obj.op == BWAnd_AB
+                    || obj.op == BWXor_AB
+                    || obj.op == BWOr_AB) {
                     // These instructions can't have memory addresses both in source and destination
                     if (std::holds_alternative<Stack>(obj.src) &&
                         std::holds_alternative<Stack>(obj.dst)) {
@@ -73,7 +73,7 @@ static void postprocessInvalidInstructions(std::vector<Instruction> &asmVector)
                         newAsm.push_back(Binary{obj.op, Reg{"r10d"}, obj.dst});
                     } else
                         newAsm.push_back(inst);
-                } else if (obj.op == MultAB) {
+                } else if (obj.op == Mult_AB) {
                     // IMUL can't use memory address as its destination
                     if (std::holds_alternative<Stack>(obj.dst)) {
                         newAsm.push_back(Mov{obj.dst, Reg{"r11d"}});
@@ -81,7 +81,7 @@ static void postprocessInvalidInstructions(std::vector<Instruction> &asmVector)
                         newAsm.push_back(Mov{Reg{"r11d"}, obj.dst});
                     } else
                         newAsm.push_back(inst);
-                } else if (obj.op == ShiftLAB || obj.op == ShiftRUAB || obj.op == ShiftRSAB) {
+                } else if (obj.op == ShiftL_AB || obj.op == ShiftRU_AB || obj.op == ShiftRS_AB) {
                     // SHL, SHR and SAR can only have constant or CL register on their left (count)
                     if (std::holds_alternative<Stack>(obj.src)) {
                         newAsm.push_back(Mov{obj.src, Reg{"ecx"}});

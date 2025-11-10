@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ast_nodes.h"
-#include "error.h"
+#include "common/error.h"
 #include "lexer/token.h"
 #include <list>
 

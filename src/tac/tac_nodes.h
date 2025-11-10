@@ -1,7 +1,7 @@
 #pragma once
 
+#include "common/macro.h"
 #include "common/operator.h"
-#include "macro.h"
 #include <cassert>
 #include <string>
 #include <vector>

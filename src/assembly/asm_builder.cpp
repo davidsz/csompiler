@@ -41,7 +41,7 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
     ASMBinaryOperator op = toASMBinaryOperator(b.op);
     // Easier binary operators with common format:
     // addition, substraction, multiplication...
-    if (op != ASMBinaryOperator::UnknownAB) {
+    if (op != ASMBinaryOperator::Unknown_AB) {
         m_instructions.push_back(Mov{
             std::visit(*this, b.src1),
             std::visit(*this, b.dst)

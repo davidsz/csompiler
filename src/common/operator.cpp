@@ -3,13 +3,13 @@
 #include <unordered_map>
 
 static const std::unordered_map<std::string_view, BinaryOperator> s_binary_map = {
-#define ADD_TO_MAP(name, str, prec) {str, BinaryOperator::name},
+#define ADD_TO_MAP(name, str, prec, asm) {str, BinaryOperator::name},
     BINARY_OPERATOR_LIST(ADD_TO_MAP)
 #undef ADD_TO_MAP
 };
 
 static const std::unordered_map<std::string_view, UnaryOperator> s_unary_map = {
-#define ADD_TO_MAP(name, str, prec) {str, UnaryOperator::name},
+#define ADD_TO_MAP(name, str, prec, asm) {str, UnaryOperator::name},
     UNARY_OPERATOR_LIST(ADD_TO_MAP)
 #undef ADD_TO_MAP
 };
@@ -41,7 +41,7 @@ bool isUnaryOperator(std::string_view op)
 std::string_view toString(UnaryOperator op)
 {
     switch (op) {
-#define CASE_TO_STRING(name, str, prec) case UnaryOperator::name: return str;
+#define CASE_TO_STRING(name, str, prec, asm) case UnaryOperator::name: return str;
         UNARY_OPERATOR_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
     }
@@ -52,7 +52,7 @@ std::string_view toString(UnaryOperator op)
 std::string_view toString(ASMUnaryOperator op)
 {
     switch (op) {
-#define CASE_TO_STRING(name, str, prec) case ASMUnaryOperator::name: return str;
+#define CASE_TO_STRING(name, str) case ASMUnaryOperator::name: return str;
         ASM_UNARY_OPERATOR_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
     }
@@ -63,7 +63,7 @@ std::string_view toString(ASMUnaryOperator op)
 std::string_view toString(ASMBinaryOperator op)
 {
     switch (op) {
-#define CASE_TO_STRING(name, str, prec) case ASMBinaryOperator::name: return str;
+#define CASE_TO_STRING(name, str) case ASMBinaryOperator::name: return str;
         ASM_BINARY_OPERATOR_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
     }
@@ -74,10 +74,10 @@ std::string_view toString(ASMBinaryOperator op)
 ASMUnaryOperator toASMUnaryOperator(UnaryOperator op)
 {
     switch (op) {
-#define CASE_TO_STRING(op1, op2) \
-    case UnaryOperator::op1: \
-        return ASMUnaryOperator::op2;
-    UNARY_CONVERSION_LIST(CASE_TO_STRING)
+#define CASE_TO_STRING(name, str, prec, asm) \
+    case UnaryOperator::name: \
+        return ASMUnaryOperator::asm;
+    UNARY_OPERATOR_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
     }
 }
@@ -85,10 +85,10 @@ ASMUnaryOperator toASMUnaryOperator(UnaryOperator op)
 ASMBinaryOperator toASMBinaryOperator(BinaryOperator op)
 {
     switch (op) {
-#define CASE_TO_STRING(op1, op2) \
-    case BinaryOperator::op1: \
-        return ASMBinaryOperator::op2;
-    BINARY_CONVERSION_LIST(CASE_TO_STRING)
+#define CASE_TO_STRING(name, str, prec, asm) \
+    case BinaryOperator::name: \
+        return ASMBinaryOperator::asm;
+    BINARY_OPERATOR_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
     }
 }
@@ -96,7 +96,7 @@ ASMBinaryOperator toASMBinaryOperator(BinaryOperator op)
 std::string_view toString(BinaryOperator op)
 {
     switch (op) {
-#define CASE_TO_STRING(name, str, prec) case BinaryOperator::name: return str;
+#define CASE_TO_STRING(name, str, prec, asm) case BinaryOperator::name: return str;
         BINARY_OPERATOR_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
     }
@@ -107,7 +107,7 @@ std::string_view toString(BinaryOperator op)
 int getPrecedence(BinaryOperator op)
 {
     switch (op) {
-#define CASE_TO_INT(name, str, prec) case BinaryOperator::name: return prec;
+#define CASE_TO_INT(name, str, prec, asm) case BinaryOperator::name: return prec;
         BINARY_OPERATOR_LIST(CASE_TO_INT)
 #undef CASE_TO_INT
     }

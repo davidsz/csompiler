@@ -11,7 +11,7 @@
 #define ADD_TO_VARIANT(name, members) \
     name,
 
-#define ADD_TO_ENUM(name, value, precedence) \
+#define ADD_TO_ENUM(name, value) \
     name,
 
 #define ADD_TO_VISITOR(name, members) \
@@ -23,6 +23,19 @@
     LIST_MACRO(DEFINE_NODE)
 
 #define DEFINE_ENUM(EnumName, LIST_MACRO) \
+    enum EnumName { \
+    LIST_MACRO(ADD_TO_ENUM) \
+    };
+
+#define ADD_OPERATOR_TO_ENUM(name, value, precedence, asm) \
+    name,
+
+#define DEFINE_OPERATOR(EnumName, LIST_MACRO) \
+    enum EnumName { \
+    LIST_MACRO(ADD_OPERATOR_TO_ENUM) \
+    };
+
+#define DEFINE_ASM_OPERATOR(EnumName, LIST_MACRO) \
     enum EnumName { \
     LIST_MACRO(ADD_TO_ENUM) \
     };

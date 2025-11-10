@@ -1,5 +1,5 @@
 #include "assembly/assembly.h"
-#include "error.h"
+#include "common/error.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
 #include "parser/ast_printer.h"

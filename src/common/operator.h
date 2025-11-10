@@ -4,34 +4,37 @@
 #include <string_view>
 
 #define BINARY_OPERATOR_LIST(X) \
-    X(UnknownBinary, "", 0) \
-    X(Multiply, "*", 10) \
-    X(Divide, "/", 10) \
-    X(Remainder, "%", 10) \
-    X(Add, "+", 9) \
-    X(Substract, "-", 9) \
-    X(LeftShift, "<<", 8) \
-    X(RightShift, ">>", 8) \
-    X(BitwiseAnd, "&", 7) \
-    X(BitwiseXor, "^", 6) \
-    X(BitwiseOr, "|", 5)
+    X(UnknownBinary, "", 0, Unknown_AB) \
+    X(Multiply, "*", 70, Mult_AB) \
+    X(Divide, "/", 70, Unknown_AB) \
+    X(Remainder, "%", 70, Unknown_AB) \
+    X(Add, "+", 60, Add_AB) \
+    X(Substract, "-", 60, Sub_AB) \
+    X(LeftShift, "<<", 50, ShiftL_AB) \
+    X(RightShift, ">>", 50, ShiftRU_AB) \
+    X(LessThan, "<", 40, Unknown_AB) \
+    X(LessOrEqual, "<=", 40, Unknown_AB) \
+    X(GreaterThan, ">", 40, Unknown_AB) \
+    X(GreaterOrEqual, ">=", 40, Unknown_AB) \
+    X(Equal, "==", 35, Unknown_AB) \
+    X(NotEqual, "!=", 35, Unknown_AB) \
+    X(BitwiseAnd, "&", 30, BWAnd_AB) \
+    X(BitwiseXor, "^", 25, BWXor_AB) \
+    X(BitwiseOr, "|", 20, BWOr_AB) \
+    X(And, "&&", 15, Unknown_AB) \
+    X(Or, "||", 10, Unknown_AB)
 
 #define UNARY_OPERATOR_LIST(X) \
-    X(UnknownUnary, "", 0) \
-    X(Negate, "-", 0) \
-    X(Decrement, "--", 0) \
-    X(BitwiseComplement, "~", 0)
+    X(UnknownUnary, "", 0, Unknown_AU) \
+    X(Negate, "-", 0, Neg_AU) \
+    X(Decrement, "--", 0, Unknown_AU) \
+    X(BitwiseComplement, "~", 0, Not_AU) \
+    X(Not, "!", 0, Unknown_AU)
 
 #define ASM_UNARY_OPERATOR_LIST(X) \
-    X(UnknownAU, "UNKNOWN_OP", 0) \
-    X(Neg, "negl", 0) \
-    X(Not, "notl", 0)
-
-#define UNARY_CONVERSION_LIST(X) \
-    X(UnknownUnary, UnknownAU) \
-    X(Negate, Neg) \
-    X(Decrement, UnknownAU) \
-    X(BitwiseComplement, Not)
+    X(Unknown_AU, "UNKNOWN_OP") \
+    X(Neg_AU, "negl") \
+    X(Not_AU, "notl")
 
 /*
 FIXME: Use the proper right shift command in assembly
@@ -41,34 +44,21 @@ operand expressions
 	- Unsigned left operand: shrl
 */
 #define ASM_BINARY_OPERATOR_LIST(X) \
-    X(UnknownAB, "UNKNOWN_OP", 0) \
-    X(AddAB, "addl", 0) \
-    X(SubAB, "subl", 0) \
-    X(MultAB, "imull", 0) \
-    X(ShiftLAB, "shll", 0) \
-    X(ShiftRUAB, "shrl", 0) \
-    X(ShiftRSAB, "sarl", 0) \
-    X(BWAndAB, "andl", 0) \
-    X(BWXorAB, "xorl", 0) \
-    X(BWOrAB, "orl", 0)
+    X(Unknown_AB, "UNKNOWN_OP") \
+    X(Add_AB, "addl") \
+    X(Sub_AB, "subl") \
+    X(Mult_AB, "imull") \
+    X(ShiftL_AB, "shll") \
+    X(ShiftRU_AB, "shrl") \
+    X(ShiftRS_AB, "sarl") \
+    X(BWAnd_AB, "andl") \
+    X(BWXor_AB, "xorl") \
+    X(BWOr_AB, "orl")
 
-#define BINARY_CONVERSION_LIST(X) \
-    X(UnknownBinary, UnknownAB) \
-    X(Multiply, MultAB) \
-    X(Divide, UnknownAB) \
-    X(Remainder, UnknownAB) \
-    X(Add, AddAB) \
-    X(Substract, SubAB) \
-    X(LeftShift, ShiftLAB) \
-    X(RightShift, ShiftRUAB) \
-    X(BitwiseAnd, BWAndAB) \
-    X(BitwiseXor, BWXorAB) \
-    X(BitwiseOr, BWOrAB)
-
-DEFINE_ENUM(BinaryOperator, BINARY_OPERATOR_LIST);
-DEFINE_ENUM(UnaryOperator, UNARY_OPERATOR_LIST);
-DEFINE_ENUM(ASMUnaryOperator, ASM_UNARY_OPERATOR_LIST);
-DEFINE_ENUM(ASMBinaryOperator, ASM_BINARY_OPERATOR_LIST);
+DEFINE_OPERATOR(BinaryOperator, BINARY_OPERATOR_LIST);
+DEFINE_OPERATOR(UnaryOperator, UNARY_OPERATOR_LIST);
+DEFINE_ASM_OPERATOR(ASMUnaryOperator, ASM_UNARY_OPERATOR_LIST);
+DEFINE_ASM_OPERATOR(ASMBinaryOperator, ASM_BINARY_OPERATOR_LIST);
 
 std::string_view toString(BinaryOperator op);
 std::string_view toString(UnaryOperator op);
