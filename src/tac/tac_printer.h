@@ -47,6 +47,30 @@ struct TACPrinter : public ITACVisitor<void> {
         shift_tab();
         pad(); std::cout << "}" << std::endl;
     }
+    void operator()(const tac::Copy &c) override {
+        pad(); std::cout << "Copy(" << std::endl;
+        tab();
+        std::visit(*this, c.src);
+        std::visit(*this, c.dst);
+        shift_tab();
+        pad(); std::cout << ")" << std::endl;
+    }
+    void operator()(const tac::Jump &j) override {
+        pad(); std::cout << "Jump(" << j.target << ")" << std::endl;
+    }
+    void operator()(const tac::JumpIfZero &j) override {
+        pad(); std::cout << "JumpIfZero(" << j.target << std::endl;
+        tab(); std::visit(*this, j.condition); shift_tab();
+        pad(); std::cout << ")" << std::endl;
+    }
+    void operator()(const tac::JumpIfNotZero &j) override {
+        pad(); std::cout << "JumpIfNotZero(" << j.target << std::endl;
+        tab(); std::visit(*this, j.condition); shift_tab();
+        pad(); std::cout << ")" << std::endl;
+    }
+    void operator()(const tac::Label &j) override {
+        pad(); std::cout << "Label(" << j.identifier << ")" << std::endl;
+    }
     void operator()(std::monostate) override {
         assert(false);
     }

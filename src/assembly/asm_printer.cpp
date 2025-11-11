@@ -3,9 +3,43 @@
 
 namespace assembly {
 
+static std::string getFourByteName(Register reg)
+{
+    switch (reg) {
+#define CASE_TO_STRING(name, fourbytename, onebytename) \
+    case Register::name: return fourbytename;
+    ASM_REGISTER_LIST(CASE_TO_STRING)
+#undef CASE_TO_STRING
+    }
+    assert(false);
+    return "";
+}
+
+static std::string getOneByteName(Register reg)
+{
+    switch (reg) {
+#define CASE_TO_STRING(name, fourbytename, onebytename) \
+    case Register::name: return onebytename;
+    ASM_REGISTER_LIST(CASE_TO_STRING)
+#undef CASE_TO_STRING
+    }
+    assert(false);
+    return "";
+}
+
 void ASMPrinter::operator()(const Reg &r)
 {
-    m_codeStream << "%" << r.name;
+    switch (r.bytes) {
+    case 1:
+        m_codeStream << "%" << getOneByteName(r.reg);
+        break;
+    case 4:
+        m_codeStream << "%" << getFourByteName(r.reg);
+        break;
+    default:
+        m_codeStream << "UNKNOWN_REGISTER";
+        break;
+    }
 }
 
 void ASMPrinter::operator()(const Imm &i)
@@ -14,7 +48,10 @@ void ASMPrinter::operator()(const Imm &i)
 }
 
 void ASMPrinter::operator()(const Pseudo &)
-{ m_codeStream << "!!!PSEUDO!!!"; }
+{
+    // Something is wrong if you see this in Assembly
+    m_codeStream << "!!!PSEUDO!!!";
+}
 
 void ASMPrinter::operator()(const Stack &s)
 {
@@ -81,6 +118,37 @@ void ASMPrinter::operator()(const Function &f)
 
     for (auto &i: f.instructions)
         std::visit(*this, i);
+}
+
+void ASMPrinter::operator()(const Cmp &c)
+{
+    m_codeStream << "    cmpl ";
+    std::visit(*this, c.lhs);
+    m_codeStream << ", ";
+    std::visit(*this, c.rhs);
+    m_codeStream << std::endl;
+}
+
+void ASMPrinter::operator()(const Jmp &j)
+{
+    m_codeStream << "    jmp L" << j.identifier << std::endl;
+}
+
+void ASMPrinter::operator()(const JmpCC &j)
+{
+    m_codeStream << "    j" << j.cond_code << " L" << j.identifier << std::endl;
+}
+
+void ASMPrinter::operator()(const SetCC &s)
+{
+    m_codeStream << "    set" << s.cond_code << " ";
+    std::visit(*this, s.op);
+    m_codeStream << std::endl;
+}
+
+void ASMPrinter::operator()(const Label &l)
+{
+    m_codeStream << "L" << l.identifier << ": " << std::endl;
 }
 
 void ASMPrinter::operator()(std::monostate)

@@ -9,6 +9,12 @@ static std::string generateTempVariableName()
     return std::format("tmp.{}", counter++);
 }
 
+static std::string generateLabelName(std::string_view label)
+{
+    static size_t counter = 0;
+    return std::format("{}_{}", label, counter++);
+}
+
 Value TACBuilder::operator()(const parser::NumberExpression &n)
 {
     return Constant{ static_cast<int>(n.value) };
@@ -26,6 +32,35 @@ Value TACBuilder::operator()(const parser::UnaryExpression &u)
 
 Value TACBuilder::operator()(const parser::BinaryExpression &b)
 {
+    // Short-circuiting operators
+    if (b.op == BinaryOperator::And || b.op == BinaryOperator::Or) {
+        auto result = Variant{ generateTempVariableName() };
+        auto lhs_val = std::visit(*this, *b.lhs);
+        auto label_true = generateLabelName("true_label");
+        auto label_false = generateLabelName("false_label");
+        auto label_end = generateLabelName("end_label");
+        if (b.op == BinaryOperator::And) {
+            m_instructions.push_back(JumpIfZero{lhs_val, label_false});
+            auto rhs = std::visit(*this, *b.rhs);
+            m_instructions.push_back(JumpIfZero{rhs, label_false});
+            m_instructions.push_back(Copy{Constant(1), result});
+            m_instructions.push_back(Jump{label_end});
+            m_instructions.push_back(Label{label_false});
+            m_instructions.push_back(Copy{Constant(0), result});
+            m_instructions.push_back(Label{label_end});
+        } else {
+            m_instructions.push_back(JumpIfNotZero{lhs_val, label_true});
+            auto rhs = std::visit(*this, *b.rhs);
+            m_instructions.push_back(JumpIfNotZero{rhs, label_true});
+            m_instructions.push_back(Copy{Constant(0), result});
+            m_instructions.push_back(Jump{label_end});
+            m_instructions.push_back(Label{label_true});
+            m_instructions.push_back(Copy{Constant(1), result});
+            m_instructions.push_back(Label{label_end});
+        }
+        return result;
+    }
+
     auto binary = Binary{};
     binary.op = b.op;
     binary.src1 = std::visit(*this, *b.lhs);

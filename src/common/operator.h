@@ -9,7 +9,7 @@
     X(Divide, "/", 70, Unknown_AB) \
     X(Remainder, "%", 70, Unknown_AB) \
     X(Add, "+", 60, Add_AB) \
-    X(Substract, "-", 60, Sub_AB) \
+    X(Subtract, "-", 60, Sub_AB) \
     X(LeftShift, "<<", 50, ShiftL_AB) \
     X(RightShift, ">>", 50, ShiftRU_AB) \
     X(LessThan, "<", 40, Unknown_AB) \
