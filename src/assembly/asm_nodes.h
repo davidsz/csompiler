@@ -2,8 +2,8 @@
 
 #include "common/macro.h"
 #include "common/operator.h"
+#include <list>
 #include <string>
-#include <vector>
 
 namespace assembly {
 
@@ -27,7 +27,7 @@ namespace assembly {
     X(Binary, ASMBinaryOperator op; Operand src; Operand dst;) \
     X(Idiv, Operand src;) \
     X(Cdq, /* no op */) \
-    X(Function, std::string name; int stackSize; std::vector<Instruction> instructions;) \
+    X(Function, std::string name; int stackSize; std::list<Instruction> instructions;) \
     X(Cmp, Operand lhs; Operand rhs;) \
     X(Jmp, std::string identifier;) \
     X(JmpCC, std::string cond_code; std::string identifier;) \

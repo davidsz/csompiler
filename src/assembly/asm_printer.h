@@ -24,7 +24,7 @@ struct ASMPrinter : public IASMVisitor<void> {
     void operator()(const Label &) override;
     void operator()(std::monostate) override;
 
-    std::string ToText(std::vector<Instruction>);
+    std::string ToText(std::list<Instruction>);
 
     std::ostringstream m_codeStream;
 };

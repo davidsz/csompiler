@@ -156,7 +156,7 @@ void ASMPrinter::operator()(std::monostate)
     assert(false);
 }
 
-std::string ASMPrinter::ToText(std::vector<Instruction> instructions)
+std::string ASMPrinter::ToText(std::list<Instruction> instructions)
 {
     for (auto &i: instructions)
         std::visit(*this, i);
