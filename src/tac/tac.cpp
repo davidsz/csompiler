@@ -3,7 +3,7 @@
 
 namespace tac {
 
-std::vector<Instruction> from_ast(parser::BlockStatement *ast_root)
+std::vector<Instruction> from_ast(const std::vector<parser::BlockItem> &ast_root)
 {
     tac::TACBuilder astToTac;
     return astToTac.Convert(ast_root);

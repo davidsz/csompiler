@@ -22,7 +22,8 @@
     X(BitwiseXor, "^", 25, BWXor_AB) \
     X(BitwiseOr, "|", 20, BWOr_AB) \
     X(And, "&&", 15, Unknown_AB) \
-    X(Or, "||", 10, Unknown_AB)
+    X(Or, "||", 10, Unknown_AB) \
+    X(Assign, "=", 1, Unknown_AB)
 
 #define UNARY_OPERATOR_LIST(X) \
     X(UnknownUnary, "", 0, Unknown_AU) \

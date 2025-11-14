@@ -10,7 +10,7 @@ CFLAGS := -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wdou
 		-ferror-limit=5 -ftemplate-backtrace-limit=3 -fcolor-diagnostics -fno-elide-type \
 		-fno-show-column -fno-caret-diagnostics -fdiagnostics-format=clang \
 		-Isrc \
-#		-DNDEBUG=1
+#		-DDLOG
 
 .PHONY: all clean
 

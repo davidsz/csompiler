@@ -1,6 +1,13 @@
 #pragma once
 
+#include <iostream>
 #include <variant>
+
+#ifdef DLOG
+    #define LOG(x) do { std::cerr << "[LOG] " << x << std::endl; } while(0)
+#else
+    #define LOG(x) do {} while(0)
+#endif
 
 #define FORWARD_DECL_NODE(name, members) \
     struct name;

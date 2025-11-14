@@ -17,7 +17,10 @@ struct ASMBuilder : public tac::ITACVisitor<Operand> {
     Operand operator()(const tac::Label &) override;
     Operand operator()(const tac::Constant &) override;
     Operand operator()(const tac::Variant &) override;
-    Operand operator()(std::monostate) override { assert(false); }
+    Operand operator()(std::monostate) override {
+        assert(false);
+        return std::monostate();
+    }
 
     std::list<Instruction> Convert(const std::vector<tac::Instruction>);
 

@@ -8,7 +8,7 @@ namespace parser {
 
 struct Result
 {
-    std::unique_ptr<BlockStatement> root;
+    std::vector<parser::BlockItem> root;
     std::string error_message;
     int return_code = 0;
 };

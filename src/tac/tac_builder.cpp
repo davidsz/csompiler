@@ -20,6 +20,11 @@ Value TACBuilder::operator()(const parser::NumberExpression &n)
     return Constant{ static_cast<int>(n.value) };
 }
 
+Value TACBuilder::operator()(const parser::VariableExpression &)
+{
+    return std::monostate();
+}
+
 Value TACBuilder::operator()(const parser::UnaryExpression &u)
 {
     auto unary = Unary{};
@@ -70,13 +75,17 @@ Value TACBuilder::operator()(const parser::BinaryExpression &b)
     return binary.dst;
 }
 
+Value TACBuilder::operator()(const parser::AssignmentExpression &)
+{
+    return std::monostate();
+}
+
 Value TACBuilder::operator()(const parser::FuncDeclStatement &f)
 {
     auto func = FunctionDefinition{};
     func.name = f.name;
     TACBuilder builder;
-    auto &block = std::get<parser::BlockStatement>(*f.body);
-    func.inst = builder.Convert(&block);
+    func.inst = builder.Convert(f.body);
     m_instructions.push_back(func);
     return std::monostate();
 }
@@ -96,14 +105,30 @@ Value TACBuilder::operator()(const parser::BlockStatement &b)
     return std::monostate();
 }
 
+Value TACBuilder::operator()(const parser::ExpressionStatement &)
+{
+    return std::monostate();
+}
+
+Value TACBuilder::operator()(const parser::NullStatement &)
+{
+    return std::monostate();
+}
+
+Value TACBuilder::operator()(const parser::Declaration &)
+{
+    return std::monostate();
+}
+
 Value TACBuilder::operator()(std::monostate)
 {
     assert(false);
     return std::monostate();
 }
 
-std::vector<Instruction> TACBuilder::Convert(parser::BlockStatement *b) {
-    (*this)(*b);
+std::vector<Instruction> TACBuilder::Convert(const std::vector<parser::BlockItem> &list) {
+    for (auto &i : list)
+        std::visit(*this, i);
     return m_instructions;
 }
 

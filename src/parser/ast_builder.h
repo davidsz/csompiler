@@ -16,7 +16,7 @@ public:
     ~ASTBuilder() = default;
 
     void Abort(std::string_view, size_t line = 0);
-    std::unique_ptr<BlockStatement> Build();
+    std::vector<BlockItem> Build();
 
     int ErrorCode();
     std::string ErrorMessage();
@@ -25,13 +25,18 @@ private:
     std::string Consume(TokenType type, std::string_view value = "");
     std::optional<lexer::Token> Peek(long n = 0);
 
-    std::unique_ptr<Expression> ParseExpression(int min_precedence);
-    std::unique_ptr<Expression> ParseFactor();
+    Expression ParseExpression(int min_precedence);
+    Expression ParseFactor();
 
-    std::unique_ptr<Statement> ParseReturn();
-    std::unique_ptr<Statement> ParseBlock();
-    std::unique_ptr<Statement> ParseFunction();
-    std::unique_ptr<Statement> ParseStatement();
+    Statement ParseReturn();
+    Statement ParseFunction();
+    Statement ParseStatement();
+
+    Declaration ParseDeclaration();
+
+    std::vector<BlockItem> ParseBlock();
+    BlockItem ParseBlockItem();
+
 
     const std::list<lexer::Token> &m_tokens;
     std::list<lexer::Token>::const_iterator m_pos;

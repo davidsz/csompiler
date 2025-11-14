@@ -47,6 +47,7 @@ std::string ASTBuilder::Consume(TokenType e_type, std::string_view e_value)
         Abort(std::format("Expected {}, but {} found", e_value, m_pos->value()), m_pos->line());
         return "";
     }
+    LOG("Consumed " << (m_pos)->value());
     return (m_pos++)->value();
 }
 
@@ -57,16 +58,24 @@ std::optional<lexer::Token> ASTBuilder::Peek(long n)
     return *std::next(m_pos, n);
 }
 
-std::unique_ptr<Expression> ASTBuilder::ParseExpression(int min_precedence)
+Expression ASTBuilder::ParseExpression(int min_precedence)
 {
-    auto left = ParseFactor();
+    LOG("ParseExpression");
+    Expression left = ParseFactor();
     auto next = Peek();
     BinaryOperator op = toBinaryOperator(next->value());
     int precedence = getPrecedence(op);
     while (op && precedence >= min_precedence) {
         Consume(TokenType::Operator);
-        auto right = ParseExpression(precedence + 1);
-        left = make_expression<BinaryExpression>(op, std::move(left), std::move(right));
+        if (op == BinaryOperator::Assign) {
+            // Assignment ('=') is right-associative
+            auto right = ParseExpression(precedence);
+            left = wrap_expression(AssignmentExpression{ UE(left), UE(right) });
+        } else {
+            // Other binary operators are left-associative
+            auto right = ParseExpression(precedence + 1);
+            left = wrap_expression(BinaryExpression{ op, UE(left), UE(right) });
+        }
         next = Peek();
         op = toBinaryOperator(next->value());
         precedence = getPrecedence(op);
@@ -74,8 +83,9 @@ std::unique_ptr<Expression> ASTBuilder::ParseExpression(int min_precedence)
     return left;
 }
 
-std::unique_ptr<Expression> ASTBuilder::ParseFactor()
+Expression ASTBuilder::ParseFactor()
 {
+    LOG("ParseFactor");
     auto next = Peek();
     if (next->type() == TokenType::Punctator && next->value() == "(") {
         Consume(TokenType::Punctator, "(");
@@ -85,57 +95,72 @@ std::unique_ptr<Expression> ASTBuilder::ParseFactor()
     }
     if (next->type() == TokenType::NumericLiteral) {
         double value = std::stod(Consume(TokenType::NumericLiteral));
-        return make_expression<NumberExpression>(value);
+        return wrap_expression(NumberExpression{ value });
     }
+    if (next->type() == TokenType::Identifier)
+        return wrap_expression(VariableExpression{ Consume(TokenType::Identifier) });
+
     if (next->type() == TokenType::Operator && isUnaryOperator(next->value())) {
         UnaryOperator op = toUnaryOperator(Consume(TokenType::Operator));
         auto expr = ParseFactor();
-        return make_expression<UnaryExpression>(op, std::move(expr));
+        return wrap_expression(UnaryExpression{op, UE(expr)});
     }
     assert(false);
+    return std::monostate();
 }
 
-std::unique_ptr<Statement> ASTBuilder::ParseReturn()
+Statement ASTBuilder::ParseReturn()
 {
-    auto ret = std::make_unique<ReturnStatement>();
+    LOG("ParseReturn");
+    auto ret = ReturnStatement{};
     Consume(TokenType::Keyword, "return");
-    ret->expr = ParseExpression(0);
+    ret.expr = unique_expression(ParseExpression(0));
     Consume(TokenType::Punctator, ";");
     return wrap_statement(std::move(ret));
 }
 
-std::unique_ptr<Statement> ASTBuilder::ParseBlock()
+std::vector<BlockItem> ASTBuilder::ParseBlock()
 {
-    auto block = std::make_unique<BlockStatement>();
-    auto ret = ParseReturn();
-    block->statements.push_back(wrap_statement(std::move(ret)));
-    return wrap_statement(std::move(block));
+    LOG("ParseBlock");
+    Consume(TokenType::Punctator, "{");
+    std::vector<BlockItem> block;
+    for (auto next = Peek(); next && next->value() != "}"; next = Peek())
+        block.push_back(ParseBlockItem());
+    Consume(TokenType::Punctator, "}");
+    return block;
 }
 
-std::unique_ptr<Statement> ASTBuilder::ParseFunction()
+BlockItem ASTBuilder::ParseBlockItem()
 {
-    auto func = std::make_unique<FuncDeclStatement>();
+    LOG("ParseBlockItem");
+    auto next = Peek();
+    // TODO
+    if (next->value() == "int")
+        return to_block_item(ParseDeclaration());
+    else
+        return to_block_item(ParseStatement());
+}
 
+Statement ASTBuilder::ParseFunction()
+{
+    LOG("ParseFunction");
+    auto func = FuncDeclStatement{};
     Consume(TokenType::Keyword);
-    func->name = Consume(TokenType::Identifier);
+    func.name = Consume(TokenType::Identifier);
     Consume(TokenType::Punctator, "(");
-
-    func->params.push_back(Consume(TokenType::Keyword, "void"));
-
+    func.params.push_back(Consume(TokenType::Keyword, "void"));
     Consume(TokenType::Punctator, ")");
-    Consume(TokenType::Punctator, "{");
-    func->body = ParseBlock();
-    Consume(TokenType::Punctator, "}");
-
+    func.body = ParseBlock();
     return wrap_statement(std::move(func));
 }
 
-std::unique_ptr<Statement> ASTBuilder::ParseStatement()
+Statement ASTBuilder::ParseStatement()
 {
+    LOG("ParseStatement");
     auto next = Peek();
     if (next->type() == TokenType::Keyword) {
         if (next->value() == "return")
-            return ParseReturn();
+            return Statement(ParseReturn());
         // TODO
         if (next->value() == "int")
             return ParseFunction();
@@ -143,11 +168,31 @@ std::unique_ptr<Statement> ASTBuilder::ParseStatement()
         Abort("Not implemented yet.", next->line());
     }
 
-    if (next->type() == TokenType::Identifier) {
-        Abort("Not implemented yet.", next->line());
+    if (next->type() == TokenType::Punctator && next->value() == ";") {
+        Consume(TokenType::Punctator, ";");
+        return Statement(NullStatement{});
     }
 
-    return nullptr;
+    auto expr = ParseExpression(0);
+    Consume(TokenType::Punctator, ";");
+    return Statement(ExpressionStatement{ UE(expr) });
+}
+
+Declaration ASTBuilder::ParseDeclaration()
+{
+    LOG("ParseDeclaration");
+    auto decl = Declaration{};
+    Consume(TokenType::Keyword, "int");
+    decl.identifier = Consume(TokenType::Identifier);
+    auto next = Peek();
+    if (next->type() == TokenType::Punctator && next->value() == ";") {
+        Consume(TokenType::Punctator, ";");
+        return decl;
+    }
+    Consume(TokenType::Operator, "=");
+    decl.init = unique_expression(ParseExpression(0));
+    Consume(TokenType::Punctator, ";");
+    return decl;
 }
 
 void ASTBuilder::Abort(std::string_view message, size_t line)
@@ -161,16 +206,22 @@ void ASTBuilder::Abort(std::string_view message, size_t line)
     throw SyntaxError(m_message);
 }
 
-std::unique_ptr<BlockStatement> ASTBuilder::Build()
+std::vector<BlockItem> ASTBuilder::Build()
 {
-    std::unique_ptr<BlockStatement> root = std::make_unique<BlockStatement>();
+    std::vector<BlockItem> root;
     try {
-        while (Peek())
-            root->statements.push_back(ParseStatement());
+        while (Peek()) {
+            auto statement = ParseStatement();
+            root.push_back(to_block_item(std::move(statement)));
+        }
     } catch (const SyntaxError &e) {
-        // Setting the error code and message were handled already.
+        std::cerr << e.what() << std::endl;
     }
-    assert(m_pos == m_tokens.end());
+
+    if (m_pos != m_tokens.end()) {
+        std::cerr << "Asserting on " << m_pos->value() << std::endl;
+        assert(m_pos == m_tokens.end());
+    }
     return root;
 }
 
