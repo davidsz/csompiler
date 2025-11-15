@@ -11,7 +11,7 @@
     X(Add, "+", 60, Add_AB) \
     X(Subtract, "-", 60, Sub_AB) \
     X(LeftShift, "<<", 50, ShiftL_AB) \
-    X(RightShift, ">>", 50, ShiftRU_AB) \
+    X(RightShift, ">>", 50, ShiftRS_AB) \
     X(LessThan, "<", 40, Unknown_AB) \
     X(LessOrEqual, "<=", 40, Unknown_AB) \
     X(GreaterThan, ">", 40, Unknown_AB) \
@@ -23,12 +23,25 @@
     X(BitwiseOr, "|", 20, BWOr_AB) \
     X(And, "&&", 15, Unknown_AB) \
     X(Or, "||", 10, Unknown_AB) \
-    X(Assign, "=", 1, Unknown_AB)
+    X(Assign, "=", 1, Unknown_AB) \
+    X(AssignAdd, "+=", 1, Unknown_AB) \
+    X(AssignSub, "-=", 1, Unknown_AB) \
+    X(AssignMult, "*=", 1, Unknown_AB) \
+    X(AssignDiv, "/=", 1, Unknown_AB) \
+    X(AssignMod, "%=", 1, Unknown_AB) \
+    X(AssignLShift, "<<=", 1, Unknown_AB) \
+    X(AssignRShift, ">>=", 1, Unknown_AB) \
+    X(AssignBitwiseAnd, "&=", 1, Unknown_AB) \
+    X(AssignBitwiseXor, "^=", 1, Unknown_AB) \
+    X(AssignBitwiseOr, "|=", 1, Unknown_AB)
 
 #define UNARY_OPERATOR_LIST(X) \
     X(UnknownUnary, "", 0, Unknown_AU) \
     X(Negate, "-", 0, Neg_AU) \
-    X(Decrement, "--", 0, Unknown_AU) \
+    X(PrefixDecrement, "--", 0, Unknown_AU) \
+    X(PrefixIncrement, "++", 0, Unknown_AU) \
+    X(PostfixDecrement, "--", 0, Unknown_AU) \
+    X(PostfixIncrement, "++", 0, Unknown_AU) \
     X(BitwiseComplement, "~", 0, Not_AU) \
     X(Not, "!", 0, Unknown_AU)
 
@@ -75,3 +88,5 @@ ASMUnaryOperator toASMUnaryOperator(UnaryOperator op);
 ASMBinaryOperator toASMBinaryOperator(BinaryOperator op);
 
 int getPrecedence(BinaryOperator op);
+bool isCompoundAssignment(BinaryOperator op);
+BinaryOperator compoundToBinary(BinaryOperator op);

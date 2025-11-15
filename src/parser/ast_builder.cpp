@@ -71,6 +71,11 @@ Expression ASTBuilder::ParseExpression(int min_precedence)
             // Assignment ('=') is right-associative
             auto right = ParseExpression(precedence);
             left = wrap_expression(AssignmentExpression{ UE(left), UE(right) });
+        } else if (isCompoundAssignment(op)) {
+            // Compound assignments are right-associative
+            auto right = ParseExpression(precedence);
+            // We convert them to binary expressions
+            left = wrap_expression(BinaryExpression{ op, UE(left), UE(right) });
         } else {
             // Other binary operators are left-associative
             auto right = ParseExpression(precedence + 1);

@@ -39,6 +39,9 @@ void SemanticAnalyzer::operator()(UnaryExpression &u)
 
 void SemanticAnalyzer::operator()(BinaryExpression &b)
 {
+    // TODO: Figure out how to report error messages with line numbers
+    if (isCompoundAssignment(b.op) && !std::holds_alternative<VariableExpression>(*b.lhs))
+        Abort("Invalid lvalue in compound assignment");
     std::visit(*this, *b.lhs);
     std::visit(*this, *b.rhs);
 }

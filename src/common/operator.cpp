@@ -114,3 +114,43 @@ int getPrecedence(BinaryOperator op)
     assert(false);
     return -1;
 }
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wswitch-enum"
+bool isCompoundAssignment(BinaryOperator op)
+{
+    switch (op) {
+        case BinaryOperator::AssignAdd:
+        case BinaryOperator::AssignSub:
+        case BinaryOperator::AssignMult:
+        case BinaryOperator::AssignDiv:
+        case BinaryOperator::AssignMod:
+        case BinaryOperator::AssignLShift:
+        case BinaryOperator::AssignRShift:
+        case BinaryOperator::AssignBitwiseAnd:
+        case BinaryOperator::AssignBitwiseXor:
+        case BinaryOperator::AssignBitwiseOr:
+            return true;
+        default:
+            return false;
+    }
+}
+
+BinaryOperator compoundToBinary(BinaryOperator op)
+{
+    switch (op) {
+        case BinaryOperator::AssignAdd: return BinaryOperator::Add;
+        case BinaryOperator::AssignSub: return BinaryOperator::Subtract;
+        case BinaryOperator::AssignMult: return BinaryOperator::Multiply;
+        case BinaryOperator::AssignDiv: return BinaryOperator::Divide;
+        case BinaryOperator::AssignMod: return BinaryOperator::Remainder;
+        case BinaryOperator::AssignLShift: return BinaryOperator::LeftShift;
+        case BinaryOperator::AssignRShift: return BinaryOperator::RightShift;
+        case BinaryOperator::AssignBitwiseAnd: return BinaryOperator::BitwiseAnd;
+        case BinaryOperator::AssignBitwiseXor: return BinaryOperator::BitwiseXor;
+        case BinaryOperator::AssignBitwiseOr: return BinaryOperator::BitwiseOr;
+        default:
+            return BinaryOperator::UnknownBinary;
+    }
+}
+#pragma clang diagnostic pop
