@@ -34,6 +34,9 @@ void SemanticAnalyzer::operator()(VariableExpression &v)
 
 void SemanticAnalyzer::operator()(UnaryExpression &u)
 {
+    // canBePostfix also covers the prefix versions of ++ and --
+    if (canBePostfix(u.op) && !std::holds_alternative<VariableExpression>(*u.expr))
+        Abort("Invalid lvalue in unary expression");
     std::visit(*this, *u.expr);
 }
 

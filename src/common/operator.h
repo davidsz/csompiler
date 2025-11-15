@@ -35,15 +35,14 @@
     X(AssignBitwiseXor, "^=", 1, Unknown_AB) \
     X(AssignBitwiseOr, "|=", 1, Unknown_AB)
 
+// Postfix versions have higher precedences
 #define UNARY_OPERATOR_LIST(X) \
     X(UnknownUnary, "", 0, Unknown_AU) \
-    X(Negate, "-", 0, Neg_AU) \
-    X(PrefixDecrement, "--", 0, Unknown_AU) \
-    X(PrefixIncrement, "++", 0, Unknown_AU) \
-    X(PostfixDecrement, "--", 0, Unknown_AU) \
-    X(PostfixIncrement, "++", 0, Unknown_AU) \
-    X(BitwiseComplement, "~", 0, Not_AU) \
-    X(Not, "!", 0, Unknown_AU)
+    X(Negate, "-", 75, Neg_AU) \
+    X(Decrement, "--", 75, Unknown_AU) \
+    X(Increment, "++", 75, Unknown_AU) \
+    X(BitwiseComplement, "~", 75, Not_AU) \
+    X(Not, "!", 75, Unknown_AU)
 
 #define ASM_UNARY_OPERATOR_LIST(X) \
     X(Unknown_AU, "UNKNOWN_OP") \
@@ -88,5 +87,10 @@ ASMUnaryOperator toASMUnaryOperator(UnaryOperator op);
 ASMBinaryOperator toASMBinaryOperator(BinaryOperator op);
 
 int getPrecedence(BinaryOperator op);
+int getPrecedence(UnaryOperator op);
+
 bool isCompoundAssignment(BinaryOperator op);
 BinaryOperator compoundToBinary(BinaryOperator op);
+
+BinaryOperator unaryToBinary(UnaryOperator op);
+bool canBePostfix(UnaryOperator op);

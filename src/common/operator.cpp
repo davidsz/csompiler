@@ -115,6 +115,17 @@ int getPrecedence(BinaryOperator op)
     return -1;
 }
 
+int getPrecedence(UnaryOperator op)
+{
+    switch (op) {
+#define CASE_TO_INT(name, str, prec, asm) case UnaryOperator::name: return prec;
+        UNARY_OPERATOR_LIST(CASE_TO_INT)
+#undef CASE_TO_INT
+    }
+    assert(false);
+    return -1;
+}
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wswitch-enum"
 bool isCompoundAssignment(BinaryOperator op)
@@ -153,4 +164,19 @@ BinaryOperator compoundToBinary(BinaryOperator op)
             return BinaryOperator::UnknownBinary;
     }
 }
+
+BinaryOperator unaryToBinary(UnaryOperator op)
+{
+    switch (op) {
+        case UnaryOperator::Increment: return BinaryOperator::Add;
+        case UnaryOperator::Decrement: return BinaryOperator::Subtract;
+        default:
+            return BinaryOperator::UnknownBinary;
+    }
+}
 #pragma clang diagnostic pop
+
+bool canBePostfix(UnaryOperator op)
+{
+    return op == UnaryOperator::Increment || op == UnaryOperator::Decrement;
+}

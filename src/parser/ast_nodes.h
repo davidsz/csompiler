@@ -17,7 +17,7 @@ namespace parser {
 #define AST_EXPRESSION_LIST(X) \
     X(NumberExpression, double value;) \
     X(VariableExpression, std::string identifier;) \
-    X(UnaryExpression, UnaryOperator op; std::unique_ptr<Expression> expr;) \
+    X(UnaryExpression, UnaryOperator op; std::unique_ptr<Expression> expr; bool postfix = false;) \
     X(BinaryExpression, BinaryOperator op; std::unique_ptr<Expression> lhs; std::unique_ptr<Expression> rhs;) \
     X(AssignmentExpression, std::unique_ptr<Expression> lhs; std::unique_ptr<Expression> rhs;)
 

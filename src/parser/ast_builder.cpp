@@ -63,6 +63,20 @@ Expression ASTBuilder::ParseExpression(int min_precedence)
     LOG("ParseExpression");
     Expression left = ParseFactor();
     auto next = Peek();
+
+    // Postfix unary expressions (left-associative)
+    UnaryOperator unop = toUnaryOperator(next->value());
+    if (unop && canBePostfix(unop)) {
+        while (unop && canBePostfix(unop)) {
+            Consume(TokenType::Operator);
+            left = wrap_expression(UnaryExpression{ unop, UE(left), true });
+            next = Peek();
+            unop = toUnaryOperator(next->value());
+        }
+        return left;
+    }
+
+    // Binary expressions
     BinaryOperator op = toBinaryOperator(next->value());
     int precedence = getPrecedence(op);
     while (op && precedence >= min_precedence) {
@@ -98,17 +112,20 @@ Expression ASTBuilder::ParseFactor()
         Consume(TokenType::Punctator, ")");
         return expr;
     }
+
     if (next->type() == TokenType::NumericLiteral) {
         double value = std::stod(Consume(TokenType::NumericLiteral));
         return wrap_expression(NumberExpression{ value });
     }
+
     if (next->type() == TokenType::Identifier)
         return wrap_expression(VariableExpression{ Consume(TokenType::Identifier) });
 
+    // Prefix unary expressions (right-associative)
     if (next->type() == TokenType::Operator && isUnaryOperator(next->value())) {
         UnaryOperator op = toUnaryOperator(Consume(TokenType::Operator));
-        auto expr = ParseFactor();
-        return wrap_expression(UnaryExpression{op, UE(expr)});
+        auto expr = ParseExpression(getPrecedence(op) + 1);
+        return wrap_expression(UnaryExpression{ op, UE(expr), false });
     }
     assert(false);
     return std::monostate();

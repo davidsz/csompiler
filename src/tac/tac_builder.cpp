@@ -27,6 +27,26 @@ Value TACBuilder::operator()(const parser::VariableExpression &v)
 
 Value TACBuilder::operator()(const parser::UnaryExpression &u)
 {
+    // Implement mutating unary operators as binaries ( a++ -> a = a + 1 )
+    if (u.op == UnaryOperator::Increment || u.op == UnaryOperator::Decrement) {
+        Value target = std::visit(*this, *u.expr);
+        Binary mutation = Binary{
+            unaryToBinary(u.op),
+            target,
+            Constant{ 1 },
+            target
+        };
+        if (u.postfix) {
+            Variant temp = Variant{ generateTempVariableName() };
+            m_instructions.push_back(Copy{ target, temp });
+            m_instructions.push_back(mutation);
+            return temp;
+        } else {
+            m_instructions.push_back(mutation);
+            return target;
+        }
+    }
+
     auto unary = Unary{};
     unary.op = u.op;
     unary.src = std::visit(*this, *u.expr);
