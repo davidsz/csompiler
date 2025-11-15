@@ -4,6 +4,7 @@
 #include "lexer/token.h"
 #include "parser/ast_printer.h"
 #include "parser/parser.h"
+#include "parser/semantic_analyzer.h"
 #include "tac/tac.h"
 #include "tac/tac_printer.h"
 #include <cstdlib>
@@ -100,6 +101,19 @@ int main(int argc, char **argv)
 #endif
 
     if (has_flag("parse"))
+        return Error::ALL_OK;
+
+    // Semantic analysis
+    parser::SemanticAnalyzer semanticAnalyzer;
+    if (Error error = semanticAnalyzer.CheckAndMutate(parser_result.root))
+        return error;
+
+#if 1
+    std::cout << std::endl << "After semantic analysis:" << std::endl;
+    astPrinter.print(parser_result.root);
+#endif
+
+    if (has_flag("validate"))
         return Error::ALL_OK;
 
     // Intermediate representation

@@ -17,7 +17,7 @@ struct TACBuilder : public parser::IASTVisitor<tac::Value> {
     Value operator()(const parser::BlockStatement &b) override;
     Value operator()(const parser::ExpressionStatement &e) override;
     Value operator()(const parser::NullStatement &e) override;
-    Value operator()(const parser::Declaration &) override;
+    Value operator()(const parser::Declaration &d) override;
     Value operator()(std::monostate) override;
 
     std::vector<Instruction> Convert(const std::vector<parser::BlockItem> &list);
