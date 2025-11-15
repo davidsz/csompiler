@@ -20,9 +20,9 @@ Value TACBuilder::operator()(const parser::NumberExpression &n)
     return Constant{ static_cast<int>(n.value) };
 }
 
-Value TACBuilder::operator()(const parser::VariableExpression &)
+Value TACBuilder::operator()(const parser::VariableExpression &v)
 {
-    return std::monostate();
+    return Variant{ v.identifier };
 }
 
 Value TACBuilder::operator()(const parser::UnaryExpression &u)
@@ -75,9 +75,13 @@ Value TACBuilder::operator()(const parser::BinaryExpression &b)
     return binary.dst;
 }
 
-Value TACBuilder::operator()(const parser::AssignmentExpression &)
+Value TACBuilder::operator()(const parser::AssignmentExpression &a)
 {
-    return std::monostate();
+    Value result = std::visit(*this, *a.rhs);
+    // After semantic analysis, a.lhs is guaranteed to be a variable
+    Value var = std::visit(*this, *a.lhs);
+    m_instructions.push_back(Copy{ result, var });
+    return var;
 }
 
 Value TACBuilder::operator()(const parser::FuncDeclStatement &f)
@@ -86,6 +90,10 @@ Value TACBuilder::operator()(const parser::FuncDeclStatement &f)
     func.name = f.name;
     TACBuilder builder;
     func.inst = builder.Convert(f.body);
+    // Avoid undefined behavior in functions where there is no return.
+    // If it already had a return, this extra one won't be executed
+    // and will be optimised out in later stages.
+    func.inst.push_back(Return{ Constant{ 0 } });
     m_instructions.push_back(func);
     return std::monostate();
 }
@@ -105,8 +113,9 @@ Value TACBuilder::operator()(const parser::BlockStatement &b)
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::ExpressionStatement &)
+Value TACBuilder::operator()(const parser::ExpressionStatement &e)
 {
+    std::visit(*this, *e.expr);
     return std::monostate();
 }
 
@@ -115,8 +124,13 @@ Value TACBuilder::operator()(const parser::NullStatement &)
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::Declaration &)
+Value TACBuilder::operator()(const parser::Declaration &d)
 {
+    // We discard declarations, but we handle their init expressions
+    if (d.init) {
+        Value result = std::visit(*this, *d.init);
+        m_instructions.push_back(Copy{ result, Variant{ d.identifier } });
+    }
     return std::monostate();
 }
 
