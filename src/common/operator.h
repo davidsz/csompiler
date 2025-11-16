@@ -23,6 +23,7 @@
     X(BitwiseOr, "|", 20, BWOr_AB) \
     X(And, "&&", 15, Unknown_AB) \
     X(Or, "||", 10, Unknown_AB) \
+    X(Conditional, "?", 3, Unknown_AB) \
     X(Assign, "=", 1, Unknown_AB) \
     X(AssignAdd, "+=", 1, Unknown_AB) \
     X(AssignSub, "-=", 1, Unknown_AB) \

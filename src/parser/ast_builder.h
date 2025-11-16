@@ -29,6 +29,7 @@ private:
     Expression ParseFactor();
 
     Statement ParseReturn();
+    Statement ParseIf();
     Statement ParseFunction();
     Statement ParseStatement();
 

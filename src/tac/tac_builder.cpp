@@ -117,6 +117,11 @@ Value TACBuilder::operator()(const parser::AssignmentExpression &a)
     return var;
 }
 
+Value TACBuilder::operator()(const parser::ConditionalExpression &)
+{
+    return Constant{ -100 };
+}
+
 Value TACBuilder::operator()(const parser::FuncDeclStatement &f)
 {
     auto func = FunctionDefinition{};
@@ -137,6 +142,11 @@ Value TACBuilder::operator()(const parser::ReturnStatement &r)
     ret.val = std::visit(*this, *r.expr);
     m_instructions.push_back(ret);
     return std::monostate();
+}
+
+Value TACBuilder::operator()(const parser::IfStatement &)
+{
+    return Constant{ -100 };
 }
 
 Value TACBuilder::operator()(const parser::BlockStatement &b)

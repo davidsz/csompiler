@@ -131,7 +131,7 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
             std::visit(*this, b.src2),
             std::visit(*this, b.src1)
         });
-        // Null out the detination before placing the condition result in
+        // Null out the destination before placing the condition result in
         m_instructions.push_back(Mov{
             Imm{0},
             std::visit(*this, b.dst)

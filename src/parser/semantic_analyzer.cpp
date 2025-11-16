@@ -58,6 +58,10 @@ void SemanticAnalyzer::operator()(AssignmentExpression &a)
     std::visit(*this, *a.rhs);
 }
 
+void SemanticAnalyzer::operator()(ConditionalExpression &)
+{
+}
+
 void SemanticAnalyzer::operator()(FuncDeclStatement &f)
 {
     for (auto &i : f.body)
@@ -67,6 +71,10 @@ void SemanticAnalyzer::operator()(FuncDeclStatement &f)
 void SemanticAnalyzer::operator()(ReturnStatement &r)
 {
     std::visit(*this, *r.expr);
+}
+
+void SemanticAnalyzer::operator()(IfStatement &)
+{
 }
 
 void SemanticAnalyzer::operator()(BlockStatement &)

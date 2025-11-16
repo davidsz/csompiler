@@ -90,6 +90,13 @@ Expression ASTBuilder::ParseExpression(int min_precedence)
             auto right = ParseExpression(precedence);
             // We convert them to binary expressions
             left = wrap_expression(BinaryExpression{ op, UE(left), UE(right) });
+        } else if (op == BinaryOperator::Conditional) {
+            // Parse the middle part ("? expression :")
+            auto middle = ParseExpression(0);
+            Consume(TokenType::Operator, ":");
+            // Parse the right part
+            auto right = ParseExpression(precedence);
+            left = wrap_expression(ConditionalExpression{ UE(left), UE(middle), UE(right) });
         } else {
             // Other binary operators are left-associative
             auto right = ParseExpression(precedence + 1);
@@ -134,11 +141,29 @@ Expression ASTBuilder::ParseFactor()
 Statement ASTBuilder::ParseReturn()
 {
     LOG("ParseReturn");
-    auto ret = ReturnStatement{};
     Consume(TokenType::Keyword, "return");
+    auto ret = ReturnStatement{};
     ret.expr = unique_expression(ParseExpression(0));
     Consume(TokenType::Punctator, ";");
     return wrap_statement(std::move(ret));
+}
+
+Statement ASTBuilder::ParseIf()
+{
+    LOG("ParseIf");
+    Consume(TokenType::Keyword, "if");
+    auto ret = IfStatement{};
+    Consume(TokenType::Punctator, "(");
+    ret.condition = unique_expression(ParseExpression(0));
+    Consume(TokenType::Punctator, ")");
+    ret.trueBranch = unique_statement(ParseStatement());
+
+    auto next = Peek();
+    if (next->type() == TokenType::Keyword && next->value() == "else") {
+        Consume(TokenType::Keyword, "else");
+        ret.falseBranch = unique_statement(ParseStatement());
+    }
+    return ret;
 }
 
 std::vector<BlockItem> ASTBuilder::ParseBlock()
@@ -183,6 +208,8 @@ Statement ASTBuilder::ParseStatement()
     if (next->type() == TokenType::Keyword) {
         if (next->value() == "return")
             return Statement(ParseReturn());
+        if (next->value() == "if")
+            return Statement(ParseIf());
         // TODO
         if (next->value() == "int")
             return ParseFunction();
