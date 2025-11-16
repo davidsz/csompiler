@@ -11,6 +11,8 @@ namespace parser {
     X(FuncDeclStatement, std::string name; std::vector<std::string> params; std::vector<BlockItem> body;) \
     X(ReturnStatement, std::unique_ptr<Expression> expr;) \
     X(IfStatement, std::unique_ptr<Expression> condition; std::unique_ptr<Statement> trueBranch; std::unique_ptr<Statement> falseBranch;) \
+    X(GotoStatement, std::string label;) \
+    X(LabeledStatement, std::string label; std::unique_ptr<Statement> statement;) \
     X(BlockStatement, std::vector<std::unique_ptr<Statement>> statements;) \
     X(ExpressionStatement, std::unique_ptr<Expression> expr;) \
     X(NullStatement, /* no op */)

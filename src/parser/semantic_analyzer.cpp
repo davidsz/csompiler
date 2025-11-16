@@ -25,6 +25,9 @@ void SemanticAnalyzer::operator()(NumberExpression &)
 
 void SemanticAnalyzer::operator()(VariableExpression &v)
 {
+    if (m_currentStage > VARIABLE_RESOLUTION)
+        return;
+
     auto it = m_variables.find(v.identifier);
     if (it != m_variables.end())
         v.identifier = it->second;
@@ -34,6 +37,9 @@ void SemanticAnalyzer::operator()(VariableExpression &v)
 
 void SemanticAnalyzer::operator()(UnaryExpression &u)
 {
+    if (m_currentStage > VARIABLE_RESOLUTION)
+        return;
+
     // canBePostfix also covers the prefix versions of ++ and --
     if (canBePostfix(u.op) && !std::holds_alternative<VariableExpression>(*u.expr))
         Abort("Invalid lvalue in unary expression");
@@ -42,6 +48,9 @@ void SemanticAnalyzer::operator()(UnaryExpression &u)
 
 void SemanticAnalyzer::operator()(BinaryExpression &b)
 {
+    if (m_currentStage > VARIABLE_RESOLUTION)
+        return;
+
     // TODO: Figure out how to report error messages with line numbers
     if (isCompoundAssignment(b.op) && !std::holds_alternative<VariableExpression>(*b.lhs))
         Abort("Invalid lvalue in compound assignment");
@@ -51,6 +60,9 @@ void SemanticAnalyzer::operator()(BinaryExpression &b)
 
 void SemanticAnalyzer::operator()(AssignmentExpression &a)
 {
+    if (m_currentStage > VARIABLE_RESOLUTION)
+        return;
+
     // TODO: Figure out how to report error messages with line numbers
     if (!std::holds_alternative<VariableExpression>(*a.lhs))
         Abort("Invalid lvalue in assignment");
@@ -60,6 +72,8 @@ void SemanticAnalyzer::operator()(AssignmentExpression &a)
 
 void SemanticAnalyzer::operator()(ConditionalExpression &c)
 {
+    if (m_currentStage > VARIABLE_RESOLUTION)
+        return;
     std::visit(*this, *c.condition);
     std::visit(*this, *c.trueBranch);
     std::visit(*this, *c.falseBranch);
@@ -67,21 +81,52 @@ void SemanticAnalyzer::operator()(ConditionalExpression &c)
 
 void SemanticAnalyzer::operator()(FuncDeclStatement &f)
 {
+    m_currentFunction = f.name;
     for (auto &i : f.body)
         std::visit(*this, i);
+    m_currentFunction = "";
 }
 
 void SemanticAnalyzer::operator()(ReturnStatement &r)
 {
+    if (m_currentStage > VARIABLE_RESOLUTION)
+        return;
+
     std::visit(*this, *r.expr);
 }
 
 void SemanticAnalyzer::operator()(IfStatement &i)
 {
+    if (m_currentStage > VARIABLE_RESOLUTION)
+        return;
+
     std::visit(*this, *i.condition);
     std::visit(*this, *i.trueBranch);
     if (i.falseBranch)
         std::visit(*this, *i.falseBranch);
+}
+
+void SemanticAnalyzer::operator()(GotoStatement &g)
+{
+    // Check if we refer to declared labels
+    if (m_currentStage == LABEL_ANALYSIS) {
+        auto &s = m_labels[m_currentFunction];
+        if (!s.contains(g.label))
+            Abort(std::format("Goto refers to an undeclared label {} inside function {}", g.label, m_currentFunction));
+    }
+}
+
+void SemanticAnalyzer::operator()(LabeledStatement &l)
+{
+    if (m_currentStage == VARIABLE_RESOLUTION) {
+        // Collect labels for the later stages, catch duplications here
+        auto &s = m_labels[m_currentFunction];
+        auto [it, inserted] = s.insert(l.label);
+        if (!inserted)
+            Abort(std::format("Label {} declared multiple times inside function {}", l.label, m_currentFunction));
+
+        std::visit(*this, *l.statement);
+    }
 }
 
 void SemanticAnalyzer::operator()(BlockStatement &)
@@ -90,6 +135,8 @@ void SemanticAnalyzer::operator()(BlockStatement &)
 
 void SemanticAnalyzer::operator()(ExpressionStatement &e)
 {
+    if (m_currentStage > VARIABLE_RESOLUTION)
+        return;
     std::visit(*this, *e.expr);
 }
 
@@ -99,6 +146,9 @@ void SemanticAnalyzer::operator()(NullStatement &)
 
 void SemanticAnalyzer::operator()(Declaration &d)
 {
+    if (m_currentStage > VARIABLE_RESOLUTION)
+        return;
+
     // Prohibit duplicate variabe declarations
     if (m_variables.contains(d.identifier))
         Abort(std::format("Duplicate variable declaration ({})", d.identifier));
@@ -120,8 +170,14 @@ Error SemanticAnalyzer::CheckAndMutate(std::vector<parser::BlockItem> &astVector
 {
     m_variables.clear();
     try {
+        m_currentStage = VARIABLE_RESOLUTION;
         for (auto &i : astVector)
             std::visit(*this, i);
+
+        m_currentStage = LABEL_ANALYSIS;
+        for (auto &i : astVector)
+            std::visit(*this, i);
+
         return Error::ALL_OK;
     } catch (const SemanticError &e) {
         std::cerr << e.what() << std::endl;

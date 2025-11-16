@@ -178,6 +178,19 @@ Value TACBuilder::operator()(const parser::IfStatement &i)
     return std::monostate();
 }
 
+Value TACBuilder::operator()(const parser::GotoStatement &g)
+{
+    m_instructions.push_back(Jump{ g.label });
+    return std::monostate();
+}
+
+Value TACBuilder::operator()(const parser::LabeledStatement &l)
+{
+    m_instructions.push_back(Label{ l.label });
+    std::visit(*this, *l.statement);
+    return std::monostate();
+}
+
 Value TACBuilder::operator()(const parser::BlockStatement &b)
 {
     for (auto &s : b.statements)

@@ -3,10 +3,18 @@
 #include "ast_mutating_visitor.h"
 #include "common/error.h"
 #include <unordered_map>
+#include <unordered_set>
 
 namespace parser {
 
 struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
+    enum Stage {
+        // Resolves variables, collects symbols for later stages
+        VARIABLE_RESOLUTION = 0,
+        // Uses previously collected label names to catch errors
+        LABEL_ANALYSIS = 1,
+    };
+
     void operator()(NumberExpression &n) override;
     void operator()(VariableExpression &v) override;
     void operator()(UnaryExpression &u) override;
@@ -16,6 +24,8 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
     void operator()(FuncDeclStatement &f) override;
     void operator()(ReturnStatement &r) override;
     void operator()(IfStatement &i) override;
+    void operator()(GotoStatement &g) override;
+    void operator()(LabeledStatement &l) override;
     void operator()(BlockStatement &b) override;
     void operator()(ExpressionStatement &e) override;
     void operator()(NullStatement &e) override;
@@ -26,7 +36,12 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
     void Abort(std::string_view);
 
 private:
+    Stage m_currentStage = VARIABLE_RESOLUTION;
+    std::string m_currentFunction = "";
+    // Variable names mapped to their generated unique names
     std::unordered_map<std::string, std::string> m_variables;
+    // Function names mapped to the labels defined inside
+    std::unordered_map<std::string, std::unordered_set<std::string>> m_labels;
 };
 
 } // namespace parser

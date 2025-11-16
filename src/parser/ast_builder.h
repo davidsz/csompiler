@@ -30,8 +30,10 @@ private:
 
     Statement ParseReturn();
     Statement ParseIf();
+    Statement ParseGoto();
+    Statement ParseLabeledStatement();
     Statement ParseFunction();
-    Statement ParseStatement();
+    Statement ParseStatement(bool allow_labels = true);
 
     Declaration ParseDeclaration();
 

@@ -166,6 +166,29 @@ Statement ASTBuilder::ParseIf()
     return ret;
 }
 
+Statement ASTBuilder::ParseGoto()
+{
+    LOG("ParseGoto");
+    Consume(TokenType::Keyword, "goto");
+    auto ret = GotoStatement{ Consume(TokenType::Identifier) };
+    Consume(TokenType::Punctator, ";");
+    return wrap_statement(std::move(ret));
+}
+
+Statement ASTBuilder::ParseLabeledStatement()
+{
+    // In C17, labels are allowed only before statements and they
+    // make a labeled statement together.
+    LOG("ParseLabeledStatement");
+    std::string label = Consume(TokenType::Identifier);
+    Consume(TokenType::Operator, ":");
+    auto ret = LabeledStatement{
+        label,
+        unique_statement(ParseStatement())
+    };
+    return wrap_statement(std::move(ret));
+}
+
 std::vector<BlockItem> ASTBuilder::ParseBlock()
 {
     LOG("ParseBlock");
@@ -201,15 +224,17 @@ Statement ASTBuilder::ParseFunction()
     return wrap_statement(std::move(func));
 }
 
-Statement ASTBuilder::ParseStatement()
+Statement ASTBuilder::ParseStatement(bool allow_labels)
 {
     LOG("ParseStatement");
     auto next = Peek();
     if (next->type() == TokenType::Keyword) {
         if (next->value() == "return")
-            return Statement(ParseReturn());
+            return ParseReturn();
         if (next->value() == "if")
-            return Statement(ParseIf());
+            return ParseIf();
+        if (next->value() == "goto")
+            return ParseGoto();
         // TODO
         if (next->value() == "int")
             return ParseFunction();
@@ -220,6 +245,13 @@ Statement ASTBuilder::ParseStatement()
     if (next->type() == TokenType::Punctator && next->value() == ";") {
         Consume(TokenType::Punctator, ";");
         return Statement(NullStatement{});
+    }
+
+    // Labels are not allowed outside of functions
+    if (allow_labels && next->type() == TokenType::Identifier) {
+        next = Peek(1);
+        if (next->type() == TokenType::Operator && next->value() == ":")
+            return ParseLabeledStatement();
     }
 
     auto expr = ParseExpression(0);
@@ -260,7 +292,7 @@ std::vector<BlockItem> ASTBuilder::Build()
     std::vector<BlockItem> root;
     try {
         while (Peek()) {
-            auto statement = ParseStatement();
+            auto statement = ParseStatement(/* allow_labels */ false);
             root.push_back(to_block_item(std::move(statement)));
         }
     } catch (const SyntaxError &e) {

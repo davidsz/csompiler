@@ -16,6 +16,8 @@ struct TACBuilder : public parser::IASTVisitor<tac::Value> {
     Value operator()(const parser::FuncDeclStatement &f) override;
     Value operator()(const parser::ReturnStatement &r) override;
     Value operator()(const parser::IfStatement &i) override;
+    Value operator()(const parser::GotoStatement &g) override;
+    Value operator()(const parser::LabeledStatement &l) override;
     Value operator()(const parser::BlockStatement &b) override;
     Value operator()(const parser::ExpressionStatement &e) override;
     Value operator()(const parser::NullStatement &e) override;

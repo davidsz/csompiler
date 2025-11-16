@@ -87,6 +87,19 @@ void ASTPrinter::operator()(const IfStatement &i)
     pad(); std::cout << ")" << std::endl;
 }
 
+void ASTPrinter::operator()(const GotoStatement &g)
+{
+    pad(); std::cout << "Goto(" << g.label << ")" << std::endl;
+}
+
+void ASTPrinter::operator()(const LabeledStatement &l)
+{
+    pad(); std::cout << "Label(" << l.label << "):" << std::endl;
+    tab();
+    std::visit(*this, *l.statement);
+    shift_tab();
+}
+
 void ASTPrinter::operator()(const BlockStatement &s)
 {
     pad(); std::cout << "Block" << std::endl;
