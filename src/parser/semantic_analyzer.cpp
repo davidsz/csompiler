@@ -58,8 +58,11 @@ void SemanticAnalyzer::operator()(AssignmentExpression &a)
     std::visit(*this, *a.rhs);
 }
 
-void SemanticAnalyzer::operator()(ConditionalExpression &)
+void SemanticAnalyzer::operator()(ConditionalExpression &c)
 {
+    std::visit(*this, *c.condition);
+    std::visit(*this, *c.trueBranch);
+    std::visit(*this, *c.falseBranch);
 }
 
 void SemanticAnalyzer::operator()(FuncDeclStatement &f)
@@ -73,8 +76,12 @@ void SemanticAnalyzer::operator()(ReturnStatement &r)
     std::visit(*this, *r.expr);
 }
 
-void SemanticAnalyzer::operator()(IfStatement &)
+void SemanticAnalyzer::operator()(IfStatement &i)
 {
+    std::visit(*this, *i.condition);
+    std::visit(*this, *i.trueBranch);
+    if (i.falseBranch)
+        std::visit(*this, *i.falseBranch);
 }
 
 void SemanticAnalyzer::operator()(BlockStatement &)

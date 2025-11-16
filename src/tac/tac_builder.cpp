@@ -117,9 +117,24 @@ Value TACBuilder::operator()(const parser::AssignmentExpression &a)
     return var;
 }
 
-Value TACBuilder::operator()(const parser::ConditionalExpression &)
+Value TACBuilder::operator()(const parser::ConditionalExpression &c)
 {
-    return Constant{ -100 };
+    auto label_end = generateLabelName("end");
+    auto label_false_branch = generateLabelName("false_branch");
+    Value result = Variant{ generateTempVariableName() };
+
+    Value condition = std::visit(*this, *c.condition);
+    m_instructions.push_back(JumpIfZero{ condition, label_false_branch });
+    Value true_branch_value = std::visit(*this, *c.trueBranch);
+    m_instructions.push_back(Copy{ true_branch_value, result });
+    m_instructions.push_back(Jump{ label_end });
+
+    m_instructions.push_back(Label{ label_false_branch });
+    Value false_branch_value = std::visit(*this, *c.falseBranch);
+    m_instructions.push_back(Copy{ false_branch_value, result });
+    m_instructions.push_back(Label{ label_end });
+
+    return result;
 }
 
 Value TACBuilder::operator()(const parser::FuncDeclStatement &f)
@@ -144,9 +159,23 @@ Value TACBuilder::operator()(const parser::ReturnStatement &r)
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::IfStatement &)
+Value TACBuilder::operator()(const parser::IfStatement &i)
 {
-    return Constant{ -100 };
+    Value condition = std::visit(*this, *i.condition);
+    auto label_end = generateLabelName("end");
+    if (i.falseBranch) {
+        auto label_else = generateLabelName("else");
+        m_instructions.push_back(JumpIfZero{ condition, label_else });
+        std::visit(*this, *i.trueBranch);
+        m_instructions.push_back(Jump{ label_end });
+        m_instructions.push_back(Label{ label_else });
+        std::visit(*this, *i.falseBranch);
+    } else {
+        m_instructions.push_back(JumpIfZero{ condition, label_end });
+        std::visit(*this, *i.trueBranch);
+    }
+    m_instructions.push_back(Label{ label_end });
+    return std::monostate();
 }
 
 Value TACBuilder::operator()(const parser::BlockStatement &b)

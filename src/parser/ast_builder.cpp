@@ -91,11 +91,11 @@ Expression ASTBuilder::ParseExpression(int min_precedence)
             // We convert them to binary expressions
             left = wrap_expression(BinaryExpression{ op, UE(left), UE(right) });
         } else if (op == BinaryOperator::Conditional) {
-            // Parse the middle part ("? expression :")
+            // The middle part ("? expression :")
+            // behaves like the operator of a binary expression
             auto middle = ParseExpression(0);
             Consume(TokenType::Operator, ":");
-            // Parse the right part
-            auto right = ParseExpression(precedence);
+            auto right = ParseExpression(precedence); // Right-associative
             left = wrap_expression(ConditionalExpression{ UE(left), UE(middle), UE(right) });
         } else {
             // Other binary operators are left-associative
