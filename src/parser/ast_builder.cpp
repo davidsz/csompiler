@@ -189,15 +189,15 @@ Statement ASTBuilder::ParseLabeledStatement()
     return wrap_statement(std::move(ret));
 }
 
-std::vector<BlockItem> ASTBuilder::ParseBlock()
+Statement ASTBuilder::ParseBlock()
 {
     LOG("ParseBlock");
     Consume(TokenType::Punctator, "{");
-    std::vector<BlockItem> block;
+    auto block = BlockStatement{};
     for (auto next = Peek(); next && next->value() != "}"; next = Peek())
-        block.push_back(ParseBlockItem());
+        block.items.push_back(ParseBlockItem());
     Consume(TokenType::Punctator, "}");
-    return block;
+    return wrap_statement(std::move(block));
 }
 
 BlockItem ASTBuilder::ParseBlockItem()
@@ -220,7 +220,7 @@ Statement ASTBuilder::ParseFunction()
     Consume(TokenType::Punctator, "(");
     func.params.push_back(Consume(TokenType::Keyword, "void"));
     Consume(TokenType::Punctator, ")");
-    func.body = ParseBlock();
+    func.body = unique_statement(ParseBlock());
     return wrap_statement(std::move(func));
 }
 
@@ -238,13 +238,16 @@ Statement ASTBuilder::ParseStatement(bool allow_labels)
         // TODO
         if (next->value() == "int")
             return ParseFunction();
-
         Abort("Not implemented yet.", next->line());
     }
 
-    if (next->type() == TokenType::Punctator && next->value() == ";") {
-        Consume(TokenType::Punctator, ";");
-        return Statement(NullStatement{});
+    if (next->type() == TokenType::Punctator) {
+        if (next->value() == "{")
+            return ParseBlock();
+        if (next->value() == ";") {
+            Consume(TokenType::Punctator, ";");
+            return Statement(NullStatement{});
+        }
     }
 
     // Labels are not allowed outside of functions

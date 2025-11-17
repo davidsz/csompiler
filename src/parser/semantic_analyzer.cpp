@@ -82,8 +82,7 @@ void SemanticAnalyzer::operator()(ConditionalExpression &c)
 void SemanticAnalyzer::operator()(FuncDeclStatement &f)
 {
     m_currentFunction = f.name;
-    for (auto &i : f.body)
-        std::visit(*this, i);
+    std::visit(*this, *f.body);
     m_currentFunction = "";
 }
 
@@ -129,8 +128,10 @@ void SemanticAnalyzer::operator()(LabeledStatement &l)
     }
 }
 
-void SemanticAnalyzer::operator()(BlockStatement &)
+void SemanticAnalyzer::operator()(BlockStatement &b)
 {
+    for (auto &i : b.items)
+        std::visit(*this, i);
 }
 
 void SemanticAnalyzer::operator()(ExpressionStatement &e)

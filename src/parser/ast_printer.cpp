@@ -61,9 +61,8 @@ void ASTPrinter::operator()(const FuncDeclStatement &f)
     pad(); std::cout << "Params: ";
     for (auto &p : f.params) std::cout << p << " ";
     std::cout << std::endl;
-    for (auto &i : f.body)
-        std::visit(*this, i);
-        shift_tab();
+    std::visit(*this, *f.body);
+    shift_tab();
 }
 
 void ASTPrinter::operator()(const ReturnStatement &s)
@@ -104,8 +103,8 @@ void ASTPrinter::operator()(const BlockStatement &s)
 {
     pad(); std::cout << "Block" << std::endl;
     tab();
-    for (auto &stmt : s.statements)
-        std::visit(*this, *stmt);
+    for (auto &item : s.items)
+        std::visit(*this, item);
     shift_tab();
 }
 

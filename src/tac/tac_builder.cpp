@@ -141,12 +141,14 @@ Value TACBuilder::operator()(const parser::FuncDeclStatement &f)
 {
     auto func = FunctionDefinition{};
     func.name = f.name;
-    TACBuilder builder;
-    func.inst = builder.Convert(f.body);
-    // Avoid undefined behavior in functions where there is no return.
-    // If it already had a return, this extra one won't be executed
-    // and will be optimised out in later stages.
-    func.inst.push_back(Return{ Constant{ 0 } });
+    if (auto body = std::get_if<parser::BlockStatement>(f.body.get())) {
+        TACBuilder builder;
+        func.inst = builder.Convert(body->items);
+        // Avoid undefined behavior in functions where there is no return.
+        // If it already had a return, this extra one won't be executed
+        // and will be optimised out in later stages.
+        func.inst.push_back(Return{ Constant{ 0 } });
+    }
     m_instructions.push_back(func);
     return std::monostate();
 }
@@ -193,8 +195,8 @@ Value TACBuilder::operator()(const parser::LabeledStatement &l)
 
 Value TACBuilder::operator()(const parser::BlockStatement &b)
 {
-    for (auto &s : b.statements)
-        std::visit(*this, *s);
+    for (auto &s : b.items)
+        std::visit(*this, s);
     return std::monostate();
 }
 

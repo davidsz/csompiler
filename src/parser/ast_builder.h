@@ -37,7 +37,7 @@ private:
 
     Declaration ParseDeclaration();
 
-    std::vector<BlockItem> ParseBlock();
+    Statement ParseBlock();
     BlockItem ParseBlockItem();
 
 
