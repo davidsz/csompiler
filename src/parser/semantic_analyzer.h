@@ -36,10 +36,18 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
     void Abort(std::string_view);
 
 private:
+    // Variable names mapped to their generated unique names
+    using Scope = std::unordered_map<std::string, std::string>;
+    std::vector<Scope> m_scopes;
+    void enterScope();
+    void leaveScope();
+    Scope &currentScope();
+    bool isDeclaredInCurrentScope(const std::string &name);
+    std::optional<std::string> lookupVariable(const std::string &name);
+
     Stage m_currentStage = VARIABLE_RESOLUTION;
     std::string m_currentFunction = "";
-    // Variable names mapped to their generated unique names
-    std::unordered_map<std::string, std::string> m_variables;
+
     // Function names mapped to the labels defined inside
     std::unordered_map<std::string, std::unordered_set<std::string>> m_labels;
 };

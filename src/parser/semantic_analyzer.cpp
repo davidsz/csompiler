@@ -19,6 +19,36 @@ static std::string makeNameUnique(std::string_view name)
     return std::format("{}.{}", name, counter++);
 }
 
+void SemanticAnalyzer::enterScope()
+{
+    m_scopes.emplace_back();
+}
+
+void SemanticAnalyzer::leaveScope()
+{
+    m_scopes.pop_back();
+}
+
+SemanticAnalyzer::Scope &SemanticAnalyzer::currentScope()
+{
+    return m_scopes.back();
+}
+
+std::optional<std::string> SemanticAnalyzer::lookupVariable(const std::string &name)
+{
+    for (auto scope = m_scopes.rbegin(); scope != m_scopes.rend(); scope++) {
+        auto found = scope->find(name);
+        if (found != scope->end())
+            return found->second;
+    }
+    return std::nullopt;
+}
+
+bool SemanticAnalyzer::isDeclaredInCurrentScope(const std::string &name)
+{
+    return currentScope().contains(name);
+}
+
 void SemanticAnalyzer::operator()(NumberExpression &)
 {
 }
@@ -28,9 +58,8 @@ void SemanticAnalyzer::operator()(VariableExpression &v)
     if (m_currentStage > VARIABLE_RESOLUTION)
         return;
 
-    auto it = m_variables.find(v.identifier);
-    if (it != m_variables.end())
-        v.identifier = it->second;
+    if (auto unique_name = lookupVariable(v.identifier))
+        v.identifier = *unique_name;
     else
         Abort("Undeclared variable");
 }
@@ -130,8 +159,10 @@ void SemanticAnalyzer::operator()(LabeledStatement &l)
 
 void SemanticAnalyzer::operator()(BlockStatement &b)
 {
+    enterScope();
     for (auto &i : b.items)
         std::visit(*this, i);
+    leaveScope();
 }
 
 void SemanticAnalyzer::operator()(ExpressionStatement &e)
@@ -150,14 +181,14 @@ void SemanticAnalyzer::operator()(Declaration &d)
     if (m_currentStage > VARIABLE_RESOLUTION)
         return;
 
-    // Prohibit duplicate variabe declarations
-    if (m_variables.contains(d.identifier))
+    // Prohibit duplicate variabe declarations in the same scope
+    if (isDeclaredInCurrentScope(d.identifier))
         Abort(std::format("Duplicate variable declaration ({})", d.identifier));
 
-    // Give variables globally unique names; this will help in later stages
-    // when different variables can have the same names in different scopes
+    // Give variables globally unique names; different variables
+    // can have the same names in different scopes
     std::string unique_name = makeNameUnique(d.identifier);
-    m_variables.insert({d.identifier, unique_name});
+    currentScope()[d.identifier] = unique_name;
     d.identifier = unique_name;
     if (d.init)
         std::visit(*this, *d.init);
@@ -169,7 +200,10 @@ void SemanticAnalyzer::operator()(std::monostate)
 
 Error SemanticAnalyzer::CheckAndMutate(std::vector<parser::BlockItem> &astVector)
 {
-    m_variables.clear();
+    m_scopes.clear();
+    enterScope();
+    m_labels.clear();
+
     try {
         m_currentStage = VARIABLE_RESOLUTION;
         for (auto &i : astVector)
