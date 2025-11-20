@@ -24,6 +24,11 @@ struct ASTPrinter : public IASTVisitor<void> {
     void operator()(const BlockStatement &s) override;
     void operator()(const ExpressionStatement &e) override;
     void operator()(const NullStatement &) override;
+    void operator()(const BreakStatement &b) override;
+    void operator()(const ContinueStatement &c) override;
+    void operator()(const WhileStatement &w) override;
+    void operator()(const DoWhileStatement &d) override;
+    void operator()(const ForStatement &f) override;
     void operator()(const Declaration &d) override;
     void operator()(std::monostate) override {}
 

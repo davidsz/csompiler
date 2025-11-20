@@ -32,14 +32,17 @@ private:
     Statement ParseIf();
     Statement ParseGoto();
     Statement ParseLabeledStatement();
+    Statement ParseBreak();
+    Statement ParseContinue();
+    Statement ParseWhile();
+    Statement ParseDoWhile();
+    Statement ParseFor();
     Statement ParseFunction();
-    Statement ParseStatement(bool allow_labels = true);
-
-    Declaration ParseDeclaration();
-
     Statement ParseBlock();
+    Statement ParseStatement(bool allow_labels = true);
     BlockItem ParseBlockItem();
 
+    Declaration ParseDeclaration();
 
     const std::list<lexer::Token> &m_tokens;
     std::list<lexer::Token>::const_iterator m_pos;

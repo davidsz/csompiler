@@ -176,6 +176,31 @@ void SemanticAnalyzer::operator()(NullStatement &)
 {
 }
 
+void SemanticAnalyzer::operator()(BreakStatement &)
+{
+
+}
+
+void SemanticAnalyzer::operator()(ContinueStatement &)
+{
+
+}
+
+void SemanticAnalyzer::operator()(WhileStatement &)
+{
+
+}
+
+void SemanticAnalyzer::operator()(DoWhileStatement &)
+{
+
+}
+
+void SemanticAnalyzer::operator()(ForStatement &)
+{
+
+}
+
 void SemanticAnalyzer::operator()(Declaration &d)
 {
     if (m_currentStage > VARIABLE_RESOLUTION)

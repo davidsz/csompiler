@@ -211,6 +211,31 @@ Value TACBuilder::operator()(const parser::NullStatement &)
     return std::monostate();
 }
 
+Value TACBuilder::operator()(const parser::BreakStatement &)
+{
+    return std::monostate();
+}
+
+Value TACBuilder::operator()(const parser::ContinueStatement &)
+{
+    return std::monostate();
+}
+
+Value TACBuilder::operator()(const parser::WhileStatement &)
+{
+    return std::monostate();
+}
+
+Value TACBuilder::operator()(const parser::DoWhileStatement &)
+{
+    return std::monostate();
+}
+
+Value TACBuilder::operator()(const parser::ForStatement &)
+{
+    return std::monostate();
+}
+
 Value TACBuilder::operator()(const parser::Declaration &d)
 {
     // We discard declarations, but we handle their init expressions

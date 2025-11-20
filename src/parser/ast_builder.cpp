@@ -69,7 +69,7 @@ Expression ASTBuilder::ParseExpression(int min_precedence)
     if (unop && canBePostfix(unop)) {
         while (unop && canBePostfix(unop)) {
             Consume(TokenType::Operator);
-            left = wrap_expression(UnaryExpression{ unop, UE(left), true });
+            left = UnaryExpression{ unop, UE(left), true };
             next = Peek();
             unop = toUnaryOperator(next->value());
         }
@@ -84,23 +84,23 @@ Expression ASTBuilder::ParseExpression(int min_precedence)
         if (op == BinaryOperator::Assign) {
             // Assignment ('=') is right-associative
             auto right = ParseExpression(precedence);
-            left = wrap_expression(AssignmentExpression{ UE(left), UE(right) });
+            left = AssignmentExpression{ UE(left), UE(right) };
         } else if (isCompoundAssignment(op)) {
             // Compound assignments are right-associative
             auto right = ParseExpression(precedence);
             // We convert them to binary expressions
-            left = wrap_expression(BinaryExpression{ op, UE(left), UE(right) });
+            left = BinaryExpression{ op, UE(left), UE(right) };
         } else if (op == BinaryOperator::Conditional) {
             // The middle part ("? expression :")
             // behaves like the operator of a binary expression
             auto middle = ParseExpression(0);
             Consume(TokenType::Operator, ":");
             auto right = ParseExpression(precedence); // Right-associative
-            left = wrap_expression(ConditionalExpression{ UE(left), UE(middle), UE(right) });
+            left = ConditionalExpression{ UE(left), UE(middle), UE(right) };
         } else {
             // Other binary operators are left-associative
             auto right = ParseExpression(precedence + 1);
-            left = wrap_expression(BinaryExpression{ op, UE(left), UE(right) });
+            left = BinaryExpression{ op, UE(left), UE(right) };
         }
         next = Peek();
         op = toBinaryOperator(next->value());
@@ -122,17 +122,17 @@ Expression ASTBuilder::ParseFactor()
 
     if (next->type() == TokenType::NumericLiteral) {
         double value = std::stod(Consume(TokenType::NumericLiteral));
-        return wrap_expression(NumberExpression{ value });
+        return NumberExpression{ value };
     }
 
     if (next->type() == TokenType::Identifier)
-        return wrap_expression(VariableExpression{ Consume(TokenType::Identifier) });
+        return VariableExpression{ Consume(TokenType::Identifier) };
 
     // Prefix unary expressions (right-associative)
     if (next->type() == TokenType::Operator && isUnaryOperator(next->value())) {
         UnaryOperator op = toUnaryOperator(Consume(TokenType::Operator));
         auto expr = ParseExpression(getPrecedence(op) + 1);
-        return wrap_expression(UnaryExpression{ op, UE(expr), false });
+        return UnaryExpression{ op, UE(expr), false };
     }
     assert(false);
     return std::monostate();
@@ -145,7 +145,7 @@ Statement ASTBuilder::ParseReturn()
     auto ret = ReturnStatement{};
     ret.expr = unique_expression(ParseExpression(0));
     Consume(TokenType::Punctator, ";");
-    return wrap_statement(std::move(ret));
+    return ret;
 }
 
 Statement ASTBuilder::ParseIf()
@@ -172,7 +172,7 @@ Statement ASTBuilder::ParseGoto()
     Consume(TokenType::Keyword, "goto");
     auto ret = GotoStatement{ Consume(TokenType::Identifier) };
     Consume(TokenType::Punctator, ";");
-    return wrap_statement(std::move(ret));
+    return ret;
 }
 
 Statement ASTBuilder::ParseLabeledStatement()
@@ -182,11 +182,89 @@ Statement ASTBuilder::ParseLabeledStatement()
     LOG("ParseLabeledStatement");
     std::string label = Consume(TokenType::Identifier);
     Consume(TokenType::Operator, ":");
-    auto ret = LabeledStatement{
+    return LabeledStatement{
         label,
         unique_statement(ParseStatement())
     };
-    return wrap_statement(std::move(ret));
+}
+
+Statement ASTBuilder::ParseBreak()
+{
+    LOG("ParseBreak");
+    Consume(TokenType::Keyword, "break");
+    Consume(TokenType::Punctator, ";");
+    return BreakStatement{};
+}
+
+Statement ASTBuilder::ParseContinue()
+{
+    LOG("ParseContinue");
+    Consume(TokenType::Keyword, "continue");
+    Consume(TokenType::Punctator, ";");
+    return ContinueStatement{};
+}
+
+Statement ASTBuilder::ParseWhile()
+{
+    LOG("ParseWhile");
+    auto ret = WhileStatement{};
+    Consume(TokenType::Keyword, "while");
+    Consume(TokenType::Punctator, "(");
+    ret.condition = unique_expression(ParseExpression(0));
+    Consume(TokenType::Punctator, ")");
+    ret.body = unique_statement(ParseStatement());
+    return ret;
+}
+
+Statement ASTBuilder::ParseDoWhile()
+{
+    LOG("ParseDoWhile");
+    auto ret = DoWhileStatement{};
+    Consume(TokenType::Keyword, "do");
+    ret.body = unique_statement(ParseStatement());
+    Consume(TokenType::Keyword, "while");
+    Consume(TokenType::Punctator, "(");
+    ret.condition = unique_expression(ParseExpression(0));
+    Consume(TokenType::Punctator, ")");
+    Consume(TokenType::Punctator, ";");
+    return ret;
+}
+
+Statement ASTBuilder::ParseFor()
+{
+    LOG("ParseFor");
+    auto ret = ForStatement{};
+    Consume(TokenType::Keyword, "for");
+    Consume(TokenType::Punctator, "(");
+
+    // Initializer
+    auto next = Peek();
+    if (next->type() == TokenType::Punctator && next->value() == ";") {
+        Consume(TokenType::Punctator, ";");
+    } else if (next->type() == TokenType::Keyword) {
+        ret.init = std::make_unique<ForInit>(
+            std::forward<Declaration>(ParseDeclaration()));
+    } else {
+        ret.init = std::make_unique<ForInit>(
+            to_for_init(ParseExpression(0)));
+        Consume(TokenType::Punctator, ";");
+    }
+
+    // Condition
+    next = Peek();
+    if (next->type() != TokenType::Punctator)
+        ret.condition = unique_expression(ParseExpression(0));
+    Consume(TokenType::Punctator, ";");
+
+    // Update
+    next = Peek();
+    if (next->type() != TokenType::Punctator)
+        ret.update = unique_expression(ParseExpression(0));
+    Consume(TokenType::Punctator, ")");
+
+    // Body
+    ret.body = unique_statement(ParseStatement());
+    return ret;
 }
 
 Statement ASTBuilder::ParseBlock()
@@ -197,7 +275,7 @@ Statement ASTBuilder::ParseBlock()
     for (auto next = Peek(); next && next->value() != "}"; next = Peek())
         block.items.push_back(ParseBlockItem());
     Consume(TokenType::Punctator, "}");
-    return wrap_statement(std::move(block));
+    return block;
 }
 
 BlockItem ASTBuilder::ParseBlockItem()
@@ -206,7 +284,7 @@ BlockItem ASTBuilder::ParseBlockItem()
     auto next = Peek();
     // TODO
     if (next->value() == "int")
-        return to_block_item(ParseDeclaration());
+        return ParseDeclaration();
     else
         return to_block_item(ParseStatement());
 }
@@ -221,7 +299,7 @@ Statement ASTBuilder::ParseFunction()
     func.params.push_back(Consume(TokenType::Keyword, "void"));
     Consume(TokenType::Punctator, ")");
     func.body = unique_statement(ParseBlock());
-    return wrap_statement(std::move(func));
+    return func;
 }
 
 Statement ASTBuilder::ParseStatement(bool allow_labels)
@@ -235,6 +313,16 @@ Statement ASTBuilder::ParseStatement(bool allow_labels)
             return ParseIf();
         if (next->value() == "goto")
             return ParseGoto();
+        if (next->value() == "break")
+            return ParseBreak();
+        if (next->value() == "continue")
+            return ParseContinue();
+        if (next->value() == "while")
+            return ParseWhile();
+        if (next->value() == "do")
+            return ParseDoWhile();
+        if (next->value() == "for")
+            return ParseFor();
         // TODO
         if (next->value() == "int")
             return ParseFunction();

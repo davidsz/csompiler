@@ -119,6 +119,54 @@ void ASTPrinter::operator()(const NullStatement &)
     pad(); std::cout << "Null" << std::endl;
 }
 
+void ASTPrinter::operator()(const BreakStatement &)
+{
+    pad(); std::cout << "Break" << std::endl;
+}
+
+void ASTPrinter::operator()(const ContinueStatement &)
+{
+    pad(); std::cout << "Continue" << std::endl;
+}
+
+void ASTPrinter::operator()(const WhileStatement &w)
+{
+    pad(); std::cout << "While(" << std::endl;
+    tab(); std::visit(*this, *w.condition); shift_tab();
+    pad(); std::cout << "Block" << std::endl;
+    tab(); std::visit(*this, *w.body); shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
+void ASTPrinter::operator()(const DoWhileStatement &d)
+{
+    pad(); std::cout << "Do(" << std::endl;
+    tab(); std::visit(*this, *d.body); shift_tab();
+    pad(); std::cout << "While" << std::endl;
+    tab(); std::visit(*this, *d.condition); shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
+void ASTPrinter::operator()(const ForStatement &f)
+{
+    pad(); std::cout << "For(" << std::endl;
+    if (f.init) {
+        pad(); std::cout << "Init" << std::endl;
+        tab(); std::visit(*this, *f.init); shift_tab();
+    }
+    if (f.condition) {
+        pad(); std::cout << "Condition" << std::endl;
+        tab(); std::visit(*this, *f.condition); shift_tab();
+    }
+    if (f.update) {
+        pad(); std::cout << "Update" << std::endl;
+        tab(); std::visit(*this, *f.update); shift_tab();
+    }
+    pad(); std::cout << "Body" << std::endl;
+    tab(); std::visit(*this, *f.body); shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
 void ASTPrinter::operator()(const Declaration &d)
 {
     pad(); std::cout << "Declaration(" << d.identifier << ")" << std::endl;
