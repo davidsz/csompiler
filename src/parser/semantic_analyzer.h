@@ -13,6 +13,8 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
         VARIABLE_RESOLUTION = 0,
         // Uses previously collected label names to catch errors
         LABEL_ANALYSIS = 1,
+        // Label loops and connect breaks/continues to corresponding ones
+        LOOP_LABELING = 2,
     };
 
     void operator()(NumberExpression &n) override;
@@ -55,6 +57,8 @@ private:
 
     // Function names mapped to the labels defined inside
     std::unordered_map<std::string, std::unordered_set<std::string>> m_labels;
+
+    std::vector<std::string> m_loopLabels;
 };
 
 } // namespace parser

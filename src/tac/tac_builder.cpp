@@ -211,28 +211,65 @@ Value TACBuilder::operator()(const parser::NullStatement &)
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::BreakStatement &)
+Value TACBuilder::operator()(const parser::BreakStatement &b)
 {
+    m_instructions.push_back(Jump{ std::format("break_{}", b.label) });
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::ContinueStatement &)
+Value TACBuilder::operator()(const parser::ContinueStatement &c)
 {
+    m_instructions.push_back(Jump{ std::format("continue_{}", c.label) });
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::WhileStatement &)
+Value TACBuilder::operator()(const parser::WhileStatement &w)
 {
+    auto label_continue = std::format("continue_{}", w.label);
+    auto label_break = std::format("break_{}", w.label);
+
+    m_instructions.push_back(Label{ label_continue });
+    Value condition = std::visit(*this, *w.condition);
+    m_instructions.push_back(JumpIfZero{ condition, label_break });
+    std::visit(*this, *w.body);
+    m_instructions.push_back(Jump{ label_continue });
+    m_instructions.push_back(Label{ label_break });
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::DoWhileStatement &)
+Value TACBuilder::operator()(const parser::DoWhileStatement &d)
 {
+    auto label_start = std::format("start_{}", d.label);
+
+    m_instructions.push_back(Label{ label_start });
+    std::visit(*this, *d.body);
+    m_instructions.push_back(Label{ std::format("continue_{}", d.label) });
+    Value condition = std::visit(*this, *d.condition);
+    m_instructions.push_back(JumpIfNotZero{ condition, label_start });
+    m_instructions.push_back(Label{ std::format("break_{}", d.label) });
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::ForStatement &)
+Value TACBuilder::operator()(const parser::ForStatement &f)
 {
+    auto label_start = std::format("start_{}", f.label);
+    auto label_break = std::format("break_{}", f.label);
+
+    if (f.init)
+        std::visit(*this, *f.init);
+    m_instructions.push_back(Label{ label_start });
+    Value condition;
+    if (f.condition)
+        condition = std::visit(*this, *f.condition);
+    else
+        condition = Constant { 1 };
+    m_instructions.push_back(JumpIfZero{ condition, label_break });
+    std::visit(*this, *f.body);
+    m_instructions.push_back(Label{ std::format("continue_{}", f.label) });
+    if (f.update)
+        std::visit(*this, *f.update);
+    m_instructions.push_back(Jump{ label_start });
+    m_instructions.push_back(Label{ label_break });
     return std::monostate();
 }
 

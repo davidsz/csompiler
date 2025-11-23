@@ -66,9 +66,6 @@ void SemanticAnalyzer::operator()(VariableExpression &v)
 
 void SemanticAnalyzer::operator()(UnaryExpression &u)
 {
-    if (m_currentStage > VARIABLE_RESOLUTION)
-        return;
-
     // canBePostfix also covers the prefix versions of ++ and --
     if (canBePostfix(u.op) && !std::holds_alternative<VariableExpression>(*u.expr))
         Abort("Invalid lvalue in unary expression");
@@ -77,9 +74,6 @@ void SemanticAnalyzer::operator()(UnaryExpression &u)
 
 void SemanticAnalyzer::operator()(BinaryExpression &b)
 {
-    if (m_currentStage > VARIABLE_RESOLUTION)
-        return;
-
     // TODO: Figure out how to report error messages with line numbers
     if (isCompoundAssignment(b.op) && !std::holds_alternative<VariableExpression>(*b.lhs))
         Abort("Invalid lvalue in compound assignment");
@@ -89,9 +83,6 @@ void SemanticAnalyzer::operator()(BinaryExpression &b)
 
 void SemanticAnalyzer::operator()(AssignmentExpression &a)
 {
-    if (m_currentStage > VARIABLE_RESOLUTION)
-        return;
-
     // TODO: Figure out how to report error messages with line numbers
     if (!std::holds_alternative<VariableExpression>(*a.lhs))
         Abort("Invalid lvalue in assignment");
@@ -101,8 +92,6 @@ void SemanticAnalyzer::operator()(AssignmentExpression &a)
 
 void SemanticAnalyzer::operator()(ConditionalExpression &c)
 {
-    if (m_currentStage > VARIABLE_RESOLUTION)
-        return;
     std::visit(*this, *c.condition);
     std::visit(*this, *c.trueBranch);
     std::visit(*this, *c.falseBranch);
@@ -117,17 +106,11 @@ void SemanticAnalyzer::operator()(FuncDeclStatement &f)
 
 void SemanticAnalyzer::operator()(ReturnStatement &r)
 {
-    if (m_currentStage > VARIABLE_RESOLUTION)
-        return;
-
     std::visit(*this, *r.expr);
 }
 
 void SemanticAnalyzer::operator()(IfStatement &i)
 {
-    if (m_currentStage > VARIABLE_RESOLUTION)
-        return;
-
     std::visit(*this, *i.condition);
     std::visit(*this, *i.trueBranch);
     if (i.falseBranch)
@@ -167,8 +150,6 @@ void SemanticAnalyzer::operator()(BlockStatement &b)
 
 void SemanticAnalyzer::operator()(ExpressionStatement &e)
 {
-    if (m_currentStage > VARIABLE_RESOLUTION)
-        return;
     std::visit(*this, *e.expr);
 }
 
@@ -176,29 +157,78 @@ void SemanticAnalyzer::operator()(NullStatement &)
 {
 }
 
-void SemanticAnalyzer::operator()(BreakStatement &)
+void SemanticAnalyzer::operator()(BreakStatement &b)
 {
+    if (m_currentStage != LOOP_LABELING)
+        return;
 
+    if (m_loopLabels.empty())
+        Abort("Break is not allowed outside of loops.");
+    b.label = m_loopLabels.back();
 }
 
-void SemanticAnalyzer::operator()(ContinueStatement &)
+void SemanticAnalyzer::operator()(ContinueStatement &c)
 {
+    if (m_currentStage != LOOP_LABELING)
+        return;
 
+    if (m_loopLabels.empty())
+        Abort("Continue is not allowed outside of loops.");
+    c.label = m_loopLabels.back();
 }
 
-void SemanticAnalyzer::operator()(WhileStatement &)
+void SemanticAnalyzer::operator()(WhileStatement &w)
 {
+    if (m_currentStage == LOOP_LABELING) {
+        w.label = makeNameUnique("while");
+        m_loopLabels.push_back(w.label);
+    }
 
+    std::visit(*this, *w.condition);
+    std::visit(*this, *w.body);
+
+    if (m_currentStage == LOOP_LABELING)
+        m_loopLabels.pop_back();
 }
 
-void SemanticAnalyzer::operator()(DoWhileStatement &)
+void SemanticAnalyzer::operator()(DoWhileStatement &d)
 {
+    if (m_currentStage == LOOP_LABELING) {
+        d.label = makeNameUnique("do");
+        m_loopLabels.push_back(d.label);
+    }
 
+    std::visit(*this, *d.body);
+    std::visit(*this, *d.condition);
+
+    if (m_currentStage == LOOP_LABELING)
+        m_loopLabels.pop_back();
 }
 
-void SemanticAnalyzer::operator()(ForStatement &)
+void SemanticAnalyzer::operator()(ForStatement &f)
 {
+    // The for header introduces a new variable scope
+    if (m_currentStage == VARIABLE_RESOLUTION)
+        enterScope();
 
+    if (m_currentStage == LOOP_LABELING) {
+        f.label = makeNameUnique("for");
+        m_loopLabels.push_back(f.label);
+    }
+
+    if (f.init)
+        std::visit(*this, *f.init);
+    if (f.condition)
+        std::visit(*this, *f.condition);
+    if (f.update)
+        std::visit(*this, *f.update);
+    std::visit(*this, *f.body);
+
+    if (m_currentStage == LOOP_LABELING)
+        m_loopLabels.pop_back();
+
+    if (m_currentStage == VARIABLE_RESOLUTION)
+        leaveScope();
 }
 
 void SemanticAnalyzer::operator()(Declaration &d)
@@ -228,6 +258,7 @@ Error SemanticAnalyzer::CheckAndMutate(std::vector<parser::BlockItem> &astVector
     m_scopes.clear();
     enterScope();
     m_labels.clear();
+    m_loopLabels.clear();
 
     try {
         m_currentStage = VARIABLE_RESOLUTION;
@@ -235,6 +266,10 @@ Error SemanticAnalyzer::CheckAndMutate(std::vector<parser::BlockItem> &astVector
             std::visit(*this, i);
 
         m_currentStage = LABEL_ANALYSIS;
+        for (auto &i : astVector)
+            std::visit(*this, i);
+
+        m_currentStage = LOOP_LABELING;
         for (auto &i : astVector)
             std::visit(*this, i);
 

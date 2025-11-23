@@ -28,19 +28,24 @@ namespace parser {
     X(ExpressionStatement, \
         std::unique_ptr<Expression> expr;) \
     X(NullStatement, /* no op */) \
-    X(BreakStatement, /* no op */) \
-    X(ContinueStatement, /* no op */) \
+    X(BreakStatement, \
+        std::string label;) \
+    X(ContinueStatement, \
+        std::string label;) \
     X(WhileStatement, \
         std::unique_ptr<Expression> condition; \
-        std::unique_ptr<Statement> body;) \
+        std::unique_ptr<Statement> body; \
+        std::string label;) \
     X(DoWhileStatement, \
         std::unique_ptr<Statement> body; \
-        std::unique_ptr<Expression> condition;) \
+        std::unique_ptr<Expression> condition; \
+        std::string label;) \
     X(ForStatement, \
         std::unique_ptr<ForInit> init; \
         std::unique_ptr<Expression> condition; \
         std::unique_ptr<Expression> update; \
-        std::unique_ptr<Statement> body;)
+        std::unique_ptr<Statement> body; \
+        std::string label;) \
 
 #define AST_EXPRESSION_LIST(X) \
     X(NumberExpression, \
