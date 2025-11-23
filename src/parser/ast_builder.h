@@ -37,6 +37,9 @@ private:
     Statement ParseWhile();
     Statement ParseDoWhile();
     Statement ParseFor();
+    Statement ParseSwitch();
+    Statement ParseCase();
+    Statement ParseDefault();
     Statement ParseFunction();
     Statement ParseBlock();
     Statement ParseStatement(bool allow_labels = true);

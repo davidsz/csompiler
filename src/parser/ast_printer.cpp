@@ -167,6 +167,34 @@ void ASTPrinter::operator()(const ForStatement &f)
     pad(); std::cout << ")" << std::endl;
 }
 
+void ASTPrinter::operator()(const SwitchStatement &s)
+{
+    pad(); std::cout << "Switch(" << std::endl;
+    pad(); std::cout << "Condition" << std::endl;
+    tab(); std::visit(*this, *s.condition); shift_tab();
+    pad(); std::cout << "Body" << std::endl;
+    tab(); std::visit(*this, *s.body); shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
+void ASTPrinter::operator()(const CaseStatement &c)
+{
+    pad(); std::cout << "Case(" << std::endl;
+    pad(); std::cout << "Condition" << std::endl;
+    tab(); std::visit(*this, *c.condition); shift_tab();
+    pad(); std::cout << "Statement" << std::endl;
+    tab(); std::visit(*this, *c.statement); shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
+void ASTPrinter::operator()(const DefaultStatement &d)
+{
+    pad(); std::cout << "Default(" << std::endl;
+    pad(); std::cout << "Statement" << std::endl;
+    tab(); std::visit(*this, *d.statement); shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
 void ASTPrinter::operator()(const Declaration &d)
 {
     pad(); std::cout << "Declaration(" << d.identifier << ")" << std::endl;

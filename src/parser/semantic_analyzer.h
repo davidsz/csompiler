@@ -36,6 +36,9 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
     void operator()(WhileStatement &w) override;
     void operator()(DoWhileStatement &d) override;
     void operator()(ForStatement &f) override;
+    void operator()(SwitchStatement &s) override;
+    void operator()(CaseStatement &c) override;
+    void operator()(DefaultStatement &d) override;
     void operator()(Declaration &d) override;
     void operator()(std::monostate) override;
 

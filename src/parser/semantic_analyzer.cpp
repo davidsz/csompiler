@@ -231,6 +231,21 @@ void SemanticAnalyzer::operator()(ForStatement &f)
         leaveScope();
 }
 
+void SemanticAnalyzer::operator()(SwitchStatement &)
+{
+
+}
+
+void SemanticAnalyzer::operator()(CaseStatement &)
+{
+
+}
+
+void SemanticAnalyzer::operator()(DefaultStatement &)
+{
+
+}
+
 void SemanticAnalyzer::operator()(Declaration &d)
 {
     if (m_currentStage > VARIABLE_RESOLUTION)

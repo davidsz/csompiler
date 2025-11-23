@@ -26,6 +26,9 @@ struct TACBuilder : public parser::IASTVisitor<tac::Value> {
     Value operator()(const parser::WhileStatement &w) override;
     Value operator()(const parser::DoWhileStatement &d) override;
     Value operator()(const parser::ForStatement &f) override;
+    Value operator()(const parser::SwitchStatement &s) override;
+    Value operator()(const parser::CaseStatement &c) override;
+    Value operator()(const parser::DefaultStatement &d) override;
     Value operator()(const parser::Declaration &d) override;
     Value operator()(std::monostate) override;
 

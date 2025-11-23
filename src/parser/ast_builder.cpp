@@ -267,6 +267,39 @@ Statement ASTBuilder::ParseFor()
     return ret;
 }
 
+Statement ASTBuilder::ParseSwitch()
+{
+    LOG("ParseSwitch");
+    auto ret = SwitchStatement{};
+    Consume(TokenType::Keyword, "switch");
+    Consume(TokenType::Punctator, "(");
+    ret.condition = unique_expression(ParseExpression(0));
+    Consume(TokenType::Punctator, ")");
+    ret.body = unique_statement(ParseStatement());
+    return ret;
+}
+
+Statement ASTBuilder::ParseCase()
+{
+    LOG("ParseCase");
+    auto ret = CaseStatement{};
+    Consume(TokenType::Keyword, "case");
+    ret.condition = unique_expression(ParseExpression(0));
+    Consume(TokenType::Operator, ":");
+    ret.statement = unique_statement(ParseStatement());
+    return ret;
+}
+
+Statement ASTBuilder::ParseDefault()
+{
+    LOG("ParseDefault");
+    Consume(TokenType::Keyword, "default");
+    Consume(TokenType::Operator, ":");
+    return DefaultStatement{
+        unique_statement(ParseStatement())
+    };
+}
+
 Statement ASTBuilder::ParseBlock()
 {
     LOG("ParseBlock");
@@ -323,6 +356,12 @@ Statement ASTBuilder::ParseStatement(bool allow_labels)
             return ParseDoWhile();
         if (next->value() == "for")
             return ParseFor();
+        if (next->value() == "switch")
+            return ParseSwitch();
+        if (next->value() == "case")
+            return ParseCase();
+        if (next->value() == "default")
+            return ParseDefault();
         // TODO
         if (next->value() == "int")
             return ParseFunction();

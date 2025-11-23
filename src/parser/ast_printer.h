@@ -29,6 +29,9 @@ struct ASTPrinter : public IASTVisitor<void> {
     void operator()(const WhileStatement &w) override;
     void operator()(const DoWhileStatement &d) override;
     void operator()(const ForStatement &f) override;
+    void operator()(const SwitchStatement &s) override;
+    void operator()(const CaseStatement &c) override;
+    void operator()(const DefaultStatement &d) override;
     void operator()(const Declaration &d) override;
     void operator()(std::monostate) override {}
 

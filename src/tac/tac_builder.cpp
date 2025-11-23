@@ -273,6 +273,21 @@ Value TACBuilder::operator()(const parser::ForStatement &f)
     return std::monostate();
 }
 
+Value TACBuilder::operator()(const parser::SwitchStatement &)
+{
+    return std::monostate();
+}
+
+Value TACBuilder::operator()(const parser::CaseStatement &)
+{
+    return std::monostate();
+}
+
+Value TACBuilder::operator()(const parser::DefaultStatement &)
+{
+    return std::monostate();
+}
+
 Value TACBuilder::operator()(const parser::Declaration &d)
 {
     // We discard declarations, but we handle their init expressions

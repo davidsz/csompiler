@@ -46,6 +46,15 @@ namespace parser {
         std::unique_ptr<Expression> update; \
         std::unique_ptr<Statement> body; \
         std::string label;) \
+    X(SwitchStatement, \
+        std::unique_ptr<Expression> condition; \
+        std::unique_ptr<Statement> body; \
+        std::string label;) \
+    X(CaseStatement, \
+        std::unique_ptr<Expression> condition; \
+        std::unique_ptr<Statement> statement;) \
+    X(DefaultStatement, \
+        std::unique_ptr<Statement> statement;) \
 
 #define AST_EXPRESSION_LIST(X) \
     X(NumberExpression, \
