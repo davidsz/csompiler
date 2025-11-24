@@ -54,17 +54,6 @@ void ASTPrinter::operator()(const ConditionalExpression &c)
     pad(); std::cout << ")" << std::endl;
 }
 
-void ASTPrinter::operator()(const FuncDeclStatement &f)
-{
-    pad(); std::cout << "Function(" << f.name << ")" << std::endl;
-    tab();
-    pad(); std::cout << "Params: ";
-    for (auto &p : f.params) std::cout << p << " ";
-    std::cout << std::endl;
-    std::visit(*this, *f.body);
-    shift_tab();
-}
-
 void ASTPrinter::operator()(const ReturnStatement &s)
 {
     pad(); std::cout << "Return" << std::endl;
@@ -195,16 +184,27 @@ void ASTPrinter::operator()(const DefaultStatement &d)
     pad(); std::cout << ")" << std::endl;
 }
 
-void ASTPrinter::operator()(const Declaration &d)
+void ASTPrinter::operator()(const FunctionDeclaration &f)
 {
-    pad(); std::cout << "Declaration(" << d.identifier << ")" << std::endl;
+    pad(); std::cout << "FunctionDeclaration(" << f.name << ")" << std::endl;
+    tab();
+    pad(); std::cout << "Params: ";
+    for (auto &p : f.params) std::cout << p << " ";
+    std::cout << std::endl;
+    std::visit(*this, *f.body);
+    shift_tab();
+}
+
+void ASTPrinter::operator()(const VariableDeclaration &d)
+{
+    pad(); std::cout << "VariableDeclaration(" << d.identifier << ")" << std::endl;
     if (d.init.get() != 0) {
         pad(); std::cout << "Init: " << std::endl;
         tab(); std::visit(*this, *d.init); shift_tab();
     }
 }
 
-void ASTPrinter::print(const std::vector<parser::BlockItem> &root)
+void ASTPrinter::print(const std::vector<Declaration> &root)
 {
     for (auto &i: root)
         std::visit(*this, i);

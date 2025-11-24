@@ -16,7 +16,6 @@ struct ASTPrinter : public IASTVisitor<void> {
     void operator()(const BinaryExpression &e) override;
     void operator()(const AssignmentExpression &a) override;
     void operator()(const ConditionalExpression &c) override;
-    void operator()(const FuncDeclStatement &f) override;
     void operator()(const ReturnStatement &s) override;
     void operator()(const IfStatement &i) override;
     void operator()(const GotoStatement &g) override;
@@ -32,10 +31,11 @@ struct ASTPrinter : public IASTVisitor<void> {
     void operator()(const SwitchStatement &s) override;
     void operator()(const CaseStatement &c) override;
     void operator()(const DefaultStatement &d) override;
-    void operator()(const Declaration &d) override;
+    void operator()(const FunctionDeclaration &f) override;
+    void operator()(const VariableDeclaration &v) override;
     void operator()(std::monostate) override {}
 
-    void print(const std::vector<parser::BlockItem> &root);
+    void print(const std::vector<Declaration> &root);
 };
 
 } // namespace parser

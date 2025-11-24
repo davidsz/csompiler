@@ -5,6 +5,6 @@
 
 namespace tac {
 
-std::vector<Instruction> from_ast(const std::vector<parser::BlockItem> &list);
+std::vector<Instruction> from_ast(const std::vector<parser::Declaration> &list);
 
 } // namespace tac

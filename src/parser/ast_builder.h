@@ -16,7 +16,7 @@ public:
     ~ASTBuilder() = default;
 
     void Abort(std::string_view, size_t line = 0);
-    std::vector<BlockItem> Build();
+    std::vector<Declaration> Build();
 
     int ErrorCode();
     std::string ErrorMessage();
@@ -40,11 +40,12 @@ private:
     Statement ParseSwitch();
     Statement ParseCase();
     Statement ParseDefault();
-    Statement ParseFunction();
     Statement ParseBlock();
-    Statement ParseStatement(bool allow_labels = true);
     BlockItem ParseBlockItem();
+    Statement ParseStatement();
 
+    Declaration ParseFunctionDeclaration();
+    Declaration ParseVariableDeclaration();
     Declaration ParseDeclaration();
 
     const std::list<lexer::Token> &m_tokens;

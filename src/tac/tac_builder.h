@@ -13,7 +13,6 @@ struct TACBuilder : public parser::IASTVisitor<tac::Value> {
     Value operator()(const parser::BinaryExpression &b) override;
     Value operator()(const parser::AssignmentExpression &a) override;
     Value operator()(const parser::ConditionalExpression &c) override;
-    Value operator()(const parser::FuncDeclStatement &f) override;
     Value operator()(const parser::ReturnStatement &r) override;
     Value operator()(const parser::IfStatement &i) override;
     Value operator()(const parser::GotoStatement &g) override;
@@ -29,10 +28,12 @@ struct TACBuilder : public parser::IASTVisitor<tac::Value> {
     Value operator()(const parser::SwitchStatement &s) override;
     Value operator()(const parser::CaseStatement &c) override;
     Value operator()(const parser::DefaultStatement &d) override;
-    Value operator()(const parser::Declaration &d) override;
+    Value operator()(const parser::FunctionDeclaration &f) override;
+    Value operator()(const parser::VariableDeclaration &v) override;
     Value operator()(std::monostate) override;
 
-    std::vector<Instruction> Convert(const std::vector<parser::BlockItem> &list);
+    std::vector<Instruction> ConvertTopLevel(const std::vector<parser::Declaration> &list);
+    std::vector<Instruction> ConvertBlock(const std::vector<parser::BlockItem> &list);
 
     std::vector<Instruction> m_instructions;
 };

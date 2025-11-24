@@ -137,22 +137,6 @@ Value TACBuilder::operator()(const parser::ConditionalExpression &c)
     return result;
 }
 
-Value TACBuilder::operator()(const parser::FuncDeclStatement &f)
-{
-    auto func = FunctionDefinition{};
-    func.name = f.name;
-    if (auto body = std::get_if<parser::BlockStatement>(f.body.get())) {
-        TACBuilder builder;
-        func.inst = builder.Convert(body->items);
-        // Avoid undefined behavior in functions where there is no return.
-        // If it already had a return, this extra one won't be executed
-        // and will be optimised out in later stages.
-        func.inst.push_back(Return{ Constant{ 0 } });
-    }
-    m_instructions.push_back(func);
-    return std::monostate();
-}
-
 Value TACBuilder::operator()(const parser::ReturnStatement &r)
 {
     auto ret = Return{};
@@ -313,12 +297,28 @@ Value TACBuilder::operator()(const parser::DefaultStatement &d)
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::Declaration &d)
+Value TACBuilder::operator()(const parser::FunctionDeclaration &f)
+{
+    auto func = FunctionDefinition{};
+    func.name = f.name;
+    if (auto body = std::get_if<parser::BlockStatement>(f.body.get())) {
+        TACBuilder builder;
+        func.inst = builder.ConvertBlock(body->items);
+        // Avoid undefined behavior in functions where there is no return.
+        // If it already had a return, this extra one won't be executed
+        // and will be optimised out in later stages.
+        func.inst.push_back(Return{ Constant{ 0 } });
+    }
+    m_instructions.push_back(func);
+    return std::monostate();
+}
+
+Value TACBuilder::operator()(const parser::VariableDeclaration &v)
 {
     // We discard declarations, but we handle their init expressions
-    if (d.init) {
-        Value result = std::visit(*this, *d.init);
-        m_instructions.push_back(Copy{ result, Variant{ d.identifier } });
+    if (v.init) {
+        Value result = std::visit(*this, *v.init);
+        m_instructions.push_back(Copy{ result, Variant{ v.identifier } });
     }
     return std::monostate();
 }
@@ -329,7 +329,14 @@ Value TACBuilder::operator()(std::monostate)
     return std::monostate();
 }
 
-std::vector<Instruction> TACBuilder::Convert(const std::vector<parser::BlockItem> &list) {
+std::vector<Instruction> TACBuilder::ConvertTopLevel(const std::vector<parser::Declaration> &list) {
+    for (auto &i : list)
+        std::visit(*this, i);
+    return m_instructions;
+}
+
+std::vector<Instruction> TACBuilder::ConvertBlock(const std::vector<parser::BlockItem> &list)
+{
     for (auto &i : list)
         std::visit(*this, i);
     return m_instructions;

@@ -117,13 +117,6 @@ void SemanticAnalyzer::operator()(ConditionalExpression &c)
     std::visit(*this, *c.falseBranch);
 }
 
-void SemanticAnalyzer::operator()(FuncDeclStatement &f)
-{
-    m_currentFunction = f.name;
-    std::visit(*this, *f.body);
-    m_currentFunction = "";
-}
-
 void SemanticAnalyzer::operator()(ReturnStatement &r)
 {
     std::visit(*this, *r.expr);
@@ -313,29 +306,36 @@ void SemanticAnalyzer::operator()(DefaultStatement &d)
     std::visit(*this, *d.statement);
 }
 
-void SemanticAnalyzer::operator()(Declaration &d)
+void SemanticAnalyzer::operator()(FunctionDeclaration &f)
+{
+    m_currentFunction = f.name;
+    std::visit(*this, *f.body);
+    m_currentFunction = "";
+}
+
+void SemanticAnalyzer::operator()(VariableDeclaration &v)
 {
     if (m_currentStage > VARIABLE_RESOLUTION)
         return;
 
     // Prohibit duplicate variabe declarations in the same scope
-    if (currentScope().contains(d.identifier))
-        Abort(std::format("Duplicate variable declaration ({})", d.identifier));
+    if (currentScope().contains(v.identifier))
+        Abort(std::format("Duplicate variable declaration ({})", v.identifier));
 
     // Give variables globally unique names; different variables
     // can have the same names in different scopes
-    std::string unique_name = makeNameUnique(d.identifier);
-    currentScope()[d.identifier] = unique_name;
-    d.identifier = unique_name;
-    if (d.init)
-        std::visit(*this, *d.init);
+    std::string unique_name = makeNameUnique(v.identifier);
+    currentScope()[v.identifier] = unique_name;
+    v.identifier = unique_name;
+    if (v.init)
+        std::visit(*this, *v.init);
 }
 
 void SemanticAnalyzer::operator()(std::monostate)
 {
 }
 
-Error SemanticAnalyzer::CheckAndMutate(std::vector<parser::BlockItem> &astVector)
+Error SemanticAnalyzer::CheckAndMutate(std::vector<parser::Declaration> &astVector)
 {
     m_scopes.clear();
     enterScope();

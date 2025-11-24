@@ -241,7 +241,7 @@ Statement ASTBuilder::ParseFor()
         Consume(TokenType::Punctator, ";");
     } else if (next->type() == TokenType::Keyword) {
         ret.init = std::make_unique<ForInit>(
-            std::forward<Declaration>(ParseDeclaration()));
+            to_for_init(ParseVariableDeclaration()));
     } else {
         ret.init = std::make_unique<ForInit>(
             to_for_init(ParseExpression(0)));
@@ -316,25 +316,12 @@ BlockItem ASTBuilder::ParseBlockItem()
     auto next = Peek();
     // TODO
     if (next->value() == "int")
-        return ParseDeclaration();
+        return to_block_item(ParseDeclaration());
     else
         return to_block_item(ParseStatement());
 }
 
-Statement ASTBuilder::ParseFunction()
-{
-    LOG("ParseFunction");
-    auto func = FuncDeclStatement{};
-    Consume(TokenType::Keyword);
-    func.name = Consume(TokenType::Identifier);
-    Consume(TokenType::Punctator, "(");
-    func.params.push_back(Consume(TokenType::Keyword, "void"));
-    Consume(TokenType::Punctator, ")");
-    func.body = unique_statement(ParseBlock());
-    return func;
-}
-
-Statement ASTBuilder::ParseStatement(bool allow_labels)
+Statement ASTBuilder::ParseStatement()
 {
     LOG("ParseStatement");
     auto next = Peek();
@@ -361,9 +348,10 @@ Statement ASTBuilder::ParseStatement(bool allow_labels)
             return ParseCase();
         if (next->value() == "default")
             return ParseDefault();
-        // TODO
+        /*
         if (next->value() == "int")
             return ParseFunction();
+        */
         Abort("Not implemented yet.", next->line());
     }
 
@@ -376,8 +364,7 @@ Statement ASTBuilder::ParseStatement(bool allow_labels)
         }
     }
 
-    // Labels are not allowed outside of functions
-    if (allow_labels && next->type() == TokenType::Identifier) {
+    if (next->type() == TokenType::Identifier) {
         next = Peek(1);
         if (next->type() == TokenType::Operator && next->value() == ":")
             return ParseLabeledStatement();
@@ -388,10 +375,23 @@ Statement ASTBuilder::ParseStatement(bool allow_labels)
     return Statement(ExpressionStatement{ UE(expr) });
 }
 
-Declaration ASTBuilder::ParseDeclaration()
+Declaration ASTBuilder::ParseFunctionDeclaration()
 {
-    LOG("ParseDeclaration");
-    auto decl = Declaration{};
+    LOG("ParseFunctionDeclaration");
+    auto func = FunctionDeclaration{};
+    Consume(TokenType::Keyword);
+    func.name = Consume(TokenType::Identifier);
+    Consume(TokenType::Punctator, "(");
+    func.params.push_back(Consume(TokenType::Keyword, "void"));
+    Consume(TokenType::Punctator, ")");
+    func.body = unique_statement(ParseBlock());
+    return func;
+}
+
+Declaration ASTBuilder::ParseVariableDeclaration()
+{
+    LOG("ParseVariableDeclaration");
+    auto decl = VariableDeclaration{};
     Consume(TokenType::Keyword, "int");
     decl.identifier = Consume(TokenType::Identifier);
     auto next = Peek();
@@ -405,6 +405,16 @@ Declaration ASTBuilder::ParseDeclaration()
     return decl;
 }
 
+Declaration ASTBuilder::ParseDeclaration()
+{
+    LOG("ParseDeclaration");
+    auto next = Peek(2);
+    if (next && next->type() == TokenType::Punctator && next->value() == "(")
+        return ParseFunctionDeclaration();
+    else
+        return ParseVariableDeclaration();
+}
+
 void ASTBuilder::Abort(std::string_view message, size_t line)
 {
     m_error = PARSER_ERROR;
@@ -416,21 +426,19 @@ void ASTBuilder::Abort(std::string_view message, size_t line)
     throw SyntaxError(m_message);
 }
 
-std::vector<BlockItem> ASTBuilder::Build()
+std::vector<Declaration> ASTBuilder::Build()
 {
-    std::vector<BlockItem> root;
+    std::vector<Declaration> root;
     try {
-        while (Peek()) {
-            auto statement = ParseStatement(/* allow_labels */ false);
-            root.push_back(to_block_item(std::move(statement)));
+        while (Peek())
+            root.push_back(ParseDeclaration());
+
+        if (m_pos != m_tokens.end()) {
+            std::cerr << "Asserting on " << m_pos->value() << std::endl;
+            assert(m_pos == m_tokens.end());
         }
     } catch (const SyntaxError &e) {
         std::cerr << e.what() << std::endl;
-    }
-
-    if (m_pos != m_tokens.end()) {
-        std::cerr << "Asserting on " << m_pos->value() << std::endl;
-        assert(m_pos == m_tokens.end());
     }
     return root;
 }

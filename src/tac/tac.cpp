@@ -3,10 +3,10 @@
 
 namespace tac {
 
-std::vector<Instruction> from_ast(const std::vector<parser::BlockItem> &ast_root)
+std::vector<Instruction> from_ast(const std::vector<parser::Declaration> &ast_root)
 {
     tac::TACBuilder astToTac;
-    return astToTac.Convert(ast_root);
+    return astToTac.ConvertTopLevel(ast_root);
 }
 
 } // namespace tac

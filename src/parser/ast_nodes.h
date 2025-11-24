@@ -8,11 +8,16 @@
 
 namespace parser {
 
-#define AST_STATEMENT_LIST(X) \
-    X(FuncDeclStatement, \
+#define AST_DECLARATION_LIST(X) \
+    X(FunctionDeclaration, \
         std::string name; \
         std::vector<std::string> params; \
         std::unique_ptr<Statement> body;) \
+    X(VariableDeclaration, \
+        std::string identifier; \
+        std::unique_ptr<Expression> init;) \
+
+#define AST_STATEMENT_LIST(X) \
     X(ReturnStatement, \
         std::unique_ptr<Expression> expr;) \
     X(IfStatement, \
@@ -82,30 +87,27 @@ namespace parser {
         std::unique_ptr<Expression> trueBranch; \
         std::unique_ptr<Expression> falseBranch;)
 
+AST_DECLARATION_LIST(FORWARD_DECL_NODE)
 AST_STATEMENT_LIST(FORWARD_DECL_NODE)
 AST_EXPRESSION_LIST(FORWARD_DECL_NODE)
-struct Declaration;
 
+using Declaration = std::variant<AST_DECLARATION_LIST(ADD_TO_VARIANT) std::monostate>;
 using Statement = std::variant<AST_STATEMENT_LIST(ADD_TO_VARIANT) std::monostate>;
 using Expression = std::variant<AST_EXPRESSION_LIST(ADD_TO_VARIANT) std::monostate>;
 using BlockItem = std::variant<
+    AST_DECLARATION_LIST(ADD_TO_VARIANT)
     AST_STATEMENT_LIST(ADD_TO_VARIANT)
-    Declaration,
     std::monostate
 >;
 using ForInit = std::variant<
+    AST_DECLARATION_LIST(ADD_TO_VARIANT)
     AST_EXPRESSION_LIST(ADD_TO_VARIANT)
-    Declaration,
     std::monostate
 >;
 
+AST_DECLARATION_LIST(DEFINE_NODE)
 AST_STATEMENT_LIST(DEFINE_NODE)
 AST_EXPRESSION_LIST(DEFINE_NODE)
-
-struct Declaration {
-    std::string identifier;
-    std::unique_ptr<Expression> init; // Optional
-};
 
 template <typename T>
 std::unique_ptr<Expression> unique_expression(T &&item) {
@@ -119,13 +121,15 @@ std::unique_ptr<Statement> unique_statement(T &&item) {
 }
 #define US(x) unique_statement(std::move(x))
 
-inline BlockItem to_block_item(Statement &&stmt) {
+template <typename T>
+inline BlockItem to_block_item(T &&stmt) {
     return std::visit([](auto &&s) -> BlockItem {
         return BlockItem{ std::forward<decltype(s)>(s) };
     }, std::move(stmt));
 }
 
-inline ForInit to_for_init(Expression &&expr) {
+template <typename T>
+inline ForInit to_for_init(T &&expr) {
     return std::visit([](auto &&s) -> ForInit {
         return ForInit{ std::forward<decltype(s)>(s) };
     }, std::move(expr));
