@@ -36,6 +36,8 @@ int main(int argc, char **argv)
         std::string arg = argv[i];
         if (arg.rfind("--", 0) == 0)
             flags.push_back(arg.substr(2)); // --arg
+        else if (arg.rfind("-", 0) == 0)
+            flags.push_back(arg.substr(1)); // -arg
         else
             inputs.push_back(arg); // input arg
     }
@@ -147,10 +149,15 @@ int main(int argc, char **argv)
     output_assembly_file.close();
 
     // Compilation
+    bool standalone = !has_flag("c");
     std::filesystem::path output_compiled(output_assembly_path);
-    output_compiled.replace_extension();
+    if (standalone)
+        output_compiled.replace_extension();
+    else
+        output_compiled.replace_extension(".o");
     std::string compile_command = std::format(
-        "gcc {} -o {}",
+        "gcc {} {} -o {}",
+        standalone ? "" : "-c",
         output_assembly_path.string(),
         output_compiled.string());
     if (std::system(compile_command.c_str()) != 0) {

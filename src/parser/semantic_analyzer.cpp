@@ -117,6 +117,12 @@ void SemanticAnalyzer::operator()(ConditionalExpression &c)
     std::visit(*this, *c.falseBranch);
 }
 
+void SemanticAnalyzer::operator()(FunctionCallExpression &f)
+{
+    for (auto &a : f.args)
+        std::visit(*this, *a);
+}
+
 void SemanticAnalyzer::operator()(ReturnStatement &r)
 {
     std::visit(*this, *r.expr);

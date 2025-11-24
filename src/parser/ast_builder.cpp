@@ -123,8 +123,12 @@ Expression ASTBuilder::ParseFactor()
     if (next->type() == TokenType::NumericLiteral)
         return NumberExpression{ std::stoi(Consume(TokenType::NumericLiteral)) };
 
-    if (next->type() == TokenType::Identifier)
+    if (next->type() == TokenType::Identifier) {
+        next = Peek(1);
+        if (next->type() == TokenType::Punctator && next->value() == "(")
+            return ParseFunctionCall();
         return VariableExpression{ Consume(TokenType::Identifier) };
+    }
 
     // Prefix unary expressions (right-associative)
     if (next->type() == TokenType::Operator && isUnaryOperator(next->value())) {
@@ -134,6 +138,23 @@ Expression ASTBuilder::ParseFactor()
     }
     assert(false);
     return std::monostate();
+}
+
+Expression ASTBuilder::ParseFunctionCall()
+{
+    auto ret = FunctionCallExpression{};
+    ret.identifier = Consume(TokenType::Identifier);
+
+    Consume(TokenType::Punctator, "(");
+    auto next = Peek();
+    while (next->value() != ")") {
+        if (next->value() == ",")
+            Consume(TokenType::Operator, ",");
+        ret.args.push_back(unique_expression(ParseExpression(0)));
+        next = Peek();
+    }
+    Consume(TokenType::Punctator, ")");
+    return ret;
 }
 
 Statement ASTBuilder::ParseReturn()
@@ -314,7 +335,6 @@ BlockItem ASTBuilder::ParseBlockItem()
 {
     LOG("ParseBlockItem");
     auto next = Peek();
-    // TODO
     if (next->value() == "int")
         return to_block_item(ParseDeclaration());
     else
@@ -348,10 +368,6 @@ Statement ASTBuilder::ParseStatement()
             return ParseCase();
         if (next->value() == "default")
             return ParseDefault();
-        /*
-        if (next->value() == "int")
-            return ParseFunction();
-        */
         Abort("Not implemented yet.", next->line());
     }
 
@@ -381,10 +397,28 @@ Declaration ASTBuilder::ParseFunctionDeclaration()
     auto func = FunctionDeclaration{};
     Consume(TokenType::Keyword);
     func.name = Consume(TokenType::Identifier);
+
     Consume(TokenType::Punctator, "(");
-    func.params.push_back(Consume(TokenType::Keyword, "void"));
+    auto next = Peek();
+    // 'void' must be there in empty parameter lists
+    if (next->type() == TokenType::Keyword && next->value() == "void")
+        Consume(TokenType::Keyword);
+    else {
+        while (next->value() != ")") {
+            if (next->value() == ",")
+                Consume(TokenType::Operator, ",");
+            Consume(TokenType::Keyword);
+            func.params.push_back(Consume(TokenType::Identifier));
+            next = Peek();
+        }
+    }
     Consume(TokenType::Punctator, ")");
-    func.body = unique_statement(ParseBlock());
+
+    next = Peek();
+    if (next->type() == TokenType::Punctator && next->value() == "{")
+        func.body = unique_statement(ParseBlock());
+    else
+        Consume(TokenType::Punctator, ";");
     return func;
 }
 

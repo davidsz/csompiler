@@ -27,6 +27,7 @@ private:
 
     Expression ParseExpression(int min_precedence);
     Expression ParseFactor();
+    Expression ParseFunctionCall();
 
     Statement ParseReturn();
     Statement ParseIf();

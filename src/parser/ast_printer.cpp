@@ -54,6 +54,18 @@ void ASTPrinter::operator()(const ConditionalExpression &c)
     pad(); std::cout << ")" << std::endl;
 }
 
+void ASTPrinter::operator()(const FunctionCallExpression &f)
+{
+    pad(); std::cout << "FunctionCallExpression(" << std::endl;
+    tab();
+    pad(); std::cout << "Identifier: " << f.identifier << std::endl;
+    pad(); std::cout << "Args" << std::endl;
+    for (auto &a : f.args)
+        std::visit(*this, *a);
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
 void ASTPrinter::operator()(const ReturnStatement &s)
 {
     pad(); std::cout << "Return" << std::endl;
@@ -191,7 +203,8 @@ void ASTPrinter::operator()(const FunctionDeclaration &f)
     pad(); std::cout << "Params: ";
     for (auto &p : f.params) std::cout << p << " ";
     std::cout << std::endl;
-    std::visit(*this, *f.body);
+    if (f.body)
+        std::visit(*this, *f.body);
     shift_tab();
 }
 

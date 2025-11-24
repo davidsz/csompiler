@@ -16,6 +16,7 @@ struct ASTPrinter : public IASTVisitor<void> {
     void operator()(const BinaryExpression &e) override;
     void operator()(const AssignmentExpression &a) override;
     void operator()(const ConditionalExpression &c) override;
+    void operator()(const FunctionCallExpression &f) override;
     void operator()(const ReturnStatement &s) override;
     void operator()(const IfStatement &i) override;
     void operator()(const GotoStatement &g) override;

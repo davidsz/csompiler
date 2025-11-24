@@ -137,6 +137,11 @@ Value TACBuilder::operator()(const parser::ConditionalExpression &c)
     return result;
 }
 
+Value TACBuilder::operator()(const parser::FunctionCallExpression &)
+{
+    return Constant{ 0 };
+}
+
 Value TACBuilder::operator()(const parser::ReturnStatement &r)
 {
     auto ret = Return{};

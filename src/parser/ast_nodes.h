@@ -85,7 +85,10 @@ namespace parser {
     X(ConditionalExpression, \
         std::unique_ptr<Expression> condition; \
         std::unique_ptr<Expression> trueBranch; \
-        std::unique_ptr<Expression> falseBranch;)
+        std::unique_ptr<Expression> falseBranch;) \
+    X(FunctionCallExpression, \
+        std::string identifier; \
+        std::vector<std::unique_ptr<Expression>> args;) \
 
 AST_DECLARATION_LIST(FORWARD_DECL_NODE)
 AST_STATEMENT_LIST(FORWARD_DECL_NODE)
