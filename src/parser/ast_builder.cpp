@@ -120,10 +120,8 @@ Expression ASTBuilder::ParseFactor()
         return expr;
     }
 
-    if (next->type() == TokenType::NumericLiteral) {
-        double value = std::stod(Consume(TokenType::NumericLiteral));
-        return NumberExpression{ value };
-    }
+    if (next->type() == TokenType::NumericLiteral)
+        return NumberExpression{ std::stoi(Consume(TokenType::NumericLiteral)) };
 
     if (next->type() == TokenType::Identifier)
         return VariableExpression{ Consume(TokenType::Identifier) };
@@ -296,7 +294,8 @@ Statement ASTBuilder::ParseDefault()
     Consume(TokenType::Keyword, "default");
     Consume(TokenType::Operator, ":");
     return DefaultStatement{
-        unique_statement(ParseStatement())
+        unique_statement(ParseStatement()),
+        ""
     };
 }
 

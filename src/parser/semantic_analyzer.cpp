@@ -44,9 +44,29 @@ std::optional<std::string> SemanticAnalyzer::lookupVariable(const std::string &n
     return std::nullopt;
 }
 
-bool SemanticAnalyzer::isDeclaredInCurrentScope(const std::string &name)
+std::optional<std::string> SemanticAnalyzer::getInnermostLoopLabel()
 {
-    return currentScope().contains(name);
+    for (auto it = m_controlFlowLabels.rbegin(); it != m_controlFlowLabels.rend(); it++) {
+        if (it->second == Loop)
+            return it->first;
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> SemanticAnalyzer::getInnermostSwitchLabel()
+{
+    for (auto it = m_controlFlowLabels.rbegin(); it != m_controlFlowLabels.rend(); it++) {
+        if (it->second == Switch)
+            return it->first;
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> SemanticAnalyzer::getInnermostLabel()
+{
+    if (!m_controlFlowLabels.empty())
+        return m_controlFlowLabels.back().first;
+    return std::nullopt;
 }
 
 void SemanticAnalyzer::operator()(NumberExpression &)
@@ -135,9 +155,9 @@ void SemanticAnalyzer::operator()(LabeledStatement &l)
         auto [it, inserted] = s.insert(l.label);
         if (!inserted)
             Abort(std::format("Label {} declared multiple times inside function {}", l.label, m_currentFunction));
-
-        std::visit(*this, *l.statement);
     }
+
+    std::visit(*this, *l.statement);
 }
 
 void SemanticAnalyzer::operator()(BlockStatement &b)
@@ -162,9 +182,11 @@ void SemanticAnalyzer::operator()(BreakStatement &b)
     if (m_currentStage != LOOP_LABELING)
         return;
 
-    if (m_loopLabels.empty())
-        Abort("Break is not allowed outside of loops.");
-    b.label = m_loopLabels.back();
+    // Allowed in switches and loops
+    if (auto label = getInnermostLabel())
+        b.label = *label;
+    else
+        Abort("Break is not allowed outside of switch and loops.");
 }
 
 void SemanticAnalyzer::operator()(ContinueStatement &c)
@@ -172,37 +194,39 @@ void SemanticAnalyzer::operator()(ContinueStatement &c)
     if (m_currentStage != LOOP_LABELING)
         return;
 
-    if (m_loopLabels.empty())
+    // Allowed only in loops
+    if (auto label = getInnermostLoopLabel())
+        c.label = *label;
+    else
         Abort("Continue is not allowed outside of loops.");
-    c.label = m_loopLabels.back();
 }
 
 void SemanticAnalyzer::operator()(WhileStatement &w)
 {
     if (m_currentStage == LOOP_LABELING) {
         w.label = makeNameUnique("while");
-        m_loopLabels.push_back(w.label);
+        m_controlFlowLabels.push_back(make_pair(w.label, Loop));
     }
 
     std::visit(*this, *w.condition);
     std::visit(*this, *w.body);
 
     if (m_currentStage == LOOP_LABELING)
-        m_loopLabels.pop_back();
+        m_controlFlowLabels.pop_back();
 }
 
 void SemanticAnalyzer::operator()(DoWhileStatement &d)
 {
     if (m_currentStage == LOOP_LABELING) {
         d.label = makeNameUnique("do");
-        m_loopLabels.push_back(d.label);
+        m_controlFlowLabels.push_back(make_pair(d.label, Loop));
     }
 
     std::visit(*this, *d.body);
     std::visit(*this, *d.condition);
 
     if (m_currentStage == LOOP_LABELING)
-        m_loopLabels.pop_back();
+        m_controlFlowLabels.pop_back();
 }
 
 void SemanticAnalyzer::operator()(ForStatement &f)
@@ -213,7 +237,7 @@ void SemanticAnalyzer::operator()(ForStatement &f)
 
     if (m_currentStage == LOOP_LABELING) {
         f.label = makeNameUnique("for");
-        m_loopLabels.push_back(f.label);
+        m_controlFlowLabels.push_back(make_pair(f.label, Loop));
     }
 
     if (f.init)
@@ -225,25 +249,68 @@ void SemanticAnalyzer::operator()(ForStatement &f)
     std::visit(*this, *f.body);
 
     if (m_currentStage == LOOP_LABELING)
-        m_loopLabels.pop_back();
+        m_controlFlowLabels.pop_back();
 
     if (m_currentStage == VARIABLE_RESOLUTION)
         leaveScope();
 }
 
-void SemanticAnalyzer::operator()(SwitchStatement &)
+void SemanticAnalyzer::operator()(SwitchStatement &s)
 {
+    if (m_currentStage == LOOP_LABELING) {
+        m_switches.push_back(&s);
+        s.label = makeNameUnique("switch");
+        m_controlFlowLabels.push_back(make_pair(s.label, Switch));
+    }
 
+    std::visit(*this, *s.condition);
+    std::visit(*this, *s.body);
+
+    if (m_currentStage == LOOP_LABELING) {
+        m_controlFlowLabels.pop_back();
+        m_switches.pop_back();
+    }
 }
 
-void SemanticAnalyzer::operator()(CaseStatement &)
+void SemanticAnalyzer::operator()(CaseStatement &c)
 {
+    if (m_currentStage == LOOP_LABELING) {
+        if (auto switch_label = getInnermostSwitchLabel()) {
+            // TODO: It should be constant expression, but not necessarily a number
+            if (auto expr = std::get_if<NumberExpression>(c.condition.get())) {
+                c.label = std::format("case_{}_{}", *switch_label, expr->value);
+                SwitchStatement *s = m_switches.back();
+                auto [it, inserted] = s->cases.insert(expr->value);
+                if (!inserted)
+                    Abort("Duplicate case in switch");
+            } else
+                Abort("Invalid expression in case statement");
+        } else
+            Abort("Case statement is not allowed outside of switch");
+    }
 
+    std::visit(*this, *c.condition);
+    std::visit(*this, *c.statement);
 }
 
-void SemanticAnalyzer::operator()(DefaultStatement &)
+void SemanticAnalyzer::operator()(DefaultStatement &d)
 {
+    if (m_currentStage == LOOP_LABELING) {
+        if (auto label = getInnermostSwitchLabel())
+            d.label = std::format("default_{}", *label);
+        else
+            Abort("Default statement is not allowed outside of switch");
 
+        if (!m_switches.empty()) {
+            SwitchStatement *s = m_switches.back();
+            if (s->hasDefault)
+                Abort("Duplicate default in switch");
+            else
+                s->hasDefault = true;
+        }
+    }
+
+    std::visit(*this, *d.statement);
 }
 
 void SemanticAnalyzer::operator()(Declaration &d)
@@ -252,7 +319,7 @@ void SemanticAnalyzer::operator()(Declaration &d)
         return;
 
     // Prohibit duplicate variabe declarations in the same scope
-    if (isDeclaredInCurrentScope(d.identifier))
+    if (currentScope().contains(d.identifier))
         Abort(std::format("Duplicate variable declaration ({})", d.identifier));
 
     // Give variables globally unique names; different variables
@@ -273,7 +340,7 @@ Error SemanticAnalyzer::CheckAndMutate(std::vector<parser::BlockItem> &astVector
     m_scopes.clear();
     enterScope();
     m_labels.clear();
-    m_loopLabels.clear();
+    m_controlFlowLabels.clear();
 
     try {
         m_currentStage = VARIABLE_RESOLUTION;

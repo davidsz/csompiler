@@ -13,7 +13,8 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
         VARIABLE_RESOLUTION = 0,
         // Uses previously collected label names to catch errors
         LABEL_ANALYSIS = 1,
-        // Label loops and connect breaks/continues to corresponding ones
+        // Label control flow statements and connect breaks/continues
+        // to corresponding ones
         LOOP_LABELING = 2,
     };
 
@@ -52,7 +53,6 @@ private:
     void enterScope();
     void leaveScope();
     Scope &currentScope();
-    bool isDeclaredInCurrentScope(const std::string &name);
     std::optional<std::string> lookupVariable(const std::string &name);
 
     Stage m_currentStage = VARIABLE_RESOLUTION;
@@ -61,7 +61,18 @@ private:
     // Function names mapped to the labels defined inside
     std::unordered_map<std::string, std::unordered_set<std::string>> m_labels;
 
-    std::vector<std::string> m_loopLabels;
+    // Labeling loops and switches
+    enum ControlFlowType {
+        Loop,
+        Switch
+    };
+    std::vector<std::pair<std::string, ControlFlowType>> m_controlFlowLabels;
+    std::optional<std::string> getInnermostLoopLabel();
+    std::optional<std::string> getInnermostSwitchLabel();
+    std::optional<std::string> getInnermostLabel();
+
+    // Stack of switches
+    std::vector<SwitchStatement *> m_switches;
 };
 
 } // namespace parser

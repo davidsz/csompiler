@@ -273,18 +273,43 @@ Value TACBuilder::operator()(const parser::ForStatement &f)
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::SwitchStatement &)
+Value TACBuilder::operator()(const parser::SwitchStatement &s)
 {
+    auto label_break = std::format("break_{}", s.label);
+
+    Value condition = std::visit(*this, *s.condition);
+    for (auto &c : s.cases) {
+        auto binary = Binary{};
+        binary.op = BinaryOperator::Subtract;
+        binary.src1 = condition;
+        binary.src2 = Constant { c };
+        binary.dst = Variant{ generateTempVariableName() };
+        m_instructions.push_back(binary);
+        m_instructions.push_back(JumpIfZero{
+            binary.dst,
+            std::format("case_{}_{}", s.label, c)
+        });
+    }
+    if (s.hasDefault)
+        m_instructions.push_back(Jump{ std::format("default_{}", s.label) });
+    else
+        m_instructions.push_back(Jump{ label_break });
+    std::visit(*this, *s.body);
+    m_instructions.push_back(Label{ label_break });
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::CaseStatement &)
+Value TACBuilder::operator()(const parser::CaseStatement &c)
 {
+    m_instructions.push_back(Label{ c.label });
+    std::visit(*this, *c.statement);
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::DefaultStatement &)
+Value TACBuilder::operator()(const parser::DefaultStatement &d)
 {
+    m_instructions.push_back(Label{ d.label });
+    std::visit(*this, *d.statement);
     return std::monostate();
 }
 

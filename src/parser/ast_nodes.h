@@ -2,6 +2,7 @@
 
 #include "common/macro.h"
 #include "common/operator.h"
+#include <set>
 #include <string>
 #include <vector>
 
@@ -49,16 +50,20 @@ namespace parser {
     X(SwitchStatement, \
         std::unique_ptr<Expression> condition; \
         std::unique_ptr<Statement> body; \
+        std::set<int> cases; \
+        bool hasDefault; \
         std::string label;) \
     X(CaseStatement, \
         std::unique_ptr<Expression> condition; \
-        std::unique_ptr<Statement> statement;) \
+        std::unique_ptr<Statement> statement; \
+        std::string label;) \
     X(DefaultStatement, \
-        std::unique_ptr<Statement> statement;) \
+        std::unique_ptr<Statement> statement; \
+        std::string label;) \
 
 #define AST_EXPRESSION_LIST(X) \
     X(NumberExpression, \
-        double value;) \
+        int value;) \
     X(VariableExpression, \
         std::string identifier;) \
     X(UnaryExpression, \
