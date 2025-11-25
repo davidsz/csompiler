@@ -34,14 +34,14 @@ SemanticAnalyzer::Scope &SemanticAnalyzer::currentScope()
     return m_scopes.back();
 }
 
-std::optional<std::string> SemanticAnalyzer::lookupVariable(const std::string &name)
+SemanticAnalyzer::IdentifierInfo *SemanticAnalyzer::lookupIdentifier(const std::string &name)
 {
     for (auto scope = m_scopes.rbegin(); scope != m_scopes.rend(); scope++) {
         auto found = scope->find(name);
         if (found != scope->end())
-            return found->second;
+            return &found->second;
     }
-    return std::nullopt;
+    return nullptr;
 }
 
 std::optional<std::string> SemanticAnalyzer::getInnermostLoopLabel()
@@ -75,13 +75,13 @@ void SemanticAnalyzer::operator()(NumberExpression &)
 
 void SemanticAnalyzer::operator()(VariableExpression &v)
 {
-    if (m_currentStage > VARIABLE_RESOLUTION)
+    if (m_currentStage > IDENTIFIER_RESOLUTION)
         return;
 
-    if (auto unique_name = lookupVariable(v.identifier))
-        v.identifier = *unique_name;
+    if (auto info = lookupIdentifier(v.identifier))
+        v.identifier = info->uniqueName;
     else
-        Abort("Undeclared variable");
+        Abort(std::format("Undeclared variable '{}'", v.identifier));
 }
 
 void SemanticAnalyzer::operator()(UnaryExpression &u)
@@ -119,6 +119,16 @@ void SemanticAnalyzer::operator()(ConditionalExpression &c)
 
 void SemanticAnalyzer::operator()(FunctionCallExpression &f)
 {
+    if (m_currentStage == IDENTIFIER_RESOLUTION) {
+        // In valid programs, the unique name is the same as the old name.
+        // We assign it as a new name to catch errors later like the identifier
+        // is being a variable name which can't be called.
+        if (auto info = lookupIdentifier(f.identifier))
+            f.identifier = info->uniqueName;
+        else
+            Abort(std::format("Undeclared function '{}' can not be called", f.identifier));
+    }
+
     for (auto &a : f.args)
         std::visit(*this, *a);
 }
@@ -148,7 +158,7 @@ void SemanticAnalyzer::operator()(GotoStatement &g)
 
 void SemanticAnalyzer::operator()(LabeledStatement &l)
 {
-    if (m_currentStage == VARIABLE_RESOLUTION) {
+    if (m_currentStage == IDENTIFIER_RESOLUTION) {
         // Collect labels for the later stages, catch duplications here
         auto &s = m_labels[m_currentFunction];
         auto [it, inserted] = s.insert(l.label);
@@ -161,10 +171,17 @@ void SemanticAnalyzer::operator()(LabeledStatement &l)
 
 void SemanticAnalyzer::operator()(BlockStatement &b)
 {
-    enterScope();
+    // In function declarations, we already entered the
+    // scope when processing the arguments
+    bool has_own_scope = !m_parentIsAFunction;
+    m_parentIsAFunction = false;
+
+    if (has_own_scope)
+        enterScope();
     for (auto &i : b.items)
         std::visit(*this, i);
-    leaveScope();
+    if (has_own_scope)
+        leaveScope();
 }
 
 void SemanticAnalyzer::operator()(ExpressionStatement &e)
@@ -231,7 +248,7 @@ void SemanticAnalyzer::operator()(DoWhileStatement &d)
 void SemanticAnalyzer::operator()(ForStatement &f)
 {
     // The for header introduces a new variable scope
-    if (m_currentStage == VARIABLE_RESOLUTION)
+    if (m_currentStage == IDENTIFIER_RESOLUTION)
         enterScope();
 
     if (m_currentStage == LOOP_LABELING) {
@@ -250,7 +267,7 @@ void SemanticAnalyzer::operator()(ForStatement &f)
     if (m_currentStage == LOOP_LABELING)
         m_controlFlowLabels.pop_back();
 
-    if (m_currentStage == VARIABLE_RESOLUTION)
+    if (m_currentStage == IDENTIFIER_RESOLUTION)
         leaveScope();
 }
 
@@ -315,13 +332,53 @@ void SemanticAnalyzer::operator()(DefaultStatement &d)
 void SemanticAnalyzer::operator()(FunctionDeclaration &f)
 {
     m_currentFunction = f.name;
-    std::visit(*this, *f.body);
+
+    if (m_currentStage == IDENTIFIER_RESOLUTION) {
+        if (m_scopes.size() != 1 && f.body)
+            Abort(std::format("Function definition ({}) allowed only in the top level scope.", f.name));
+
+        // Resolve the function name first
+        auto it = currentScope().find(f.name);
+        if (it != currentScope().end() && !it->second.hasLinkage)
+            Abort(std::format("Duplicate function declaration ({})", f.name));
+
+        currentScope()[f.name] = IdentifierInfo {
+            .uniqueName = f.name,
+            .hasLinkage = true
+        };
+
+        // Function arguments introduce a new variable scope
+        enterScope();
+        std::vector<std::string> new_params;
+        // They are handled the same way as local variable declarations
+        for (auto &p : f.params) {
+            if (currentScope().contains(p))
+                Abort(std::format("Duplicate function parameter ({})", p));
+            std::string unique_name = makeNameUnique(p);
+            currentScope()[p] = IdentifierInfo {
+                .uniqueName = unique_name,
+                .hasLinkage = false
+            };
+            new_params.push_back(unique_name);
+        }
+        // Update them to unique parameter names
+        f.params = new_params;
+    }
+
+    if (f.body) {
+        m_parentIsAFunction = true;
+        std::visit(*this, *f.body);
+    }
+
+    if (m_currentStage == IDENTIFIER_RESOLUTION)
+        leaveScope();
+
     m_currentFunction = "";
 }
 
 void SemanticAnalyzer::operator()(VariableDeclaration &v)
 {
-    if (m_currentStage > VARIABLE_RESOLUTION)
+    if (m_currentStage > IDENTIFIER_RESOLUTION)
         return;
 
     // Prohibit duplicate variabe declarations in the same scope
@@ -331,7 +388,10 @@ void SemanticAnalyzer::operator()(VariableDeclaration &v)
     // Give variables globally unique names; different variables
     // can have the same names in different scopes
     std::string unique_name = makeNameUnique(v.identifier);
-    currentScope()[v.identifier] = unique_name;
+    currentScope()[v.identifier] = IdentifierInfo {
+        .uniqueName = unique_name,
+        .hasLinkage = false
+    };
     v.identifier = unique_name;
     if (v.init)
         std::visit(*this, *v.init);
@@ -349,7 +409,7 @@ Error SemanticAnalyzer::CheckAndMutate(std::vector<parser::Declaration> &astVect
     m_controlFlowLabels.clear();
 
     try {
-        m_currentStage = VARIABLE_RESOLUTION;
+        m_currentStage = IDENTIFIER_RESOLUTION;
         for (auto &i : astVector)
             std::visit(*this, i);
 
@@ -370,7 +430,8 @@ Error SemanticAnalyzer::CheckAndMutate(std::vector<parser::Declaration> &astVect
 
 void SemanticAnalyzer::Abort(std::string_view message)
 {
-    throw SemanticError(message);
+    throw SemanticError(
+        std::format("[Semantic error in stage {}] {}", (int)m_currentStage, message));
 }
 
 } // namespace parser

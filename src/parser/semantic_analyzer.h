@@ -9,8 +9,9 @@ namespace parser {
 
 struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
     enum Stage {
-        // Resolves variables, collects symbols for later stages
-        VARIABLE_RESOLUTION = 0,
+        // Resolves variables, function names,
+        // collects symbols for later stages
+        IDENTIFIER_RESOLUTION = 0,
         // Uses previously collected label names to catch errors
         LABEL_ANALYSIS = 1,
         // Label control flow statements and connect breaks/continues
@@ -48,16 +49,22 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
     void Abort(std::string_view);
 
 private:
-    // Variable names mapped to their generated unique names
-    using Scope = std::unordered_map<std::string, std::string>;
+    Stage m_currentStage = IDENTIFIER_RESOLUTION;
+
+    // Variable and function names mapped to their IdentifierInfo
+    struct IdentifierInfo {
+        std::string uniqueName;
+        bool hasLinkage;
+    };
+    using Scope = std::unordered_map<std::string, IdentifierInfo>;
     std::vector<Scope> m_scopes;
     void enterScope();
     void leaveScope();
     Scope &currentScope();
-    std::optional<std::string> lookupVariable(const std::string &name);
+    IdentifierInfo *lookupIdentifier(const std::string &name);
 
-    Stage m_currentStage = VARIABLE_RESOLUTION;
     std::string m_currentFunction = "";
+    bool m_parentIsAFunction = false;
 
     // Function names mapped to the labels defined inside
     std::unordered_map<std::string, std::unordered_set<std::string>> m_labels;
