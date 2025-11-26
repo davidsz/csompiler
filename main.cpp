@@ -5,6 +5,7 @@
 #include "parser/ast_printer.h"
 #include "parser/parser.h"
 #include "parser/semantic_analyzer.h"
+#include "parser/type_checker.h"
 #include "tac/tac.h"
 #include "tac/tac_printer.h"
 #include <cstdlib>
@@ -108,6 +109,10 @@ int main(int argc, char **argv)
     // Semantic analysis
     parser::SemanticAnalyzer semanticAnalyzer;
     if (Error error = semanticAnalyzer.CheckAndMutate(parser_result.root))
+        return error;
+
+    parser::TypeChecker typeChecker;
+    if (Error error = typeChecker.CheckAndMutate(parser_result.root))
         return error;
 
 #if 1

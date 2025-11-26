@@ -152,7 +152,7 @@ void SemanticAnalyzer::operator()(GotoStatement &g)
     if (m_currentStage == LABEL_ANALYSIS) {
         auto &s = m_labels[m_currentFunction];
         if (!s.contains(g.label))
-            Abort(std::format("Goto refers to an undeclared label {} inside function {}", g.label, m_currentFunction));
+            Abort(std::format("Goto refers to an undeclared label '{}' inside function '{}'", g.label, m_currentFunction));
     }
 }
 
@@ -163,7 +163,7 @@ void SemanticAnalyzer::operator()(LabeledStatement &l)
         auto &s = m_labels[m_currentFunction];
         auto [it, inserted] = s.insert(l.label);
         if (!inserted)
-            Abort(std::format("Label {} declared multiple times inside function {}", l.label, m_currentFunction));
+            Abort(std::format("Label '{}' declared multiple times inside function '{}'", l.label, m_currentFunction));
     }
 
     std::visit(*this, *l.statement);

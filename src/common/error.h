@@ -6,4 +6,5 @@ enum Error {
     LEXER_ERROR = 2,
     PARSER_ERROR = 3,
     SEMANTIC_ERROR = 4,
+    TYPE_ERROR = 5,
 };
