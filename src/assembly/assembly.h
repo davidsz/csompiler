@@ -4,6 +4,6 @@
 
 namespace assembly {
 
-std::string from_tac(std::vector<tac::Instruction>);
+std::string from_tac(std::vector<tac::TopLevel>);
 
 }; // assembly

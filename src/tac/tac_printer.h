@@ -21,11 +21,12 @@ struct TACPrinter : public ITACVisitor<void> {
     void operator()(const tac::JumpIfZero &j) override;
     void operator()(const tac::JumpIfNotZero &j) override;
     void operator()(const tac::Label &j) override;
+    void operator()(const tac::FunctionCall &f) override;
     void operator()(std::monostate) override {
         assert(false);
     }
 
-    void print(std::vector<Instruction> instructions);
+    void print(std::vector<TopLevel> instructions);
 };
 
 } // namespace tac

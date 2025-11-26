@@ -33,9 +33,10 @@ struct TACBuilder : public parser::IASTVisitor<tac::Value> {
     Value operator()(const parser::VariableDeclaration &v) override;
     Value operator()(std::monostate) override;
 
-    std::vector<Instruction> ConvertTopLevel(const std::vector<parser::Declaration> &list);
+    std::vector<TopLevel> ConvertTopLevel(const std::vector<parser::Declaration> &list);
     std::vector<Instruction> ConvertBlock(const std::vector<parser::BlockItem> &list);
 
+    std::vector<TopLevel> m_topLevel;
     std::vector<Instruction> m_instructions;
 };
 

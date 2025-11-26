@@ -3,7 +3,7 @@
 
 namespace tac {
 
-std::vector<Instruction> from_ast(const std::vector<parser::Declaration> &ast_root)
+std::vector<TopLevel> from_ast(const std::vector<parser::Declaration> &ast_root)
 {
     tac::TACBuilder astToTac;
     return astToTac.ConvertTopLevel(ast_root);

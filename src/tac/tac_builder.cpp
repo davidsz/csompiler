@@ -137,9 +137,15 @@ Value TACBuilder::operator()(const parser::ConditionalExpression &c)
     return result;
 }
 
-Value TACBuilder::operator()(const parser::FunctionCallExpression &)
+Value TACBuilder::operator()(const parser::FunctionCallExpression &f)
 {
-    return Constant{ 0 };
+    auto ret = FunctionCall{};
+    ret.identifier = f.identifier;
+    for (auto &a : f.args)
+        ret.args.push_back(std::visit(*this, *a));
+    ret.dst = Variant{ generateTempVariableName() };
+    m_instructions.push_back(ret);
+    return ret.dst;
 }
 
 Value TACBuilder::operator()(const parser::ReturnStatement &r)
@@ -314,7 +320,7 @@ Value TACBuilder::operator()(const parser::FunctionDeclaration &f)
         // and will be optimised out in later stages.
         func.inst.push_back(Return{ Constant{ 0 } });
     }
-    m_instructions.push_back(func);
+    m_topLevel.push_back(func);
     return std::monostate();
 }
 
@@ -334,17 +340,20 @@ Value TACBuilder::operator()(std::monostate)
     return std::monostate();
 }
 
-std::vector<Instruction> TACBuilder::ConvertTopLevel(const std::vector<parser::Declaration> &list) {
+std::vector<TopLevel> TACBuilder::ConvertTopLevel(const std::vector<parser::Declaration> &list)
+{
+    m_topLevel.clear();
     for (auto &i : list)
         std::visit(*this, i);
-    return m_instructions;
+    return std::move(m_topLevel);
 }
 
 std::vector<Instruction> TACBuilder::ConvertBlock(const std::vector<parser::BlockItem> &list)
 {
+    m_instructions.clear();
     for (auto &i : list)
         std::visit(*this, i);
-    return m_instructions;
+    return std::move(m_instructions);
 }
 
 }; // tac

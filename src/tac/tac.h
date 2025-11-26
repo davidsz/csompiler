@@ -5,6 +5,6 @@
 
 namespace tac {
 
-std::vector<Instruction> from_ast(const std::vector<parser::Declaration> &list);
+std::vector<TopLevel> from_ast(const std::vector<parser::Declaration> &list);
 
 } // namespace tac

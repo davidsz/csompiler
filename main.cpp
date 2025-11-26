@@ -124,7 +124,7 @@ int main(int argc, char **argv)
         return Error::ALL_OK;
 
     // Intermediate representation
-    std::vector<tac::Instruction> tacVector = tac::from_ast(parser_result.root);
+    std::vector<tac::TopLevel> tacVector = tac::from_ast(parser_result.root);
 #if 1
     std::cout << std::endl << "TAC:" << std::endl;
     tac::TACPrinter tacPrinter;

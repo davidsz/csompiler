@@ -85,7 +85,17 @@ void TACPrinter::operator()(const tac::Label &j)
     pad(); std::cout << "Label(" << j.identifier << ")" << std::endl;
 }
 
-void TACPrinter::print(std::vector<Instruction> instructions) {
+void TACPrinter::operator()(const tac::FunctionCall &f)
+{
+    pad(); std::cout << "FunctionCall(" << f.identifier << std::endl;
+    tab();
+    for (auto &arg : f.args)
+        std::visit(*this, arg);
+    std::visit(*this, f.dst);
+    shift_tab();
+}
+
+void TACPrinter::print(std::vector<TopLevel> instructions) {
     for (auto &i : instructions)
         std::visit(*this, i);
 }

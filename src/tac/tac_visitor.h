@@ -6,8 +6,9 @@ namespace tac {
 
 template <typename T>
 struct ITACVisitor {
-    TAC_INSTRUCTION_LIST(ADD_TO_VISITOR)
     TAC_VALUE_TYPE_LIST(ADD_TO_VISITOR)
+    TAC_INSTRUCTION_LIST(ADD_TO_VISITOR)
+    TAC_TOP_LEVEL_LIST(ADD_TO_VISITOR)
     virtual T operator()(std::monostate) = 0;
 };
 

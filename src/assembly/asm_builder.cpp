@@ -189,6 +189,11 @@ Operand ASMBuilder::operator()(const tac::Label &l)
     return std::monostate();
 }
 
+Operand ASMBuilder::operator()(const tac::FunctionCall &)
+{
+    return std::monostate();
+}
+
 Operand ASMBuilder::operator()(const tac::Constant &c)
 {
     return Imm{ c.value };
@@ -197,6 +202,13 @@ Operand ASMBuilder::operator()(const tac::Constant &c)
 Operand ASMBuilder::operator()(const tac::Variant &v)
 {
     return Pseudo{ v.name };
+}
+
+std::list<Instruction> ASMBuilder::Convert(const std::vector<tac::TopLevel> instructions)
+{
+    for (auto &inst : instructions)
+        std::visit(*this, inst);
+    return std::move(m_instructions);
 }
 
 std::list<Instruction> ASMBuilder::Convert(const std::vector<tac::Instruction> instructions)
