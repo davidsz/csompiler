@@ -310,8 +310,15 @@ Value TACBuilder::operator()(const parser::DefaultStatement &d)
 
 Value TACBuilder::operator()(const parser::FunctionDeclaration &f)
 {
+    // We only handle definitions, not declarations
+    if (!f.body)
+        return std::monostate();
+
     auto func = FunctionDefinition{};
     func.name = f.name;
+    // Nothing to do here with parameters. They already have unique names
+    // after semantic analysis and they will be pseudo-registers in ASM.
+    func.params = f.params;
     if (auto body = std::get_if<parser::BlockStatement>(f.body.get())) {
         TACBuilder builder;
         func.inst = builder.ConvertBlock(body->items);

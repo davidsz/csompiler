@@ -16,15 +16,19 @@ struct ASMPrinter : public IASMVisitor<void> {
     void operator()(const Binary &) override;
     void operator()(const Idiv &) override;
     void operator()(const Cdq &) override;
-    void operator()(const Function &) override;
     void operator()(const Cmp &) override;
     void operator()(const Jmp &) override;
     void operator()(const JmpCC &) override;
     void operator()(const SetCC &) override;
     void operator()(const Label &) override;
+    void operator()(const Push &) override;
+    void operator()(const Call &) override;
+    void operator()(const AllocateStack &) override;
+    void operator()(const DeallocateStack &) override;
+    void operator()(const Function &) override;
     void operator()(std::monostate) override;
 
-    std::string ToText(std::list<Instruction>);
+    std::string ToText(std::list<TopLevel>);
 
     std::ostringstream m_codeStream;
 };

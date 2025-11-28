@@ -66,8 +66,8 @@ private:
     std::string m_currentFunction = "";
     bool m_parentIsAFunction = false;
 
-    // Function names mapped to the labels defined inside
-    std::unordered_map<std::string, std::unordered_set<std::string>> m_labels;
+    // Function names mapped to the labels (original name, unique name) defined inside
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> m_labels;
 
     // Labeling loops and switches
     enum ControlFlowType {

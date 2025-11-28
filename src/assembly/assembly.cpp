@@ -8,7 +8,7 @@ namespace assembly {
 std::string from_tac(std::vector<tac::TopLevel> tacVector)
 {
     ASMBuilder tacToAsm;
-    std::list<Instruction> asmList = tacToAsm.Convert(tacVector);
+    std::list<TopLevel> asmList = tacToAsm.ConvertTopLevel(tacVector);
 
     postprocessStackVariables(asmList);
     postprocessInvalidInstructions(asmList);

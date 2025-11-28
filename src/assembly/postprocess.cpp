@@ -5,7 +5,7 @@ namespace assembly {
 
 // Replace each pseudo-register with proper stack offsets;
 // calculates the overall stack size needed to store all local variables.
-int postprocessStackVariables(std::list<Instruction> &asmList)
+static int postprocessStackVariables(std::list<Instruction> &asmList)
 {
     std::map<std::string, int> pseudoOffset;
     int currentOffset = 0;
@@ -39,12 +39,26 @@ int postprocessStackVariables(std::list<Instruction> &asmList)
                 resolvePseudo(obj.rhs);
             } else if constexpr (std::is_same_v<T, SetCC>)
                 resolvePseudo(obj.op);
-            else if constexpr (std::is_same_v<T, Function>)
-                obj.stackSize = postprocessStackVariables(obj.instructions);
+            else if constexpr (std::is_same_v<T, Push>)
+                resolvePseudo(obj.op);
         }, inst);
     }
 
-    return currentOffset;
+    return -currentOffset;
+}
+
+void postprocessStackVariables(std::list<TopLevel> &asmList)
+{
+    for (auto &inst : asmList) {
+        std::visit([&](auto &obj) {
+            using T = std::decay_t<decltype(obj)>;
+            if constexpr (std::is_same_v<T, Function>) {
+                obj.stackSize = postprocessStackVariables(obj.instructions);
+                // Round up to the next number which is divisible by 16
+                obj.stackSize = (obj.stackSize + 15) & ~15;
+            }
+        }, inst);
+    }
 }
 
 static std::list<Instruction>::iterator postprocessMov(std::list<Instruction> &asmList, std::list<Instruction>::iterator it)
@@ -140,7 +154,7 @@ static std::list<Instruction>::iterator postprocessIdiv(std::list<Instruction> &
     return std::next(it);
 }
 
-void postprocessInvalidInstructions(std::list<Instruction> &asmList)
+static void postprocessInvalidInstructions(std::list<Instruction> &asmList)
 {
     for (auto it = asmList.begin(); it != asmList.end();) {
         it = std::visit([&](auto &obj) {
@@ -156,6 +170,20 @@ void postprocessInvalidInstructions(std::list<Instruction> &asmList)
             else if constexpr (std::is_same_v<T, Idiv>) {
                 return postprocessIdiv(asmList, it);
             } else if constexpr (std::is_same_v<T, Function>) {
+                postprocessInvalidInstructions(obj.instructions);
+                return std::next(it);
+            } else
+                return std::next(it);
+        }, *it);
+    }
+}
+
+void postprocessInvalidInstructions(std::list<TopLevel> &asmList)
+{
+    for (auto it = asmList.begin(); it != asmList.end();) {
+        it = std::visit([&](auto &obj) {
+            using T = std::decay_t<decltype(obj)>;
+            if constexpr (std::is_same_v<T, Function>) {
                 postprocessInvalidInstructions(obj.instructions);
                 return std::next(it);
             } else

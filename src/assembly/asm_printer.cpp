@@ -3,10 +3,22 @@
 
 namespace assembly {
 
+static std::string getEightByteName(Register reg)
+{
+    switch (reg) {
+#define CASE_TO_STRING(name, eightbytename, fourbytename, onebytename) \
+    case Register::name: return eightbytename;
+    ASM_REGISTER_LIST(CASE_TO_STRING)
+#undef CASE_TO_STRING
+    }
+    assert(false);
+    return "";
+}
+
 static std::string getFourByteName(Register reg)
 {
     switch (reg) {
-#define CASE_TO_STRING(name, fourbytename, onebytename) \
+#define CASE_TO_STRING(name, eightbytename, fourbytename, onebytename) \
     case Register::name: return fourbytename;
     ASM_REGISTER_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
@@ -18,7 +30,7 @@ static std::string getFourByteName(Register reg)
 static std::string getOneByteName(Register reg)
 {
     switch (reg) {
-#define CASE_TO_STRING(name, fourbytename, onebytename) \
+#define CASE_TO_STRING(name, eightbytename, fourbytename, onebytename) \
     case Register::name: return onebytename;
     ASM_REGISTER_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
@@ -35,6 +47,9 @@ void ASMPrinter::operator()(const Reg &r)
         break;
     case 4:
         m_codeStream << "%" << getFourByteName(r.reg);
+        break;
+    case 8:
+        m_codeStream << "%" << getEightByteName(r.reg);
         break;
     default:
         m_codeStream << "UNKNOWN_REGISTER";
@@ -74,7 +89,7 @@ void ASMPrinter::operator()(const Ret &)
     m_codeStream << "    movq %rbp, %rsp" << std::endl;
     m_codeStream << "    popq %rbp" << std::endl;
 
-    m_codeStream << "    ret" << std::endl;
+    m_codeStream << "    ret" << std::endl << std::endl;
 }
 
 void ASMPrinter::operator()(const Unary &u)
@@ -103,21 +118,6 @@ void ASMPrinter::operator()(const Idiv &d)
 void ASMPrinter::operator()(const Cdq &)
 {
     m_codeStream << "    cdq" << std::endl;
-}
-
-void ASMPrinter::operator()(const Function &f)
-{
-    m_codeStream << "    .global " << f.name << std::endl;
-    m_codeStream << f.name << ":" << std::endl;
-
-    // Prologue
-    m_codeStream << "    pushq %rbp" << std::endl;
-    m_codeStream << "    movq %rsp, %rbp" << std::endl;
-    m_codeStream << "    subq $" << f.stackSize << ", %rsp" << std::endl;
-    m_codeStream << std::endl;
-
-    for (auto &i: f.instructions)
-        std::visit(*this, i);
 }
 
 void ASMPrinter::operator()(const Cmp &c)
@@ -151,12 +151,50 @@ void ASMPrinter::operator()(const Label &l)
     m_codeStream << "L" << l.identifier << ": " << std::endl;
 }
 
+void ASMPrinter::operator()(const Push &p)
+{
+    m_codeStream << "    pushq ";
+    std::visit(*this, p.op);
+    m_codeStream << std::endl;
+}
+
+void ASMPrinter::operator()(const Call &c)
+{
+    m_codeStream << "    call _" << c.identifier << std::endl;
+}
+
+void ASMPrinter::operator()(const AllocateStack &a)
+{
+    m_codeStream << "    subq $" << a.size << ", %rsp" << std::endl;
+}
+
+void ASMPrinter::operator()(const DeallocateStack &d)
+{
+    m_codeStream << "    addq $" << d.size << ", %rsp" << std::endl;
+}
+
+void ASMPrinter::operator()(const Function &f)
+{
+    // TODO: Annotating with _ is specific to MacOS
+    m_codeStream << ".global _" << f.name << std::endl;
+    m_codeStream << "_" << f.name << ":" << std::endl;
+
+    // Prologue
+    m_codeStream << "    pushq %rbp" << std::endl;
+    m_codeStream << "    movq %rsp, %rbp" << std::endl;
+    m_codeStream << "    subq $" << f.stackSize << ", %rsp" << std::endl;
+    m_codeStream << std::endl;
+
+    for (auto &i: f.instructions)
+        std::visit(*this, i);
+}
+
 void ASMPrinter::operator()(std::monostate)
 {
     assert(false);
 }
 
-std::string ASMPrinter::ToText(std::list<Instruction> instructions)
+std::string ASMPrinter::ToText(std::list<TopLevel> instructions)
 {
     for (auto &i: instructions)
         std::visit(*this, i);

@@ -5,7 +5,7 @@
 
 namespace assembly {
 
-int postprocessStackVariables(std::list<Instruction> &asmList);
-void postprocessInvalidInstructions(std::list<Instruction> &asmList);
+void postprocessStackVariables(std::list<TopLevel> &asmList);
+void postprocessInvalidInstructions(std::list<TopLevel> &asmList);
 
 }; // namespace assembly

@@ -149,10 +149,12 @@ void SemanticAnalyzer::operator()(IfStatement &i)
 void SemanticAnalyzer::operator()(GotoStatement &g)
 {
     // Check if we refer to declared labels
+    // If yes, we replace it with its unique name
     if (m_currentStage == LABEL_ANALYSIS) {
         auto &s = m_labels[m_currentFunction];
         if (!s.contains(g.label))
             Abort(std::format("Goto refers to an undeclared label '{}' inside function '{}'", g.label, m_currentFunction));
+        g.label = s[g.label];
     }
 }
 
@@ -160,10 +162,12 @@ void SemanticAnalyzer::operator()(LabeledStatement &l)
 {
     if (m_currentStage == IDENTIFIER_RESOLUTION) {
         // Collect labels for the later stages, catch duplications here
+        std::string unique_name = makeNameUnique(l.label);
         auto &s = m_labels[m_currentFunction];
-        auto [it, inserted] = s.insert(l.label);
-        if (!inserted)
+        if (s.contains(l.label))
             Abort(std::format("Label '{}' declared multiple times inside function '{}'", l.label, m_currentFunction));
+        s.insert(std::make_pair(l.label, unique_name));
+        l.label = unique_name;
     }
 
     std::visit(*this, *l.statement);
