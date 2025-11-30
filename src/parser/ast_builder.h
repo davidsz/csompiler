@@ -45,9 +45,7 @@ private:
     BlockItem ParseBlockItem();
     Statement ParseStatement();
 
-    Declaration ParseFunctionDeclaration();
-    Declaration ParseVariableDeclaration();
-    Declaration ParseDeclaration();
+    Declaration ParseDeclaration(bool allow_function = true);
 
     const std::list<lexer::Token> &m_tokens;
     std::list<lexer::Token>::const_iterator m_pos;

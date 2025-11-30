@@ -3,12 +3,32 @@
 #include <cassert>
 #include <iostream>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace parser {
 
 struct SyntaxError : public std::runtime_error
 {
     explicit SyntaxError(const std::string &message) : std::runtime_error(message) {}
+};
+
+static const std::unordered_map<std::string, TypeSpecifier> s_typeSpecifiers {
+#define ADD_TYPE_TO_MAP(enumname, stringname) {stringname, enumname},
+    TYPE_SPECIFIER_LIST(ADD_TYPE_TO_MAP)
+#undef ADD_TYPE_TO_MAP
+};
+
+static const std::unordered_map<std::string, StorageClass> s_storageClasses {
+#define ADD_TYPE_TO_MAP(enumname, stringname) {stringname, enumname},
+    STORAGE_CLASS_LIST(ADD_TYPE_TO_MAP)
+#undef ADD_TYPE_TO_MAP
+};
+
+static const std::unordered_set<std::string> s_specifiers {
+#define ADD_TYPE_TO_SET(enumname, stringname) stringname,
+    TYPE_SPECIFIER_LIST(ADD_TYPE_TO_SET)
+    STORAGE_CLASS_LIST(ADD_TYPE_TO_SET)
+#undef ADD_TYPE_TO_SET
 };
 
 ASTBuilder::ASTBuilder(const std::list<lexer::Token> &tokens)
@@ -262,7 +282,7 @@ Statement ASTBuilder::ParseFor()
         Consume(TokenType::Punctator, ";");
     } else if (next->type() == TokenType::Keyword) {
         ret.init = std::make_unique<ForInit>(
-            to_for_init(ParseVariableDeclaration()));
+            to_for_init(ParseDeclaration(/* allow_function */ false)));
     } else {
         ret.init = std::make_unique<ForInit>(
             to_for_init(ParseExpression(0)));
@@ -335,7 +355,7 @@ BlockItem ASTBuilder::ParseBlockItem()
 {
     LOG("ParseBlockItem");
     auto next = Peek();
-    if (next->value() == "int")
+    if (s_specifiers.contains(next->value()))
         return to_block_item(ParseDeclaration());
     else
         return to_block_item(ParseStatement());
@@ -391,62 +411,79 @@ Statement ASTBuilder::ParseStatement()
     return Statement(ExpressionStatement{ UE(expr) });
 }
 
-Declaration ASTBuilder::ParseFunctionDeclaration()
+Declaration ASTBuilder::ParseDeclaration(bool allow_function)
 {
-    LOG("ParseFunctionDeclaration");
-    auto func = FunctionDeclaration{};
-    Consume(TokenType::Keyword);
-    func.name = Consume(TokenType::Identifier);
-
-    Consume(TokenType::Punctator, "(");
-    auto next = Peek();
-    // 'void' must be there in empty parameter lists
-    if (next->type() == TokenType::Keyword && next->value() == "void")
-        Consume(TokenType::Keyword);
-    else {
-        while (next->value() != ")") {
-            if (next->value() == ",")
-                Consume(TokenType::Operator, ",");
+    LOG("ParseDeclaration");
+    std::vector<TypeSpecifier> type_specifiers;
+    std::vector<StorageClass> storage_classes;
+    std::optional<lexer::Token> next;
+    for (next = Peek(); next->type() == TokenType::Keyword; next = Peek()) {
+        auto type_it = s_typeSpecifiers.find(next->value());
+        if (type_it != s_typeSpecifiers.end()) {
+            type_specifiers.push_back(type_it->second);
             Consume(TokenType::Keyword);
-            func.params.push_back(Consume(TokenType::Identifier));
-            next = Peek();
+            continue;
+        }
+
+        auto storage_it = s_storageClasses.find(next->value());
+        if (storage_it != s_storageClasses.end()) {
+            storage_classes.push_back(storage_it->second);
+            Consume(TokenType::Keyword);
         }
     }
-    Consume(TokenType::Punctator, ")");
+
+    if (type_specifiers.size() != 1)
+        Abort("Invalid type specification");
+    if (storage_classes.size() > 1)
+        Abort("Invalid storage class");
+
+    StorageClass storage = storage_classes.empty() ? StorageClass::StorageDefault : storage_classes[0];
+    std::string identifier = Consume(TokenType::Identifier);
 
     next = Peek();
-    if (next->type() == TokenType::Punctator && next->value() == "{")
-        func.body = unique_statement(ParseBlock());
-    else
-        Consume(TokenType::Punctator, ";");
-    return func;
-}
+    if (allow_function && next->type() == TokenType::Punctator && next->value() == "(") {
+        // Function declaration
+        auto func = FunctionDeclaration{};
+        func.storage = storage;
+        func.name = std::move(identifier);
+        Consume(TokenType::Punctator, "(");
+        next = Peek();
+        // 'void' must be there in empty parameter lists
+        if (next->type() == TokenType::Keyword && next->value() == "void")
+            Consume(TokenType::Keyword);
+        else {
+            while (next->value() != ")") {
+                if (next->value() == ",")
+                    Consume(TokenType::Operator, ",");
+                Consume(TokenType::Keyword);
+                func.params.push_back(Consume(TokenType::Identifier));
+                next = Peek();
+            }
+        }
+        Consume(TokenType::Punctator, ")");
 
-Declaration ASTBuilder::ParseVariableDeclaration()
-{
-    LOG("ParseVariableDeclaration");
-    auto decl = VariableDeclaration{};
-    Consume(TokenType::Keyword, "int");
-    decl.identifier = Consume(TokenType::Identifier);
-    auto next = Peek();
-    if (next->type() == TokenType::Punctator && next->value() == ";") {
+        next = Peek();
+        if (next->type() == TokenType::Punctator && next->value() == "{")
+            func.body = unique_statement(ParseBlock());
+        else
+            Consume(TokenType::Punctator, ";");
+        return func;
+    } else {
+        // Variable declaration
+        auto decl = VariableDeclaration{};
+        decl.storage = storage;
+        decl.identifier = std::move(identifier);
+        if (next->type() == TokenType::Punctator && next->value() == ";") {
+            Consume(TokenType::Punctator, ";");
+            return decl;
+        }
+        Consume(TokenType::Operator, "=");
+        decl.init = unique_expression(ParseExpression(0));
         Consume(TokenType::Punctator, ";");
         return decl;
     }
-    Consume(TokenType::Operator, "=");
-    decl.init = unique_expression(ParseExpression(0));
-    Consume(TokenType::Punctator, ";");
-    return decl;
-}
-
-Declaration ASTBuilder::ParseDeclaration()
-{
-    LOG("ParseDeclaration");
-    auto next = Peek(2);
-    if (next && next->type() == TokenType::Punctator && next->value() == "(")
-        return ParseFunctionDeclaration();
-    else
-        return ParseVariableDeclaration();
+    assert(false);
+    return VariableDeclaration{};
 }
 
 void ASTBuilder::Abort(std::string_view message, size_t line)

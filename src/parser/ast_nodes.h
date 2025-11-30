@@ -8,12 +8,33 @@
 
 namespace parser {
 
+#define TYPE_SPECIFIER_LIST(X) \
+    X(TypeInt, "int")
+
+enum TypeSpecifier {
+#define ADD_TYPE_TO_ENUM(enumname, stringname) enumname,
+    TYPE_SPECIFIER_LIST(ADD_TYPE_TO_ENUM)
+#undef ADD_TYPE_TO_ENUM
+};
+
+#define STORAGE_CLASS_LIST(X) \
+    X(StorageStatic, "static") \
+    X(StorageExtern, "extern")
+
+enum StorageClass {
+    StorageDefault,
+    StorageStatic,
+    StorageExtern
+};
+
 #define AST_DECLARATION_LIST(X) \
     X(FunctionDeclaration, \
+        StorageClass storage; \
         std::string name; \
         std::vector<std::string> params; \
         std::unique_ptr<Statement> body;) \
     X(VariableDeclaration, \
+        StorageClass storage; \
         std::string identifier; \
         std::unique_ptr<Expression> init;) \
 
