@@ -382,21 +382,41 @@ void SemanticAnalyzer::operator()(FunctionDeclaration &f)
 
 void SemanticAnalyzer::operator()(VariableDeclaration &v)
 {
-    if (m_currentStage > IDENTIFIER_RESOLUTION)
-        return;
+    if (m_currentStage == IDENTIFIER_RESOLUTION) {
+        if (m_scopes.size() == 1) {
+            // Top level declarations
+            currentScope()[v.identifier] = IdentifierInfo {
+                .uniqueName = v.identifier,
+                .hasLinkage = true
+            };
+        } else {
+            // Block level variables
+            // Extern declaration conflicts within the same scope
+            auto prev = currentScope().find(v.identifier);
+            if (prev != currentScope().end()) {
+                if (!prev->second.hasLinkage || v.storage != StorageExtern)
+                    Abort(std::format("Conflicting local declaration ({})", v.identifier));
+            }
 
-    // Prohibit duplicate variabe declarations in the same scope
-    if (currentScope().contains(v.identifier))
-        Abort(std::format("Duplicate variable declaration ({})", v.identifier));
+            if (v.storage == StorageExtern) {
+                // Don't rename extern variables
+                currentScope()[v.identifier] = IdentifierInfo{
+                    .uniqueName = v.identifier,
+                    .hasLinkage = true
+                };
+            } else {
+                // Give variables globally unique names; different variables
+                // can have the same names in different scopes
+                std::string unique_name = makeNameUnique(v.identifier);
+                currentScope()[v.identifier] = IdentifierInfo{
+                    .uniqueName = unique_name,
+                    .hasLinkage = false
+                };
+                v.identifier = unique_name;
+            }
+        }
+    }
 
-    // Give variables globally unique names; different variables
-    // can have the same names in different scopes
-    std::string unique_name = makeNameUnique(v.identifier);
-    currentScope()[v.identifier] = IdentifierInfo {
-        .uniqueName = unique_name,
-        .hasLinkage = false
-    };
-    v.identifier = unique_name;
     if (v.init)
         std::visit(*this, *v.init);
 }

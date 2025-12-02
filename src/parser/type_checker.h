@@ -6,13 +6,6 @@
 
 namespace parser {
 
-struct Int { /* no op */ };
-struct FunType {
-    size_t paramCount = 0;
-    auto operator<=>(const FunType&) const = default;
-};
-using TypeInfo = std::variant<Int, FunType>;
-
 struct TypeChecker : public IASTMutatingVisitor<void> {
     void operator()(NumberExpression &n) override;
     void operator()(VariableExpression &v) override;
@@ -44,10 +37,32 @@ struct TypeChecker : public IASTMutatingVisitor<void> {
     void Abort(std::string_view);
 
 private:
-    std::unordered_map<std::string, std::pair<TypeInfo, bool>> m_symbolTable;
-    void insertSymbol(const std::string &name, const TypeInfo &type, bool defined);
+    enum InitialValue {
+        Tentative,
+        Initial,
+        NoInitializer,
+    };
+
+    struct IdentifierAttributes {
+        bool defined = false;
+        bool global = false;
+        InitialValue init = NoInitializer;
+    };
+
+    struct SymbolEntry {
+        TypeInfo type;
+        IdentifierAttributes attrs;
+    };
+
+    std::unordered_map<std::string, SymbolEntry> m_symbolTable;
+    void insertSymbol(const std::string &name, const TypeInfo &, const IdentifierAttributes &);
+
     template <typename T>
-    std::optional<std::pair<const T &, bool>> lookupSymbolAs(const std::string &name);
+    std::optional<std::pair<const T &, const IdentifierAttributes &>>
+    lookupSymbolAs(const std::string &name);
+
+    bool m_fileScope = false;
+    bool m_forLoopInitializer = false;
 };
 
 }; // namespace parser

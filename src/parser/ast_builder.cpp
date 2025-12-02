@@ -417,7 +417,9 @@ Declaration ASTBuilder::ParseDeclaration(bool allow_function)
     std::vector<TypeSpecifier> type_specifiers;
     std::vector<StorageClass> storage_classes;
     std::optional<lexer::Token> next;
-    for (next = Peek(); next->type() == TokenType::Keyword; next = Peek()) {
+    for (next = Peek();
+        next->type() == TokenType::Keyword && s_specifiers.contains(next->value());
+        next = Peek()) {
         auto type_it = s_typeSpecifiers.find(next->value());
         if (type_it != s_typeSpecifiers.end()) {
             type_specifiers.push_back(type_it->second);

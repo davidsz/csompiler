@@ -2,30 +2,12 @@
 
 #include "common/macro.h"
 #include "common/operator.h"
+#include "common/types.h"
 #include <set>
 #include <string>
 #include <vector>
 
 namespace parser {
-
-#define TYPE_SPECIFIER_LIST(X) \
-    X(TypeInt, "int")
-
-enum TypeSpecifier {
-#define ADD_TYPE_TO_ENUM(enumname, stringname) enumname,
-    TYPE_SPECIFIER_LIST(ADD_TYPE_TO_ENUM)
-#undef ADD_TYPE_TO_ENUM
-};
-
-#define STORAGE_CLASS_LIST(X) \
-    X(StorageStatic, "static") \
-    X(StorageExtern, "extern")
-
-enum StorageClass {
-    StorageDefault,
-    StorageStatic,
-    StorageExtern
-};
 
 #define AST_DECLARATION_LIST(X) \
     X(FunctionDeclaration, \

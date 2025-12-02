@@ -17,7 +17,7 @@ void TypeChecker::operator()(NumberExpression &)
 void TypeChecker::operator()(VariableExpression &v)
 {
     auto it = m_symbolTable.find(v.identifier);
-    if (it != m_symbolTable.end() && std::holds_alternative<FunType>(it->second.first))
+    if (it != m_symbolTable.end() && std::holds_alternative<FunctionType>(it->second.type))
         Abort(std::format("Function name '{}' is used as variable", v.identifier));
 }
 
@@ -47,8 +47,8 @@ void TypeChecker::operator()(ConditionalExpression &c)
 
 void TypeChecker::operator()(FunctionCallExpression &f)
 {
-    if (auto symbol = lookupSymbolAs<FunType>(f.identifier)) {
-        auto &[type, defined] = *symbol;
+    if (auto symbol = lookupSymbolAs<FunctionType>(f.identifier)) {
+        auto &[type, attrs] = *symbol;
         if (type.paramCount != f.args.size())
             Abort(std::format("Function '{}' is called with wrong number of arguments", f.identifier));
     } else {
@@ -119,8 +119,11 @@ void TypeChecker::operator()(DoWhileStatement &d)
 
 void TypeChecker::operator()(ForStatement &f)
 {
-    if (f.init)
+    if (f.init) {
+        m_forLoopInitializer = true;
         std::visit(*this, *f.init);
+        m_forLoopInitializer = false;
+    }
     if (f.condition)
         std::visit(*this, *f.condition);
     if (f.update)
@@ -147,28 +150,122 @@ void TypeChecker::operator()(DefaultStatement &d)
 
 void TypeChecker::operator()(FunctionDeclaration &f)
 {
-    auto function_type = FunType { f.params.size() };
-    if (auto symbol = lookupSymbolAs<FunType>(f.name)) {
-        auto &[type, defined] = *symbol;
-        if (type != function_type)
+    if (!m_fileScope && f.storage == StorageStatic)
+        Abort(std::format("Function '{}' can't be declared as static in block scope", f.name));
+
+    auto function_type = FunctionType { f.params.size() };
+    bool already_defined = false;
+    bool is_global = f.storage != StorageStatic;
+
+    if (m_symbolTable.contains(f.name)) {
+        const SymbolEntry &entry = m_symbolTable[f.name];
+        if (*std::get_if<FunctionType>(&entry.type) != function_type)
             Abort(std::format("Incompatible function declarations of '{}'", f.name));
-        if (defined && f.body)
+        if (entry.attrs.defined && f.body)
             Abort(std::format("Function '{}' is defined more than once", f.name));
+        already_defined = entry.attrs.defined;
+        if (entry.attrs.global && f.storage == StorageStatic)
+            Abort(std::format("Static function declaration '{}' follows non-static", f.name));
+        is_global = entry.attrs.global;
     }
-    insertSymbol(f.name, function_type, (bool)f.body);
+
+    insertSymbol(f.name, function_type, IdentifierAttributes{
+        .defined = already_defined || (bool)f.body,
+        .global = is_global
+    });
 
     if (f.body) {
+        m_fileScope = false;
         for (auto &p : f.params)
-            insertSymbol(p, Int{}, false);
+            insertSymbol(p, BasicType::Int, IdentifierAttributes{
+                .defined = false
+            });
         std::visit(*this, *f.body);
     }
 }
 
 void TypeChecker::operator()(VariableDeclaration &v)
 {
-    insertSymbol(v.identifier, Int{}, (bool)v.init);
-    if (v.init)
-        std::visit(*this, *v.init);
+    if (m_forLoopInitializer && v.storage != StorageDefault)
+        Abort("Initializer of a for loop can't have storage specifier");
+
+    if (m_fileScope) {
+        // File-scope variable
+        InitialValue init;
+        if (!v.init) {
+            if (v.storage == StorageExtern)
+                init = NoInitializer;
+            else
+                init = Tentative;
+        } else if (std::get_if<NumberExpression>(v.init.get()))
+            init = Initial;
+        else
+            Abort(std::format("Non-constant initializer of '{}'", v.identifier));
+
+        bool is_global = (v.storage != StorageStatic);
+
+        if (m_symbolTable.contains(v.identifier)) {
+            const SymbolEntry &entry = m_symbolTable[v.identifier];
+            if (std::holds_alternative<FunctionType>(entry.type))
+                Abort(std::format("Function '{}' redeclared as variable", v.identifier));
+
+            if (v.storage == StorageExtern)
+                is_global = entry.attrs.global;
+            else if (entry.attrs.global != is_global)
+                Abort(std::format("Conflicting variable linkage ('{}')", v.identifier));
+
+            // TODO: == constant
+            if (entry.attrs.init == Initial) {
+                if (init == Initial)
+                    Abort(std::format("Conflicting file scope variable definition ('{}')", v.identifier));
+                else
+                    init = entry.attrs.init;
+            } else if (init != Initial && entry.attrs.init == Tentative)
+                init = Tentative;
+        }
+
+        insertSymbol(v.identifier, BasicType::Int, IdentifierAttributes{
+            .global = is_global,
+            .init = init
+        });
+    } else {
+        // Block-level variable
+        if (v.storage == StorageExtern) {
+            if (v.init)
+                Abort(std::format("Initializer on local extern variable '{}'", v.identifier));
+
+            if (m_symbolTable.contains(v.identifier)) {
+                const SymbolEntry &entry = m_symbolTable[v.identifier];
+                if (std::holds_alternative<FunctionType>(entry.type))
+                    Abort(std::format("Function '{}' redeclared as variable", v.identifier));
+            } else {
+                insertSymbol(v.identifier, BasicType::Int, IdentifierAttributes{
+                    .global = true,
+                    .init = NoInitializer
+                });
+            }
+        } else if (v.storage == StorageStatic) {
+            InitialValue init = Initial;
+            if (!v.init)
+                init = Initial; // TODO: Initial(0)
+            else if (std::get_if<NumberExpression>(v.init.get()))
+                init = Initial; // TODO: Initial(n)
+            else
+                Abort(std::format("Non-constant initializer on local static variable '{}'", v.identifier));
+
+            insertSymbol(v.identifier, BasicType::Int, IdentifierAttributes{
+                .global = false,
+                .init = init
+            });
+        } else {
+            insertSymbol(v.identifier, BasicType::Int, IdentifierAttributes{});
+
+            if (v.init) {
+                m_fileScope = false;
+                std::visit(*this, *v.init);
+            }
+        }
+    }
 }
 
 void TypeChecker::operator()(std::monostate)
@@ -178,8 +275,10 @@ void TypeChecker::operator()(std::monostate)
 Error TypeChecker::CheckAndMutate(std::vector<parser::Declaration> &astVector)
 {
     try {
-        for (auto &i : astVector)
+        for (auto &i : astVector) {
+            m_fileScope = true;
             std::visit(*this, i);
+        }
         return Error::ALL_OK;
     } catch (const TypeError &e) {
         std::cerr << e.what() << std::endl;
@@ -193,20 +292,24 @@ void TypeChecker::Abort(std::string_view message)
         std::format("[Type error] {}", message));
 }
 
-void TypeChecker::insertSymbol(const std::string &name, const TypeInfo &type, bool defined)
+void TypeChecker::insertSymbol(
+    const std::string &name,
+    const TypeInfo &type,
+    const IdentifierAttributes &attr)
 {
-    m_symbolTable.insert(std::make_pair(name, std::make_pair(type, defined)));
+    m_symbolTable.insert(std::make_pair(name, SymbolEntry{ type, attr }));
 }
 
 template <typename T>
-std::optional<std::pair<const T &, bool>> TypeChecker::lookupSymbolAs(const std::string &name)
+std::optional<std::pair<const T &, const TypeChecker::IdentifierAttributes &>>
+TypeChecker::lookupSymbolAs(const std::string &name)
 {
     auto it = m_symbolTable.find(name);
     if (it == m_symbolTable.end())
         return std::nullopt;
-    const TypeInfo &info = it->second.first;
+    const TypeInfo &info = it->second.type;
     if (const T *ptr = std::get_if<T>(&info))
-        return std::make_pair(std::cref(*ptr), it->second.second);
+        return std::make_pair(std::cref(*ptr), it->second.attrs);
     return std::nullopt;
 }
 
