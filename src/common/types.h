@@ -1,6 +1,8 @@
 #pragma once
 
 #include <stddef.h>
+#include <string>
+#include <unordered_map>
 #include <variant>
 
 // TODO: Wrap it later to support recursive types
@@ -39,3 +41,34 @@ enum StorageClass {
     StorageStatic,
     StorageExtern
 };
+
+
+// Symbol table
+struct Tentative {};
+struct NoInitializer {};
+struct Initial {
+    int i;
+    auto operator<=>(const Initial &) const = default;
+};
+using InitialValue = std::variant<Tentative, NoInitializer, Initial>;
+
+struct IdentifierAttributes {
+    enum Type {
+        Function,
+        Static,
+        Local
+    };
+    Type type = Local;
+    bool defined = false;
+    bool global = false;
+    InitialValue init = NoInitializer{};
+};
+
+struct SymbolEntry {
+    TypeInfo type;
+    IdentifierAttributes attrs;
+};
+
+using SymbolTable = std::unordered_map<std::string, SymbolEntry>;
+
+void DebugPrint(const SymbolTable &);

@@ -3,9 +3,11 @@
 
 namespace tac {
 
-std::vector<TopLevel> from_ast(const std::vector<parser::Declaration> &ast_root)
+std::vector<TopLevel> from_ast(
+    const std::vector<parser::Declaration> &ast_root,
+    std::shared_ptr<SymbolTable> symbolTable)
 {
-    tac::TACBuilder astToTac;
+    tac::TACBuilder astToTac(symbolTable);
     return astToTac.ConvertTopLevel(ast_root);
 }
 

@@ -1,5 +1,6 @@
 #include "assembly/assembly.h"
 #include "common/error.h"
+#include "common/types.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
 #include "parser/ast_printer.h"
@@ -120,11 +121,18 @@ int main(int argc, char **argv)
     astPrinter.print(parser_result.root);
 #endif
 
+#if 1
+    std::cout << std::endl << "Symbol table:" << std::endl;
+    DebugPrint(*typeChecker.symbolTable());
+#endif
+
     if (has_flag("validate"))
         return Error::ALL_OK;
 
     // Intermediate representation
-    std::vector<tac::TopLevel> tacVector = tac::from_ast(parser_result.root);
+    std::vector<tac::TopLevel> tacVector = tac::from_ast(
+        parser_result.root,
+        typeChecker.symbolTable());
 #if 1
     std::cout << std::endl << "TAC:" << std::endl;
     tac::TACPrinter tacPrinter;
@@ -135,7 +143,9 @@ int main(int argc, char **argv)
         return Error::ALL_OK;
 
     // Assembly generation
-    std::string assemblySource = assembly::from_tac(tacVector);
+    std::string assemblySource = assembly::from_tac(
+        tacVector,
+        typeChecker.symbolTable());
 #if 1
     std::cout << std::endl << "ASM:" << std::endl;
     std::cout << assemblySource;

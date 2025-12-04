@@ -320,19 +320,31 @@ Value TACBuilder::operator()(const parser::FunctionDeclaration &f)
     // after semantic analysis and they will be pseudo-registers in ASM.
     func.params = f.params;
     if (auto body = std::get_if<parser::BlockStatement>(f.body.get())) {
-        TACBuilder builder;
+        TACBuilder builder(m_symbolTable);
         func.inst = builder.ConvertBlock(body->items);
         // Avoid undefined behavior in functions where there is no return.
         // If it already had a return, this extra one won't be executed
         // and will be optimised out in later stages.
         func.inst.push_back(Return{ Constant{ 0 } });
     }
+
+    if (m_symbolTable->contains(f.name)) {
+        const SymbolEntry &entry = (*m_symbolTable)[f.name];
+        func.global = entry.attrs.global;
+    }
+
     m_topLevel.push_back(func);
     return std::monostate();
 }
 
 Value TACBuilder::operator()(const parser::VariableDeclaration &v)
 {
+    // We will move static variable declarations to the top level in a later step
+    if (m_symbolTable->contains(v.identifier)) {
+        const SymbolEntry &entry = (*m_symbolTable)[v.identifier];
+        if (entry.attrs.type == IdentifierAttributes::Static)
+            return std::monostate();
+    }
     // We discard declarations, but we handle their init expressions
     if (v.init) {
         Value result = std::visit(*this, *v.init);
@@ -347,11 +359,19 @@ Value TACBuilder::operator()(std::monostate)
     return std::monostate();
 }
 
+TACBuilder::TACBuilder(std::shared_ptr<SymbolTable> symbolTable)
+    : m_symbolTable(symbolTable)
+{
+}
+
 std::vector<TopLevel> TACBuilder::ConvertTopLevel(const std::vector<parser::Declaration> &list)
 {
     m_topLevel.clear();
     for (auto &i : list)
         std::visit(*this, i);
+
+    ProcessStaticSymbols();
+
     return std::move(m_topLevel);
 }
 
@@ -361,6 +381,27 @@ std::vector<Instruction> TACBuilder::ConvertBlock(const std::vector<parser::Bloc
     for (auto &i : list)
         std::visit(*this, i);
     return std::move(m_instructions);
+}
+
+void TACBuilder::ProcessStaticSymbols()
+{
+    for (const auto &[name, entry] : *m_symbolTable) {
+        if (entry.attrs.type == IdentifierAttributes::Static) {
+            if (std::holds_alternative<Tentative>(entry.attrs.init)) {
+                m_topLevel.push_back(StaticVariable{
+                    .name = name,
+                    .global = entry.attrs.global,
+                    .init = 0
+                });
+            } else if (auto n = std::get_if<Initial>(&entry.attrs.init)) {
+                m_topLevel.push_back(StaticVariable{
+                    .name = name,
+                    .global = entry.attrs.global,
+                    .init = n->i
+                });
+            }
+        }
+    }
 }
 
 }; // tac

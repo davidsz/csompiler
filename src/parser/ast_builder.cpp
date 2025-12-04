@@ -86,14 +86,11 @@ Expression ASTBuilder::ParseExpression(int min_precedence)
 
     // Postfix unary expressions (left-associative)
     UnaryOperator unop = toUnaryOperator(next->value());
-    if (unop && canBePostfix(unop)) {
-        while (unop && canBePostfix(unop)) {
-            Consume(TokenType::Operator);
-            left = UnaryExpression{ unop, UE(left), true };
-            next = Peek();
-            unop = toUnaryOperator(next->value());
-        }
-        return left;
+    while (unop && canBePostfix(unop)) {
+        Consume(TokenType::Operator);
+        left = UnaryExpression{ unop, UE(left), true };
+        next = Peek();
+        unop = toUnaryOperator(next->value());
     }
 
     // Binary expressions
@@ -147,6 +144,7 @@ Expression ASTBuilder::ParseFactor()
         next = Peek(1);
         if (next->type() == TokenType::Punctator && next->value() == "(")
             return ParseFunctionCall();
+        LOG("VariableExpression");
         return VariableExpression{ Consume(TokenType::Identifier) };
     }
 

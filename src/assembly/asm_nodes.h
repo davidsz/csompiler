@@ -26,7 +26,9 @@ namespace assembly {
     X(Pseudo, \
         std::string name;) \
     X(Stack, \
-        int offset;)
+        int offset;) \
+    X(Data, \
+        std::string name;)
 
 #define ASM_INSTRUCTION_LIST(X) \
     X(Mov, \
@@ -68,8 +70,13 @@ namespace assembly {
 #define ASM_TOP_LEVEL_LIST(X) \
     X(Function, \
         std::string name; \
+        bool global; \
         int stackSize; \
-        std::list<Instruction> instructions;)
+        std::list<Instruction> instructions;) \
+    X(StaticVariable, \
+        std::string name; \
+        bool global; \
+        int init;)
 
 enum Register {
 #define ADD_REG_TO_ENUM(name, eightbytename, fourbytename, onebytename) name,

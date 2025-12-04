@@ -44,8 +44,13 @@ namespace tac {
 #define TAC_TOP_LEVEL_LIST(X) \
     X(FunctionDefinition, \
         std::string name; \
+        bool global; \
         std::vector<std::string> params; \
-        std::vector<Instruction> inst;)
+        std::vector<Instruction> inst;) \
+    X(StaticVariable, \
+        std::string name; \
+        bool global; \
+        int init;)
 
 DEFINE_NODES_WITH_COMMON_VARIANT(Value, TAC_VALUE_TYPE_LIST);
 DEFINE_NODES_WITH_COMMON_VARIANT(Instruction, TAC_INSTRUCTION_LIST);

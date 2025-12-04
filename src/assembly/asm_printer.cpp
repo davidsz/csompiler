@@ -73,6 +73,12 @@ void ASMPrinter::operator()(const Stack &s)
     m_codeStream << s.offset << "(%rbp)";
 }
 
+void ASMPrinter::operator()(const Data &d)
+{
+    // TODO: No "_" on Linux
+    m_codeStream << "_" << d.name << "(%rip)";
+}
+
 void ASMPrinter::operator()(const Mov &m)
 {
     m_codeStream << "    movl ";
@@ -176,7 +182,9 @@ void ASMPrinter::operator()(const DeallocateStack &d)
 void ASMPrinter::operator()(const Function &f)
 {
     // TODO: Annotating with _ is specific to MacOS
-    m_codeStream << ".global _" << f.name << std::endl;
+    if (f.global)
+        m_codeStream << ".globl _" << f.name << std::endl;
+    m_codeStream << ".text" << std::endl;
     m_codeStream << "_" << f.name << ":" << std::endl;
 
     // Prologue
@@ -187,6 +195,26 @@ void ASMPrinter::operator()(const Function &f)
 
     for (auto &i: f.instructions)
         std::visit(*this, i);
+}
+
+void ASMPrinter::operator()(const StaticVariable &s)
+{
+    // TODO: Annotating with _ is specific to MacOS
+    if (s.global)
+        m_codeStream << ".globl _" << s.name << std::endl;
+
+    if (s.init == 0)
+        m_codeStream << ".bss" << std::endl;
+    else
+        m_codeStream << ".data" << std::endl;
+
+    m_codeStream << ".balign 4" << std::endl;
+    m_codeStream << "_" << s.name << ":" << std::endl;
+
+    if (s.init == 0)
+        m_codeStream << ".zero 4" << std::endl;
+    else
+        m_codeStream << ".long " << s.init << std::endl;
 }
 
 void ASMPrinter::operator()(std::monostate)

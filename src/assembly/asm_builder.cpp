@@ -253,6 +253,7 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
 {
     auto func = Function{};
     func.name = f.name;
+    func.global = f.global;
 
     // We copy each of the parameters into the current stack frame
     // to make life easier. This can be optimised out later.
@@ -281,6 +282,16 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
                 body_instructions.end(),
                 std::back_inserter(func.instructions));
     m_topLevel.push_back(std::move(func));
+    return std::monostate();
+}
+
+Operand ASMBuilder::operator()(const tac::StaticVariable &s)
+{
+    m_topLevel.push_back(StaticVariable{
+        .name = s.name,
+        .global = s.global,
+        .init = s.init
+    });
     return std::monostate();
 }
 

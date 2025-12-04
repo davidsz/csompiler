@@ -3,16 +3,29 @@
 
 namespace assembly {
 
-// Replace each pseudo-register with proper stack offsets;
+// Replace each pseudo-register with proper stack offsets or static variables;
 // calculates the overall stack size needed to store all local variables.
-static int postprocessStackVariables(std::list<Instruction> &asmList)
+static int postprocessPseudoRegisters(
+    std::list<Instruction> &asmList,
+    std::shared_ptr<SymbolTable> symbolTable)
 {
     std::map<std::string, int> pseudoOffset;
     int currentOffset = 0;
 
     auto resolvePseudo = [&](Operand &op) {
-        if (auto ptr = std::get_if<Pseudo>(&op)) {
-            int &offset = pseudoOffset[ptr->name];
+        if (auto pseudo = std::get_if<Pseudo>(&op)) {
+            if (!pseudoOffset.contains(pseudo->name)) {
+                if (symbolTable->contains(pseudo->name)) {
+                    const SymbolEntry &entry = (*symbolTable)[pseudo->name];
+                    // Replace static variables with Data operands
+                    if (entry.attrs.type == IdentifierAttributes::Static) {
+                        op.emplace<Data>(pseudo->name);
+                        return;
+                    }
+                }
+            }
+            // All other variable types are stack offsets
+            int &offset = pseudoOffset[pseudo->name];
             if (offset == 0) {
                 currentOffset -= 4;
                 offset = currentOffset;
@@ -47,13 +60,15 @@ static int postprocessStackVariables(std::list<Instruction> &asmList)
     return -currentOffset;
 }
 
-void postprocessStackVariables(std::list<TopLevel> &asmList)
+void postprocessPseudoRegisters(
+    std::list<TopLevel> &asmList,
+    std::shared_ptr<SymbolTable> symbolTable)
 {
     for (auto &inst : asmList) {
         std::visit([&](auto &obj) {
             using T = std::decay_t<decltype(obj)>;
             if constexpr (std::is_same_v<T, Function>) {
-                obj.stackSize = postprocessStackVariables(obj.instructions);
+                obj.stackSize = postprocessPseudoRegisters(obj.instructions, symbolTable);
                 // Round up to the next number which is divisible by 16
                 obj.stackSize = (obj.stackSize + 15) & ~15;
             }
@@ -61,11 +76,19 @@ void postprocessStackVariables(std::list<TopLevel> &asmList)
     }
 }
 
+// ------------------------
+
+static bool isMemoryAddress(const Operand &op)
+{
+    return std::holds_alternative<Stack>(op)
+        || std::holds_alternative<Data>(op);
+}
+
 static std::list<Instruction>::iterator postprocessMov(std::list<Instruction> &asmList, std::list<Instruction>::iterator it)
 {
     auto &obj = std::get<Mov>(*it);
     // MOV instruction can't have memory addresses both in source and destination
-    if (std::holds_alternative<Stack>(obj.src) && std::holds_alternative<Stack>(obj.dst)) {
+    if (isMemoryAddress(obj.src) && isMemoryAddress(obj.dst)) {
         auto current = obj;
         it = asmList.erase(it);
         it = asmList.emplace(it, Mov{current.src, Reg{Register::R10}});
@@ -77,7 +100,7 @@ static std::list<Instruction>::iterator postprocessMov(std::list<Instruction> &a
 static std::list<Instruction>::iterator postprocessCmp(std::list<Instruction> &asmList, std::list<Instruction>::iterator it)
 {
     auto &obj = std::get<Cmp>(*it);
-    if (std::holds_alternative<Stack>(obj.lhs) && std::holds_alternative<Stack>(obj.rhs)) {
+    if (isMemoryAddress(obj.lhs) && isMemoryAddress(obj.rhs)) {
         // CMP instruction can't have memory addresses both in source and destination
         auto current = obj;
         it = asmList.erase(it);
@@ -112,8 +135,7 @@ static std::list<Instruction>::iterator postprocessBinary(std::list<Instruction>
         || obj.op == BWOr_AB) {
         // These instructions can't have memory addresses both in source and destination
         // TODO: Second operand can't be constant?
-        if (std::holds_alternative<Stack>(obj.src) &&
-            std::holds_alternative<Stack>(obj.dst)) {
+        if (isMemoryAddress(obj.src) && isMemoryAddress(obj.dst)) {
             auto current = obj;
             it = asmList.erase(it);
             it = asmList.emplace(it, Mov{current.src, Reg{Register::R10}});
@@ -122,7 +144,7 @@ static std::list<Instruction>::iterator postprocessBinary(std::list<Instruction>
     } else if (obj.op == Mult_AB) {
         // IMUL can't use memory address as its destination
         // TODO: Second operand can't be constant?
-        if (std::holds_alternative<Stack>(obj.dst)) {
+        if (isMemoryAddress(obj.dst)) {
             auto current = obj;
             it = asmList.erase(it);
             it = asmList.emplace(it, Mov{current.dst, Reg{Register::R11}});
@@ -131,7 +153,7 @@ static std::list<Instruction>::iterator postprocessBinary(std::list<Instruction>
         }
     } else if (obj.op == ShiftL_AB || obj.op == ShiftRU_AB || obj.op == ShiftRS_AB) {
         // SHL, SHR and SAR can only have constant or CL register on their left (count)
-        if (std::holds_alternative<Stack>(obj.src)) {
+        if (isMemoryAddress(obj.src)) {
             auto current = obj;
             it = asmList.erase(it);
             it = asmList.emplace(it, Mov{current.src, Reg{Register::CX}});

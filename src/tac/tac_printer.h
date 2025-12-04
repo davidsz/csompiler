@@ -15,13 +15,14 @@ struct TACPrinter : public ITACVisitor<void> {
     void operator()(const tac::Return &r) override;
     void operator()(const tac::Unary &u) override;
     void operator()(const tac::Binary &b) override;
-    void operator()(const tac::FunctionDefinition &f) override;
     void operator()(const tac::Copy &c) override;
     void operator()(const tac::Jump &j) override;
     void operator()(const tac::JumpIfZero &j) override;
     void operator()(const tac::JumpIfNotZero &j) override;
     void operator()(const tac::Label &j) override;
     void operator()(const tac::FunctionCall &f) override;
+    void operator()(const tac::FunctionDefinition &f) override;
+    void operator()(const tac::StaticVariable &s) override;
     void operator()(std::monostate) override {
         assert(false);
     }

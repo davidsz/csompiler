@@ -5,12 +5,14 @@
 
 namespace assembly {
 
-std::string from_tac(std::vector<tac::TopLevel> tacVector)
+std::string from_tac(
+    std::vector<tac::TopLevel> tacVector,
+    std::shared_ptr<SymbolTable> symbolTable)
 {
     ASMBuilder tacToAsm;
     std::list<TopLevel> asmList = tacToAsm.ConvertTopLevel(tacVector);
 
-    postprocessStackVariables(asmList);
+    postprocessPseudoRegisters(asmList, symbolTable);
     postprocessInvalidInstructions(asmList);
 
     ASMPrinter asmPrinter;

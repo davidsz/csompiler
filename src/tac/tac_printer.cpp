@@ -41,16 +41,6 @@ void TACPrinter::operator()(const tac::Variant &v)
     pad(); std::cout << "Variant(" << v.name << ")" << std::endl;
 }
 
-void TACPrinter::operator()(const tac::FunctionDefinition &f)
-{
-    pad(); std::cout << "Function(" << f.name << ") {" << std::endl;
-    tab();
-    for (auto &i : f.inst)
-        std::visit(*this, i);
-    shift_tab();
-    pad(); std::cout << "}" << std::endl;
-}
-
 void TACPrinter::operator()(const tac::Copy &c)
 {
     pad(); std::cout << "Copy(" << std::endl;
@@ -93,6 +83,29 @@ void TACPrinter::operator()(const tac::FunctionCall &f)
         std::visit(*this, arg);
     std::visit(*this, f.dst);
     shift_tab();
+}
+
+void TACPrinter::operator()(const tac::FunctionDefinition &f)
+{
+    pad();
+    std::cout << (f.global ? "global" : "local");
+    std::cout << " Function(" << f.name << ") {" << std::endl;
+    tab();
+    for (auto &i : f.inst)
+        std::visit(*this, i);
+    shift_tab();
+    pad(); std::cout << "}" << std::endl;
+}
+
+void TACPrinter::operator()(const tac::StaticVariable &s)
+{
+    pad();
+    std::cout << (s.global ? "global" : "local");
+    std::cout << " StaticVariable(" << s.name << ") {" << std::endl;
+    tab();
+    pad(); std::cout << "Init " << s.init << std::endl;
+    shift_tab();
+    pad(); std::cout << "}" << std::endl;
 }
 
 void TACPrinter::print(std::vector<TopLevel> instructions) {

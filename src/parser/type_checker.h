@@ -2,7 +2,6 @@
 
 #include "ast_mutating_visitor.h"
 #include "common/error.h"
-#include <unordered_map>
 
 namespace parser {
 
@@ -36,25 +35,10 @@ struct TypeChecker : public IASTMutatingVisitor<void> {
     Error CheckAndMutate(std::vector<parser::Declaration> &);
     void Abort(std::string_view);
 
+    std::shared_ptr<SymbolTable> symbolTable() { return m_symbolTable; }
+
 private:
-    enum InitialValue {
-        Tentative,
-        Initial,
-        NoInitializer,
-    };
-
-    struct IdentifierAttributes {
-        bool defined = false;
-        bool global = false;
-        InitialValue init = NoInitializer;
-    };
-
-    struct SymbolEntry {
-        TypeInfo type;
-        IdentifierAttributes attrs;
-    };
-
-    std::unordered_map<std::string, SymbolEntry> m_symbolTable;
+    std::shared_ptr<SymbolTable> m_symbolTable = std::make_shared<SymbolTable>();
     void insertSymbol(const std::string &name, const TypeInfo &, const IdentifierAttributes &);
 
     template <typename T>

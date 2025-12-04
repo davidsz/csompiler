@@ -5,6 +5,8 @@
 
 namespace tac {
 
-std::vector<TopLevel> from_ast(const std::vector<parser::Declaration> &list);
+std::vector<TopLevel> from_ast(
+    const std::vector<parser::Declaration> &list,
+    std::shared_ptr<SymbolTable> symbolTable);
 
 } // namespace tac

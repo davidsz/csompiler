@@ -6,7 +6,6 @@
 namespace assembly {
 
 struct ASMBuilder : public tac::ITACVisitor<Operand> {
-    Operand operator()(const tac::FunctionDefinition &) override;
     Operand operator()(const tac::Return &) override;
     Operand operator()(const tac::Unary &) override;
     Operand operator()(const tac::Binary &) override;
@@ -18,6 +17,8 @@ struct ASMBuilder : public tac::ITACVisitor<Operand> {
     Operand operator()(const tac::Constant &) override;
     Operand operator()(const tac::Variant &) override;
     Operand operator()(const tac::FunctionCall &) override;
+    Operand operator()(const tac::FunctionDefinition &) override;
+    Operand operator()(const tac::StaticVariable &) override;
     Operand operator()(std::monostate) override {
         assert(false);
         return std::monostate();
