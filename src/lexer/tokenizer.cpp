@@ -130,11 +130,20 @@ Token Tokenizer::MakeNumericLiteral()
     // - Hexadecimal [0x/0X][0-9a-fA-F]
     // - Combinations of Uu and Ll suffixes
 
+    size_t l_count = 0;
     do {
         Step();
         literal += next;
         next = PeekNextChar();
-    } while (std::isdigit(next));
+        if (std::isdigit(next))
+            continue;
+        if (next == 'l' || next == 'L') {
+            if (++l_count > 1)
+                AbortAtPosition("Numeric literals can have only one L suffix.");
+            continue;
+        }
+        break;
+    } while (true);
 
     // We started to process an identifier starting with a number, it's invalid.
     if (!is_whitespace(next) && !is_operator(next) && !is_punctator(next))
