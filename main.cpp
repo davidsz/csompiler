@@ -112,12 +112,17 @@ int main(int argc, char **argv)
     if (Error error = semanticAnalyzer.CheckAndMutate(parser_result.root))
         return error;
 
+#if 0
+    std::cout << std::endl << "After semantic analysis:" << std::endl;
+    astPrinter.print(parser_result.root);
+#endif
+
     parser::TypeChecker typeChecker;
     if (Error error = typeChecker.CheckAndMutate(parser_result.root))
         return error;
 
 #if 1
-    std::cout << std::endl << "After semantic analysis:" << std::endl;
+    std::cout << std::endl << "After type checking:" << std::endl;
     astPrinter.print(parser_result.root);
 #endif
 

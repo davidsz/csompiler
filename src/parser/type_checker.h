@@ -5,33 +5,33 @@
 
 namespace parser {
 
-struct TypeChecker : public IASTMutatingVisitor<void> {
-    void operator()(ConstantExpression &n) override;
-    void operator()(VariableExpression &v) override;
-    void operator()(CastExpression &v) override;
-    void operator()(UnaryExpression &u) override;
-    void operator()(BinaryExpression &b) override;
-    void operator()(AssignmentExpression &a) override;
-    void operator()(ConditionalExpression &c) override;
-    void operator()(FunctionCallExpression &f) override;
-    void operator()(ReturnStatement &r) override;
-    void operator()(IfStatement &i) override;
-    void operator()(GotoStatement &g) override;
-    void operator()(LabeledStatement &l) override;
-    void operator()(BlockStatement &b) override;
-    void operator()(ExpressionStatement &e) override;
-    void operator()(NullStatement &e) override;
-    void operator()(BreakStatement &b) override;
-    void operator()(ContinueStatement &c) override;
-    void operator()(WhileStatement &w) override;
-    void operator()(DoWhileStatement &d) override;
-    void operator()(ForStatement &f) override;
-    void operator()(SwitchStatement &s) override;
-    void operator()(CaseStatement &c) override;
-    void operator()(DefaultStatement &d) override;
-    void operator()(FunctionDeclaration &f) override;
-    void operator()(VariableDeclaration &v) override;
-    void operator()(std::monostate) override;
+struct TypeChecker : public IASTMutatingVisitor<Type> {
+    Type operator()(ConstantExpression &n) override;
+    Type operator()(VariableExpression &v) override;
+    Type operator()(CastExpression &v) override;
+    Type operator()(UnaryExpression &u) override;
+    Type operator()(BinaryExpression &b) override;
+    Type operator()(AssignmentExpression &a) override;
+    Type operator()(ConditionalExpression &c) override;
+    Type operator()(FunctionCallExpression &f) override;
+    Type operator()(ReturnStatement &r) override;
+    Type operator()(IfStatement &i) override;
+    Type operator()(GotoStatement &g) override;
+    Type operator()(LabeledStatement &l) override;
+    Type operator()(BlockStatement &b) override;
+    Type operator()(ExpressionStatement &e) override;
+    Type operator()(NullStatement &e) override;
+    Type operator()(BreakStatement &b) override;
+    Type operator()(ContinueStatement &c) override;
+    Type operator()(WhileStatement &w) override;
+    Type operator()(DoWhileStatement &d) override;
+    Type operator()(ForStatement &f) override;
+    Type operator()(SwitchStatement &s) override;
+    Type operator()(CaseStatement &c) override;
+    Type operator()(DefaultStatement &d) override;
+    Type operator()(FunctionDeclaration &f) override;
+    Type operator()(VariableDeclaration &v) override;
+    Type operator()(std::monostate) override;
 
     Error CheckAndMutate(std::vector<parser::Declaration> &);
     void Abort(std::string_view);
@@ -48,6 +48,7 @@ private:
 
     bool m_fileScope = false;
     bool m_forLoopInitializer = false;
+    std::vector<Type> m_functionTypeStack;
 };
 
 }; // namespace parser

@@ -5,35 +5,40 @@ namespace parser {
 
 void ASTPrinter::operator()(const ConstantExpression &e)
 {
-    pad(); std::cout << "ConstantExpression(" << toString(e.value) << ")" << std::endl;
+    pad();
+    std::cout << "ConstantExpression(" << toString(e.value) << ") ";
+    std::cout << e.type << std::endl;
 }
 
 void ASTPrinter::operator()(const VariableExpression &v)
 {
-    pad(); std::cout << "VariableExpression(" << v.identifier << ")" << std::endl;
+    pad();
+    std::cout << "VariableExpression(" << v.identifier << ") ";
+    std::cout << v.type << std::endl;
 }
 
 void ASTPrinter::operator()(const CastExpression &c)
 {
-    pad(); std::cout << "CastExpression(" << std::endl;
+    pad(); std::cout << "CastExpression(" << c.target_type << std::endl;
     tab(); std::visit(*this, *c.expr); shift_tab();
-    pad(); std::cout << ")" << std::endl;}
-
-void ASTPrinter::operator()(const UnaryExpression &e)
-{
-    pad(); std::cout << "UnaryExpression(" << toString(e.op) << std::endl;
-    tab(); std::visit(*this, *e.expr); shift_tab();
-    pad(); std::cout << ")" << std::endl;
+    pad(); std::cout << ") " << c.type << std::endl;
 }
 
-void ASTPrinter::operator()(const BinaryExpression &e)
+void ASTPrinter::operator()(const UnaryExpression &u)
 {
-    pad(); std::cout << "BinaryExpression(" << toString(e.op) << std::endl;
+    pad(); std::cout << "UnaryExpression(" << toString(u.op) << std::endl;
+    tab(); std::visit(*this, *u.expr); shift_tab();
+    pad(); std::cout << ") " << u.type << std::endl;
+}
+
+void ASTPrinter::operator()(const BinaryExpression &b)
+{
+    pad(); std::cout << "BinaryExpression(" << toString(b.op) << std::endl;
     tab();
-    std::visit(*this, *e.lhs);
-    std::visit(*this, *e.rhs);
+    std::visit(*this, *b.lhs);
+    std::visit(*this, *b.rhs);
     shift_tab();
-    pad(); std::cout << ")" << std::endl;
+    pad(); std::cout << ") " << b.type << std::endl;
 }
 
 void ASTPrinter::operator()(const AssignmentExpression &a)
@@ -43,7 +48,7 @@ void ASTPrinter::operator()(const AssignmentExpression &a)
     std::visit(*this, *a.lhs);
     std::visit(*this, *a.rhs);
     shift_tab();
-    pad(); std::cout << ")" << std::endl;
+    pad(); std::cout << ") " << a.type << std::endl;
 }
 
 void ASTPrinter::operator()(const ConditionalExpression &c)
@@ -57,7 +62,7 @@ void ASTPrinter::operator()(const ConditionalExpression &c)
     pad(); std::cout << "Else" << std::endl;
     std::visit(*this, *c.falseBranch);
     shift_tab();
-    pad(); std::cout << ")" << std::endl;
+    pad(); std::cout << ") " << c.type << std::endl;
 }
 
 void ASTPrinter::operator()(const FunctionCallExpression &f)
@@ -69,13 +74,13 @@ void ASTPrinter::operator()(const FunctionCallExpression &f)
     for (auto &a : f.args)
         std::visit(*this, *a);
     shift_tab();
-    pad(); std::cout << ")" << std::endl;
+    pad(); std::cout << ") " << f.type << std::endl;
 }
 
-void ASTPrinter::operator()(const ReturnStatement &s)
+void ASTPrinter::operator()(const ReturnStatement &r)
 {
     pad(); std::cout << "Return" << std::endl;
-    tab(); std::visit(*this, *s.expr); shift_tab();
+    tab(); std::visit(*this, *r.expr); shift_tab();
 }
 
 void ASTPrinter::operator()(const IfStatement &i)

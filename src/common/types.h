@@ -19,9 +19,13 @@ struct FunctionType {
     bool operator==(const FunctionType &other) const;
 };
 
-using TypeInfo = std::variant<BasicType, FunctionType>;
+using TypeInfo = std::variant<
+    std::monostate,
+    BasicType,
+    FunctionType
+>;
 struct Type {
-    TypeInfo t;
+    TypeInfo t; // std::monostate until initialized
 
     template <typename T>
     T *getAs() { return std::get_if<T>(&t); }
@@ -36,6 +40,8 @@ struct Type {
     friend bool operator!=(const Type &a, const Type &b) {
         return !(a == b);
     }
+
+    friend std::ostream &operator<<(std::ostream &os, const Type &t);
 };
 
 using ConstantValue = std::variant<

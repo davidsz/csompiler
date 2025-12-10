@@ -84,8 +84,9 @@ void SemanticAnalyzer::operator()(VariableExpression &v)
         Abort(std::format("Undeclared variable '{}'", v.identifier));
 }
 
-void SemanticAnalyzer::operator()(CastExpression &)
+void SemanticAnalyzer::operator()(CastExpression &c)
 {
+    std::visit(*this, *c.expr);
 }
 
 void SemanticAnalyzer::operator()(UnaryExpression &u)

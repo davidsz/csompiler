@@ -135,7 +135,7 @@ Expression ASTBuilder::ParseFactor()
         if (Peek()->type() == TokenType::Keyword && Peek(1)->value() == ")") {
             LOG("CastExpression");
             auto ret = CastExpression{};
-            ret.type = ParseTypes();
+            ret.target_type = ParseTypes();
             Consume(TokenType::Punctator, ")");
             ret.expr = unique_expression(ParseFactor());
             return ret;

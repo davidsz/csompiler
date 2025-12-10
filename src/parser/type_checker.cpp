@@ -10,118 +10,201 @@ struct TypeError : public std::runtime_error
     }
 };
 
-void TypeChecker::operator()(ConstantExpression &)
+static Type get_common_type(const Type &first, const Type &second)
 {
+    if (first.t == second.t)
+        return first;
+    else
+        return Type{ BasicType::Long };
 }
 
-void TypeChecker::operator()(VariableExpression &v)
+static std::unique_ptr<Expression> explicit_cast(
+    std::unique_ptr<Expression> expr,
+    const Type &from_type,
+    const Type &to_type)
+{
+    if (from_type == to_type)
+        return expr;
+    auto ret = std::make_unique<Expression>(CastExpression{
+        .target_type = to_type,
+        .expr = std::move(expr),
+        .type = to_type,
+    });
+    return ret;
+}
+
+Type TypeChecker::operator()(ConstantExpression &c)
+{
+    // TODO: Would it be more simple to determine type in the ASTBuilder?
+    switch (c.value.index()) {
+        case 0: c.type = Type{ BasicType::Int }; break;
+        case 1: c.type = Type{ BasicType::Long }; break;
+        default: break;
+    }
+    return c.type;
+}
+
+Type TypeChecker::operator()(VariableExpression &v)
 {
     auto it = m_symbolTable->find(v.identifier);
     if (it != m_symbolTable->end() && it->second.type.getAs<FunctionType>())
         Abort(std::format("Function name '{}' is used as variable", v.identifier));
+    v.type = it->second.type;
+    return v.type;
 }
 
-void TypeChecker::operator()(CastExpression &)
+Type TypeChecker::operator()(CastExpression &c)
 {
+    c.type = Type{ std::visit(*this, *c.expr) };
+    return c.type;
 }
 
-void TypeChecker::operator()(UnaryExpression &u)
+Type TypeChecker::operator()(UnaryExpression &u)
 {
-    std::visit(*this, *u.expr);
+    Type type = std::visit(*this, *u.expr);
+    if (u.op == UnaryOperator::Not)
+        u.type = Type{ BasicType::Int };
+    else
+        u.type = type;
+    return u.type;
 }
 
-void TypeChecker::operator()(BinaryExpression &b)
+Type TypeChecker::operator()(BinaryExpression &b)
 {
-    std::visit(*this, *b.lhs);
-    std::visit(*this, *b.rhs);
+    Type left_type = std::visit(*this, *b.lhs);
+    Type right_type = std::visit(*this, *b.rhs);
+    if (b.op == BinaryOperator::And || b.op == BinaryOperator::Or) {
+        b.type = Type{ BasicType::Int };
+        return b.type;
+    }
+    Type common_type = get_common_type(left_type, right_type);
+    b.lhs = explicit_cast(std::move(b.lhs), left_type, common_type);
+    b.rhs = explicit_cast(std::move(b.rhs), right_type, common_type);
+    if (b.op == BinaryOperator::Add
+        || b.op == BinaryOperator::Subtract
+        || b.op == BinaryOperator::Multiply
+        || b.op == BinaryOperator::Divide
+        || b.op == BinaryOperator::Remainder)
+        b.type = common_type;
+    else
+        b.type = Type{ BasicType::Int };
+    return b.type;
 }
 
-void TypeChecker::operator()(AssignmentExpression &a)
+Type TypeChecker::operator()(AssignmentExpression &a)
 {
-    std::visit(*this, *a.lhs);
-    std::visit(*this, *a.rhs);
+    Type left_type = std::visit(*this, *a.lhs);
+    Type right_type = std::visit(*this, *a.rhs);
+    a.rhs = explicit_cast(std::move(a.rhs), right_type, left_type);
+    a.type = left_type;
+    return a.type;
 }
 
-void TypeChecker::operator()(ConditionalExpression &c)
+Type TypeChecker::operator()(ConditionalExpression &c)
 {
     std::visit(*this, *c.condition);
-    std::visit(*this, *c.trueBranch);
-    std::visit(*this, *c.falseBranch);
+    Type true_type = std::visit(*this, *c.trueBranch);
+    Type false_type = std::visit(*this, *c.falseBranch);
+    Type common_type = get_common_type(true_type, false_type);
+    c.trueBranch = explicit_cast(std::move(c.trueBranch), true_type, common_type);
+    c.falseBranch = explicit_cast(std::move(c.falseBranch), false_type, common_type);
+    c.type = common_type;
+    return c.type;
 }
 
-void TypeChecker::operator()(FunctionCallExpression &f)
+Type TypeChecker::operator()(FunctionCallExpression &f)
 {
     if (auto symbol = lookupSymbolAs<FunctionType>(f.identifier)) {
         auto &[type, attrs] = *symbol;
         if (type.params.size() != f.args.size())
             Abort(std::format("Function '{}' is called with wrong number of arguments", f.identifier));
+
+        for (size_t i = 0; i < f.args.size(); i++) {
+            Type arg_type = std::visit(*this, *f.args[i]);
+            f.args[i] = explicit_cast(std::move(f.args[i]), arg_type, *type.params[i]);
+        }
+        f.type = type.ret;
     } else {
         // The symbol name exists, we verified it during the semantic analysis.
         Abort(std::format("'{}' is not a function name", f.identifier));
     }
 
-    for (auto &a : f.args)
-        std::visit(*this, *a);
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(ReturnStatement &r)
+Type TypeChecker::operator()(ReturnStatement &r)
 {
-    std::visit(*this, *r.expr);
+    Type ret_type = std::visit(*this, *r.expr);
+    r.expr = explicit_cast(
+        std::move(r.expr),
+        ret_type,
+        *std::get<FunctionType>(m_functionTypeStack.back().t).ret);
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(IfStatement &i)
+Type TypeChecker::operator()(IfStatement &i)
 {
     std::visit(*this, *i.condition);
     std::visit(*this, *i.trueBranch);
     if (i.falseBranch)
         std::visit(*this, *i.falseBranch);
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(GotoStatement &)
+Type TypeChecker::operator()(GotoStatement &)
 {
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(LabeledStatement &l)
+Type TypeChecker::operator()(LabeledStatement &l)
 {
     std::visit(*this, *l.statement);
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(BlockStatement &b)
+Type TypeChecker::operator()(BlockStatement &b)
 {
     for (auto &i : b.items)
         std::visit(*this, i);
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(ExpressionStatement &e)
+Type TypeChecker::operator()(ExpressionStatement &e)
 {
     std::visit(*this, *e.expr);
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(NullStatement &)
+Type TypeChecker::operator()(NullStatement &)
 {
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(BreakStatement &)
+Type TypeChecker::operator()(BreakStatement &)
 {
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(ContinueStatement &)
+Type TypeChecker::operator()(ContinueStatement &)
 {
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(WhileStatement &w)
+Type TypeChecker::operator()(WhileStatement &w)
 {
     std::visit(*this, *w.condition);
     std::visit(*this, *w.body);
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(DoWhileStatement &d)
+Type TypeChecker::operator()(DoWhileStatement &d)
 {
     std::visit(*this, *d.body);
     std::visit(*this, *d.condition);
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(ForStatement &f)
+Type TypeChecker::operator()(ForStatement &f)
 {
     if (f.init) {
         m_forLoopInitializer = true;
@@ -133,26 +216,30 @@ void TypeChecker::operator()(ForStatement &f)
     if (f.update)
         std::visit(*this, *f.update);
     std::visit(*this, *f.body);
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(SwitchStatement &s)
+Type TypeChecker::operator()(SwitchStatement &s)
 {
     std::visit(*this, *s.condition);
     std::visit(*this, *s.body);
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(CaseStatement &c)
+Type TypeChecker::operator()(CaseStatement &c)
 {
     std::visit(*this, *c.condition);
     std::visit(*this, *c.statement);
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(DefaultStatement &d)
+Type TypeChecker::operator()(DefaultStatement &d)
 {
     std::visit(*this, *d.statement);
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(FunctionDeclaration &f)
+Type TypeChecker::operator()(FunctionDeclaration &f)
 {
     if (!m_fileScope && f.storage == StorageStatic)
         Abort(std::format("Function '{}' can't be declared as static in block scope", f.name));
@@ -179,17 +266,23 @@ void TypeChecker::operator()(FunctionDeclaration &f)
     });
 
     if (f.body) {
-        m_fileScope = false;
-        for (auto &p : f.params)
-            insertSymbol(p, Type{ BasicType::Int }, IdentifierAttributes{
+        auto params_types = std::get<FunctionType>(f.type.t).params;
+        for (size_t i = 0; i < f.params.size(); i++) {
+            insertSymbol(f.params[i], *params_types[i], IdentifierAttributes{
                 .type = IdentifierAttributes::Local,
                 .defined = false
             });
+        }
+        m_fileScope = false;
+        m_functionTypeStack.push_back(f.type);
         std::visit(*this, *f.body);
+        m_functionTypeStack.pop_back();
     }
+
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(VariableDeclaration &v)
+Type TypeChecker::operator()(VariableDeclaration &v)
 {
     if (m_forLoopInitializer && v.storage != StorageDefault)
         Abort("Initializer of a for loop can't have storage specifier");
@@ -202,17 +295,18 @@ void TypeChecker::operator()(VariableDeclaration &v)
                 init = NoInitializer{};
             else
                 init = Tentative{};
-        } else if (auto n = std::get_if<ConstantExpression>(v.init.get()))
+        } else if (auto n = std::get_if<ConstantExpression>(v.init.get())) {
+            // TODO: Compile-time conversion (if needed; e.g.: long -> int)
             init = Initial{ .i = n->value };
-        else
+        } else
             Abort(std::format("Non-constant initializer of '{}'", v.identifier));
 
         bool is_global = (v.storage != StorageStatic);
 
         if (m_symbolTable->contains(v.identifier)) {
             const SymbolEntry &entry = (*m_symbolTable)[v.identifier];
-            if (entry.type.getAs<FunctionType>())
-                Abort(std::format("Function '{}' redeclared as variable", v.identifier));
+            if (entry.type != v.type)
+                Abort(std::format("'{}' redeclared with different type", v.identifier));
 
             if (v.storage == StorageExtern)
                 is_global = entry.attrs.global;
@@ -228,7 +322,7 @@ void TypeChecker::operator()(VariableDeclaration &v)
                 init = Tentative{};
         }
 
-        insertSymbol(v.identifier, Type{ BasicType::Int }, IdentifierAttributes{
+        insertSymbol(v.identifier, v.type, IdentifierAttributes{
             .type = IdentifierAttributes::Static,
             .global = is_global,
             .init = init
@@ -241,10 +335,10 @@ void TypeChecker::operator()(VariableDeclaration &v)
 
             if (m_symbolTable->contains(v.identifier)) {
                 const SymbolEntry &entry = (*m_symbolTable)[v.identifier];
-                if (entry.type.getAs<FunctionType>())
-                    Abort(std::format("Function '{}' redeclared as variable", v.identifier));
+                if (entry.type != v.type)
+                    Abort(std::format("'{}' redeclared with different type", v.identifier));
             } else {
-                insertSymbol(v.identifier, Type{ BasicType::Int }, IdentifierAttributes{
+                insertSymbol(v.identifier, v.type, IdentifierAttributes{
                     .type = IdentifierAttributes::Static,
                     .global = true,
                     .init = NoInitializer{}
@@ -254,31 +348,35 @@ void TypeChecker::operator()(VariableDeclaration &v)
             InitialValue init = NoInitializer{};
             if (!v.init)
                 init = Initial{ .i = 0 };
-            else if (auto n = std::get_if<ConstantExpression>(v.init.get()))
+            else if (auto n = std::get_if<ConstantExpression>(v.init.get())) {
+                // TODO: Compile-time conversion (if needed; e.g.: long -> int)
                 init = Initial{ .i = n->value };
-            else
+            } else
                 Abort(std::format("Non-constant initializer on local static variable '{}'", v.identifier));
 
-            insertSymbol(v.identifier, Type{ BasicType::Int }, IdentifierAttributes{
+            insertSymbol(v.identifier, v.type, IdentifierAttributes{
                 .type = IdentifierAttributes::Static,
                 .global = false,
                 .init = init
             });
         } else {
-            insertSymbol(v.identifier, Type{ BasicType::Int }, IdentifierAttributes{
+            insertSymbol(v.identifier, v.type, IdentifierAttributes{
                 .type = IdentifierAttributes::Local
             });
 
             if (v.init) {
                 m_fileScope = false;
-                std::visit(*this, *v.init);
+                Type init_type = std::visit(*this, *v.init);
+                v.init = explicit_cast(std::move(v.init), init_type, v.type);
             }
         }
     }
+    return Type{ std::monostate() };
 }
 
-void TypeChecker::operator()(std::monostate)
+Type TypeChecker::operator()(std::monostate)
 {
+    return Type{ std::monostate() };
 }
 
 Error TypeChecker::CheckAndMutate(std::vector<parser::Declaration> &astVector)
