@@ -12,11 +12,13 @@ namespace parser {
 #define AST_DECLARATION_LIST(X) \
     X(FunctionDeclaration, \
         StorageClass storage; \
+        Type type; \
         std::string name; \
         std::vector<std::string> params; \
         std::unique_ptr<Statement> body;) \
     X(VariableDeclaration, \
         StorageClass storage; \
+        Type type; \
         std::string identifier; \
         std::unique_ptr<Expression> init;) \
 
@@ -70,10 +72,13 @@ namespace parser {
         std::string label;) \
 
 #define AST_EXPRESSION_LIST(X) \
-    X(NumberExpression, \
-        int value;) \
+    X(ConstantExpression, \
+        ConstantValue value;) \
     X(VariableExpression, \
         std::string identifier;) \
+    X(CastExpression, \
+        Type type; \
+        std::unique_ptr<Expression> expr;) \
     X(UnaryExpression, \
         UnaryOperator op; \
         std::unique_ptr<Expression> expr; \

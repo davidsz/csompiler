@@ -12,7 +12,7 @@ struct SyntaxError : public std::runtime_error
     explicit SyntaxError(const std::string &message) : std::runtime_error(message) {}
 };
 
-static const std::unordered_map<std::string, TypeSpecifier> s_typeSpecifiers {
+static const std::unordered_map<std::string, BasicType> s_typeSpecifiers {
 #define ADD_TYPE_TO_MAP(enumname, stringname) {stringname, enumname},
     TYPE_SPECIFIER_LIST(ADD_TYPE_TO_MAP)
 #undef ADD_TYPE_TO_MAP
@@ -132,13 +132,21 @@ Expression ASTBuilder::ParseFactor()
     auto next = Peek();
     if (next->type() == TokenType::Punctator && next->value() == "(") {
         Consume(TokenType::Punctator, "(");
+        if (Peek()->type() == TokenType::Keyword && Peek(1)->value() == ")") {
+            LOG("CastExpression");
+            auto ret = CastExpression{};
+            ret.type = ParseTypes();
+            Consume(TokenType::Punctator, ")");
+            ret.expr = unique_expression(ParseFactor());
+            return ret;
+        }
         auto expr = ParseExpression(0);
         Consume(TokenType::Punctator, ")");
         return expr;
     }
 
     if (next->type() == TokenType::NumericLiteral)
-        return NumberExpression{ std::stoi(Consume(TokenType::NumericLiteral)) };
+        return ParseNumericLiteral();
 
     if (next->type() == TokenType::Identifier) {
         next = Peek(1);
@@ -173,6 +181,28 @@ Expression ASTBuilder::ParseFunctionCall()
     }
     Consume(TokenType::Punctator, ")");
     return ret;
+}
+
+Expression ASTBuilder::ParseNumericLiteral()
+{
+    LOG("ParseNumericLiteral");
+    std::string literal = Consume(TokenType::NumericLiteral);
+    bool hasL = false;
+    while (!literal.empty() && std::isalpha(literal.back())) {
+        if (literal.back() == 'l' || literal.back() == 'L') {
+            hasL = true;
+            literal.pop_back();
+        }
+    }
+
+    long value = std::stol(literal);
+    if (hasL)
+        return ConstantExpression{ value };
+    if (value > std::numeric_limits<int>::min() &&
+        value < std::numeric_limits<int>::max()) {
+            return ConstantExpression{ static_cast<int>(value) };
+    }
+    return ConstantExpression{ value };
 }
 
 Statement ASTBuilder::ParseReturn()
@@ -412,39 +442,17 @@ Statement ASTBuilder::ParseStatement()
 Declaration ASTBuilder::ParseDeclaration(bool allow_function)
 {
     LOG("ParseDeclaration");
-    std::vector<TypeSpecifier> type_specifiers;
-    std::vector<StorageClass> storage_classes;
-    std::optional<lexer::Token> next;
-    for (next = Peek();
-        next->type() == TokenType::Keyword && s_specifiers.contains(next->value());
-        next = Peek()) {
-        auto type_it = s_typeSpecifiers.find(next->value());
-        if (type_it != s_typeSpecifiers.end()) {
-            type_specifiers.push_back(type_it->second);
-            Consume(TokenType::Keyword);
-            continue;
-        }
-
-        auto storage_it = s_storageClasses.find(next->value());
-        if (storage_it != s_storageClasses.end()) {
-            storage_classes.push_back(storage_it->second);
-            Consume(TokenType::Keyword);
-        }
-    }
-
-    if (type_specifiers.size() != 1)
-        Abort("Invalid type specification");
-    if (storage_classes.size() > 1)
-        Abort("Invalid storage class");
-
-    StorageClass storage = storage_classes.empty() ? StorageClass::StorageDefault : storage_classes[0];
+    auto [storage, type] = ParseTypeSpecifierList();
     std::string identifier = Consume(TokenType::Identifier);
 
-    next = Peek();
+    auto next = Peek();
     if (allow_function && next->type() == TokenType::Punctator && next->value() == "(") {
         // Function declaration
         auto func = FunctionDeclaration{};
         func.storage = storage;
+        func.type = Type{ .t = FunctionType{
+            .ret = std::make_shared<Type>(type)
+        }};
         func.name = std::move(identifier);
         Consume(TokenType::Punctator, "(");
         next = Peek();
@@ -452,10 +460,13 @@ Declaration ASTBuilder::ParseDeclaration(bool allow_function)
         if (next->type() == TokenType::Keyword && next->value() == "void")
             Consume(TokenType::Keyword);
         else {
+            FunctionType *func_type = func.type.getAs<FunctionType>();
             while (next->value() != ")") {
                 if (next->value() == ",")
                     Consume(TokenType::Operator, ",");
-                Consume(TokenType::Keyword);
+                // Type names
+                func_type->params.push_back(std::make_shared<Type>(ParseTypes()));
+                // Parameter identifier
                 func.params.push_back(Consume(TokenType::Identifier));
                 next = Peek();
             }
@@ -472,6 +483,7 @@ Declaration ASTBuilder::ParseDeclaration(bool allow_function)
         // Variable declaration
         auto decl = VariableDeclaration{};
         decl.storage = storage;
+        decl.type = type;
         decl.identifier = std::move(identifier);
         if (next->type() == TokenType::Punctator && next->value() == ";") {
             Consume(TokenType::Punctator, ";");
@@ -484,6 +496,79 @@ Declaration ASTBuilder::ParseDeclaration(bool allow_function)
     }
     assert(false);
     return VariableDeclaration{};
+}
+
+std::pair<StorageClass, Type> ASTBuilder::ParseTypeSpecifierList()
+{
+    LOG("ParseTypeSpecifierList");
+    std::set<BasicType> type_specifiers;
+    std::vector<StorageClass> storage_classes;
+    std::optional<lexer::Token> next;
+    for (next = Peek();
+        next->type() == TokenType::Keyword && s_specifiers.contains(next->value());
+        next = Peek()) {
+        auto type_it = s_typeSpecifiers.find(next->value());
+        if (type_it != s_typeSpecifiers.end()) {
+            auto [it, inserted] = type_specifiers.insert(type_it->second);
+            if (!inserted)
+                Abort(std::format("Duplicated type specifier '{}'", next->value()));
+            Consume(TokenType::Keyword);
+            continue;
+        }
+
+        auto storage_it = s_storageClasses.find(next->value());
+        if (storage_it != s_storageClasses.end()) {
+            storage_classes.push_back(storage_it->second);
+            Consume(TokenType::Keyword);
+            continue;
+        }
+    }
+
+    Type type = Type{};
+    if (type_specifiers.size() == 1)
+        type.t = *type_specifiers.begin();
+    else if (type_specifiers.size() == 2
+        && type_specifiers.contains(BasicType::Long)
+        && type_specifiers.contains(BasicType::Int))
+        type.t = BasicType::Long;
+    else
+        Abort("Invalid type specification");
+
+    if (storage_classes.size() > 1)
+        Abort("Invalid storage class");
+    StorageClass storage = storage_classes.empty() ? StorageClass::StorageDefault : storage_classes[0];
+
+    return std::make_pair(storage, type);
+}
+
+Type ASTBuilder::ParseTypes()
+{
+    LOG("ParseTypes");
+    std::set<BasicType> type_specifiers;
+    for (std::optional<lexer::Token> next = Peek();
+        next->type() == TokenType::Keyword && s_typeSpecifiers.contains(next->value());
+        next = Peek()) {
+        auto type_it = s_typeSpecifiers.find(next->value());
+        if (type_it != s_typeSpecifiers.end()) {
+            auto [it, inserted] = type_specifiers.insert(type_it->second);
+            if (!inserted)
+                Abort(std::format("Duplicated type specifier '{}'", next->value()));
+            Consume(TokenType::Keyword);
+            continue;
+        }
+    }
+
+    Type type = Type{};
+    if (type_specifiers.size() == 1)
+        type.t = *type_specifiers.begin();
+    else if (type_specifiers.size() == 2
+        && type_specifiers.contains(BasicType::Long)
+        && type_specifiers.contains(BasicType::Int))
+        type.t = BasicType::Long;
+    else
+        Abort("Invalid type specification");
+
+    return type;
 }
 
 void ASTBuilder::Abort(std::string_view message, size_t line)

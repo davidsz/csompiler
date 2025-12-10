@@ -15,14 +15,19 @@ static std::string generateLabelName(std::string_view label)
     return std::format("{}_{}", label, counter++);
 }
 
-Value TACBuilder::operator()(const parser::NumberExpression &n)
+Value TACBuilder::operator()(const parser::ConstantExpression &n)
 {
-    return Constant{ static_cast<int>(n.value) };
+    return Constant{ *std::get_if<int>(&n.value) };
 }
 
 Value TACBuilder::operator()(const parser::VariableExpression &v)
 {
     return Variant{ v.identifier };
+}
+
+Value TACBuilder::operator()(const parser::CastExpression &)
+{
+    return Constant{ -1 };
 }
 
 Value TACBuilder::operator()(const parser::UnaryExpression &u)

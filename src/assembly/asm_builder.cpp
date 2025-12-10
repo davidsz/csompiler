@@ -241,7 +241,7 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
 
 Operand ASMBuilder::operator()(const tac::Constant &c)
 {
-    return Imm{ c.value };
+    return Imm{ *std::get_if<int>(&c.value) };
 }
 
 Operand ASMBuilder::operator()(const tac::Variant &v)

@@ -135,7 +135,7 @@ Token Tokenizer::MakeNumericLiteral()
         Step();
         literal += next;
         next = PeekNextChar();
-        if (std::isdigit(next))
+        if (l_count == 0 && std::isdigit(next))
             continue;
         if (next == 'l' || next == 'L') {
             if (++l_count > 1)

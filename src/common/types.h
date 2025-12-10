@@ -4,33 +4,48 @@
 #include <string>
 #include <unordered_map>
 #include <variant>
+#include <vector>
 
-// TODO: Wrap it later to support recursive types
-// struct Type;
+struct Type;
 
 enum BasicType {
     Int,
+    Long,
 };
 
 struct FunctionType {
-    size_t paramCount = 0;
-    auto operator<=>(const FunctionType &) const = default;
+    std::vector<std::shared_ptr<Type>> params;
+    std::shared_ptr<Type> ret;
+    bool operator==(const FunctionType &other) const;
 };
+
 using TypeInfo = std::variant<BasicType, FunctionType>;
+struct Type {
+    TypeInfo t;
 
-// struct Type {
-//     TypeInfo t;
-// };
+    template <typename T>
+    T *getAs() { return std::get_if<T>(&t); }
 
-// TODO: Can be set of strings, the enum is unnessary
-#define TYPE_SPECIFIER_LIST(X) \
-    X(TypeInt, "int")
+    template <typename T>
+    const T *getAs() const { return std::get_if<T>(&t); }
 
-enum TypeSpecifier {
-#define ADD_TYPE_TO_ENUM(enumname, stringname) enumname,
-    TYPE_SPECIFIER_LIST(ADD_TYPE_TO_ENUM)
-#undef ADD_TYPE_TO_ENUM
+    friend bool operator==(const Type &a, const Type &b) {
+        return a.t == b.t;
+    }
+
+    friend bool operator!=(const Type &a, const Type &b) {
+        return !(a == b);
+    }
 };
+
+using ConstantValue = std::variant<
+    int, long
+>;
+std::string toString(const ConstantValue &v);
+
+#define TYPE_SPECIFIER_LIST(X) \
+    X(Int, "int") \
+    X(Long, "long")
 
 #define STORAGE_CLASS_LIST(X) \
     X(StorageStatic, "static") \
@@ -47,25 +62,25 @@ enum StorageClass {
 struct Tentative {};
 struct NoInitializer {};
 struct Initial {
-    int i;
+    ConstantValue i;
     auto operator<=>(const Initial &) const = default;
 };
 using InitialValue = std::variant<Tentative, NoInitializer, Initial>;
 
 struct IdentifierAttributes {
-    enum Type {
+    enum AttrType {
         Function,
         Static,
         Local
     };
-    Type type = Local;
+    AttrType type = Local;
     bool defined = false;
     bool global = false;
     InitialValue init = NoInitializer{};
 };
 
 struct SymbolEntry {
-    TypeInfo type;
+    Type type;
     IdentifierAttributes attrs;
 };
 

@@ -6,8 +6,9 @@
 namespace parser {
 
 struct TypeChecker : public IASTMutatingVisitor<void> {
-    void operator()(NumberExpression &n) override;
+    void operator()(ConstantExpression &n) override;
     void operator()(VariableExpression &v) override;
+    void operator()(CastExpression &v) override;
     void operator()(UnaryExpression &u) override;
     void operator()(BinaryExpression &b) override;
     void operator()(AssignmentExpression &a) override;
@@ -39,7 +40,7 @@ struct TypeChecker : public IASTMutatingVisitor<void> {
 
 private:
     std::shared_ptr<SymbolTable> m_symbolTable = std::make_shared<SymbolTable>();
-    void insertSymbol(const std::string &name, const TypeInfo &, const IdentifierAttributes &);
+    void insertSymbol(const std::string &name, const Type &, const IdentifierAttributes &);
 
     template <typename T>
     std::optional<std::pair<const T &, const IdentifierAttributes &>>

@@ -203,7 +203,9 @@ void ASMPrinter::operator()(const StaticVariable &s)
     if (s.global)
         m_codeStream << ".globl _" << s.name << std::endl;
 
-    if (s.init == 0)
+    // TODO: Type is not necessarily an integer
+    int s_init = *std::get_if<int>(&s.init);
+    if (s_init == 0)
         m_codeStream << ".bss" << std::endl;
     else
         m_codeStream << ".data" << std::endl;
@@ -211,10 +213,10 @@ void ASMPrinter::operator()(const StaticVariable &s)
     m_codeStream << ".balign 4" << std::endl;
     m_codeStream << "_" << s.name << ":" << std::endl;
 
-    if (s.init == 0)
+    if (s_init == 0)
         m_codeStream << ".zero 4" << std::endl;
     else
-        m_codeStream << ".long " << s.init << std::endl;
+        m_codeStream << ".long " << s_init << std::endl;
 }
 
 void ASMPrinter::operator()(std::monostate)

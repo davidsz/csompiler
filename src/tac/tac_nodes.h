@@ -2,6 +2,7 @@
 
 #include "common/macro.h"
 #include "common/operator.h"
+#include "common/types.h"
 #include <cassert>
 #include <string>
 #include <vector>
@@ -9,8 +10,10 @@
 namespace tac {
 
 #define TAC_VALUE_TYPE_LIST(X) \
-    X(Constant, int value;) \
-    X(Variant, std::string name;)
+    X(Constant, \
+        ConstantValue value;) \
+    X(Variant, \
+        std::string name;)
 
 #define TAC_INSTRUCTION_LIST(X) \
     X(Return, \
@@ -50,7 +53,7 @@ namespace tac {
     X(StaticVariable, \
         std::string name; \
         bool global; \
-        int init;)
+        ConstantValue init;)
 
 DEFINE_NODES_WITH_COMMON_VARIANT(Value, TAC_VALUE_TYPE_LIST);
 DEFINE_NODES_WITH_COMMON_VARIANT(Instruction, TAC_INSTRUCTION_LIST);

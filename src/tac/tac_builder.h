@@ -7,8 +7,9 @@
 namespace tac {
 
 struct TACBuilder : public parser::IASTVisitor<tac::Value> {
-    Value operator()(const parser::NumberExpression &n) override;
+    Value operator()(const parser::ConstantExpression &n) override;
     Value operator()(const parser::VariableExpression &v) override;
+    Value operator()(const parser::CastExpression &v) override;
     Value operator()(const parser::UnaryExpression &u) override;
     Value operator()(const parser::BinaryExpression &b) override;
     Value operator()(const parser::AssignmentExpression &a) override;

@@ -33,7 +33,7 @@ void TACPrinter::operator()(const tac::Binary &b)
 
 void TACPrinter::operator()(const tac::Constant &c)
 {
-    pad(); std::cout << "Constant(" << c.value << ")" << std::endl;
+    pad(); std::cout << "Constant(" << toString(c.value) << ")" << std::endl;
 }
 
 void TACPrinter::operator()(const tac::Variant &v)
@@ -103,7 +103,7 @@ void TACPrinter::operator()(const tac::StaticVariable &s)
     std::cout << (s.global ? "global" : "local");
     std::cout << " StaticVariable(" << s.name << ") {" << std::endl;
     tab();
-    pad(); std::cout << "Init " << s.init << std::endl;
+    pad(); std::cout << "Init " << toString(s.init) << std::endl;
     shift_tab();
     pad(); std::cout << "}" << std::endl;
 }

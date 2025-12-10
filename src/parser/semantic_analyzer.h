@@ -19,8 +19,9 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
         LOOP_LABELING = 2,
     };
 
-    void operator()(NumberExpression &n) override;
+    void operator()(ConstantExpression &n) override;
     void operator()(VariableExpression &v) override;
+    void operator()(CastExpression &c) override;
     void operator()(UnaryExpression &u) override;
     void operator()(BinaryExpression &b) override;
     void operator()(AssignmentExpression &a) override;

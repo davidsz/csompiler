@@ -3,15 +3,21 @@
 
 namespace parser {
 
-void ASTPrinter::operator()(const NumberExpression &e)
+void ASTPrinter::operator()(const ConstantExpression &e)
 {
-    pad(); std::cout << "NumberExpression(" << e.value << ")" << std::endl;
+    pad(); std::cout << "ConstantExpression(" << toString(e.value) << ")" << std::endl;
 }
 
 void ASTPrinter::operator()(const VariableExpression &v)
 {
     pad(); std::cout << "VariableExpression(" << v.identifier << ")" << std::endl;
 }
+
+void ASTPrinter::operator()(const CastExpression &c)
+{
+    pad(); std::cout << "CastExpression(" << std::endl;
+    tab(); std::visit(*this, *c.expr); shift_tab();
+    pad(); std::cout << ")" << std::endl;}
 
 void ASTPrinter::operator()(const UnaryExpression &e)
 {

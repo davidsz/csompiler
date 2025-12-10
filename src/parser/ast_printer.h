@@ -10,8 +10,9 @@ struct ASTPrinter : public IASTVisitor<void> {
     void tab() { indent += 2; }
     void shift_tab() { indent -= 2; }
 
-    void operator()(const NumberExpression &e) override;
+    void operator()(const ConstantExpression &e) override;
     void operator()(const VariableExpression &v) override;
+    void operator()(const CastExpression &c) override;
     void operator()(const UnaryExpression &e) override;
     void operator()(const BinaryExpression &e) override;
     void operator()(const AssignmentExpression &a) override;

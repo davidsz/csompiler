@@ -2,6 +2,7 @@
 
 #include "common/macro.h"
 #include "common/operator.h"
+#include "common/types.h"
 #include <list>
 #include <string>
 
@@ -76,7 +77,7 @@ namespace assembly {
     X(StaticVariable, \
         std::string name; \
         bool global; \
-        int init;)
+        ConstantValue init;)
 
 enum Register {
 #define ADD_REG_TO_ENUM(name, eightbytename, fourbytename, onebytename) name,

@@ -69,7 +69,7 @@ std::optional<std::string> SemanticAnalyzer::getInnermostLabel()
     return std::nullopt;
 }
 
-void SemanticAnalyzer::operator()(NumberExpression &)
+void SemanticAnalyzer::operator()(ConstantExpression &)
 {
 }
 
@@ -82,6 +82,10 @@ void SemanticAnalyzer::operator()(VariableExpression &v)
         v.identifier = info->uniqueName;
     else
         Abort(std::format("Undeclared variable '{}'", v.identifier));
+}
+
+void SemanticAnalyzer::operator()(CastExpression &)
+{
 }
 
 void SemanticAnalyzer::operator()(UnaryExpression &u)
@@ -297,10 +301,11 @@ void SemanticAnalyzer::operator()(CaseStatement &c)
     if (m_currentStage == LOOP_LABELING) {
         if (auto switch_label = getInnermostSwitchLabel()) {
             // TODO: It should be constant expression, but not necessarily a number
-            if (auto expr = std::get_if<NumberExpression>(c.condition.get())) {
-                c.label = std::format("case_{}_{}", *switch_label, expr->value);
+            if (auto expr = std::get_if<ConstantExpression>(c.condition.get())) {
+                int expr_value = *std::get_if<int>(&expr->value);
+                c.label = std::format("case_{}_{}", *switch_label, expr_value);
                 SwitchStatement *s = m_switches.back();
-                auto [it, inserted] = s->cases.insert(expr->value);
+                auto [it, inserted] = s->cases.insert(expr_value);
                 if (!inserted)
                     Abort("Duplicate case in switch");
             } else

@@ -28,6 +28,7 @@ private:
     Expression ParseExpression(int min_precedence);
     Expression ParseFactor();
     Expression ParseFunctionCall();
+    Expression ParseNumericLiteral();
 
     Statement ParseReturn();
     Statement ParseIf();
@@ -46,6 +47,11 @@ private:
     Statement ParseStatement();
 
     Declaration ParseDeclaration(bool allow_function = true);
+
+    // Parse type names and storage classes
+    std::pair<StorageClass, Type> ParseTypeSpecifierList();
+    // Parse type names only
+    Type ParseTypes();
 
     const std::list<lexer::Token> &m_tokens;
     std::list<lexer::Token>::const_iterator m_pos;
