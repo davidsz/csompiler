@@ -61,8 +61,9 @@ namespace parser {
         std::string label;) \
     X(SwitchStatement, \
         std::unique_ptr<Expression> condition; \
+        Type type = Type{}; \
         std::unique_ptr<Statement> body; \
-        std::set<int> cases; \
+        std::set<ConstantValue> cases; \
         bool hasDefault; \
         std::string label;) \
     X(CaseStatement, \

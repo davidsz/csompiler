@@ -287,7 +287,7 @@ Value TACBuilder::operator()(const parser::SwitchStatement &s)
         m_instructions.push_back(binary);
         m_instructions.push_back(JumpIfZero{
             binary.dst,
-            std::format("case_{}_{}", s.label, c)
+            std::format("case_{}_{}", s.label, toString(c))
         });
     }
     if (s.hasDefault)

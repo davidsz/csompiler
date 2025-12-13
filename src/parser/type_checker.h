@@ -49,6 +49,7 @@ private:
     bool m_fileScope = false;
     bool m_forLoopInitializer = false;
     std::vector<Type> m_functionTypeStack;
+    std::vector<SwitchStatement *> m_switches;
 };
 
 }; // namespace parser

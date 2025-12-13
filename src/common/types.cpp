@@ -1,7 +1,8 @@
 #include "types.h"
 #include <iostream>
 
-bool FunctionType::operator==(const FunctionType &other) const {
+bool FunctionType::operator==(const FunctionType &other) const
+{
     if (params.size() != other.params.size())
         return false;
     for (size_t i = 0; i < params.size(); i++) {
@@ -25,13 +26,25 @@ std::ostream &operator<<(std::ostream &os, const Type &type)
     return os;
 }
 
-std::string toString(const ConstantValue &v) {
+std::string toString(const ConstantValue &v)
+{
     return std::visit([](auto x) {
         return std::to_string(x);
     }, v);
 }
 
-void DebugPrint(const SymbolTable &symbolTable) {
+Type getType(const ConstantValue &v)
+{
+    Type ret;
+    switch (v.index()) {
+        case 0:  ret.t = BasicType::Int; break;
+        case 1:  ret.t = BasicType::Long; break;
+    }
+    return ret;
+}
+
+void DebugPrint(const SymbolTable &symbolTable)
+{
     for (const auto &[name, entry] : symbolTable) {
         std::cout << name << " ";
         std::cout << (entry.attrs.defined ? "defined" : "undefined") << " ";

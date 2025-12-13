@@ -1,4 +1,5 @@
 #include "type_checker.h"
+#include "common/conversion.h"
 
 namespace parser {
 
@@ -35,13 +36,7 @@ static std::unique_ptr<Expression> explicit_cast(
 
 Type TypeChecker::operator()(ConstantExpression &c)
 {
-    // TODO: Would it be more simple to determine type in the ASTBuilder?
-    switch (c.value.index()) {
-        case 0: c.type = Type{ BasicType::Int }; break;
-        case 1: c.type = Type{ BasicType::Long }; break;
-        default: break;
-    }
-    return c.type;
+    return c.type = getType(c.value);
 }
 
 Type TypeChecker::operator()(VariableExpression &v)
@@ -221,14 +216,23 @@ Type TypeChecker::operator()(ForStatement &f)
 
 Type TypeChecker::operator()(SwitchStatement &s)
 {
-    std::visit(*this, *s.condition);
+    m_switches.push_back(&s);
+    s.type = std::visit(*this, *s.condition);
     std::visit(*this, *s.body);
+    m_switches.pop_back();
     return Type{ std::monostate() };
 }
 
 Type TypeChecker::operator()(CaseStatement &c)
 {
     std::visit(*this, *c.condition);
+    if (auto expr = std::get_if<ConstantExpression>(c.condition.get())) {
+        SwitchStatement *s = m_switches.back();
+        auto [it, inserted] = s->cases.insert(
+            ConvertValueIfNeeded(expr->value, s->type));
+        if (!inserted)
+            Abort("Duplicate case in switch");
+    }
     std::visit(*this, *c.statement);
     return Type{ std::monostate() };
 }
@@ -295,10 +299,9 @@ Type TypeChecker::operator()(VariableDeclaration &v)
                 init = NoInitializer{};
             else
                 init = Tentative{};
-        } else if (auto n = std::get_if<ConstantExpression>(v.init.get())) {
-            // TODO: Compile-time conversion (if needed; e.g.: long -> int)
-            init = Initial{ .i = n->value };
-        } else
+        } else if (auto n = std::get_if<ConstantExpression>(v.init.get()))
+            init = Initial{ .i = ConvertValueIfNeeded(n->value, v.type) };
+        else
             Abort(std::format("Non-constant initializer of '{}'", v.identifier));
 
         bool is_global = (v.storage != StorageStatic);
@@ -348,10 +351,9 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             InitialValue init = NoInitializer{};
             if (!v.init)
                 init = Initial{ .i = 0 };
-            else if (auto n = std::get_if<ConstantExpression>(v.init.get())) {
-                // TODO: Compile-time conversion (if needed; e.g.: long -> int)
-                init = Initial{ .i = n->value };
-            } else
+            else if (auto n = std::get_if<ConstantExpression>(v.init.get()))
+                init = Initial{ .i = ConvertValueIfNeeded(n->value, v.type) };
+            else
                 Abort(std::format("Non-constant initializer on local static variable '{}'", v.identifier));
 
             insertSymbol(v.identifier, v.type, IdentifierAttributes{
