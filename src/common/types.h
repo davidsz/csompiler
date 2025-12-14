@@ -33,6 +33,8 @@ struct Type {
     template <typename T>
     const T *getAs() const { return std::get_if<T>(&t); }
 
+    bool isBasic(BasicType type) const;
+
     friend bool operator==(const Type &a, const Type &b) {
         return a.t == b.t;
     }

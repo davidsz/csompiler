@@ -239,6 +239,16 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
     return std::monostate();
 }
 
+Operand ASMBuilder::operator()(const tac::SignExtend &)
+{
+    return std::monostate();
+}
+
+Operand ASMBuilder::operator()(const tac::Truncate &)
+{
+    return std::monostate();
+}
+
 Operand ASMBuilder::operator()(const tac::Constant &c)
 {
     return Imm{ *std::get_if<int>(&c.value) };

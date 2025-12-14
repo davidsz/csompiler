@@ -28,7 +28,8 @@ namespace tac {
         Value src2; \
         Value dst;) \
     X(Copy, \
-        Value src; Value dst;) \
+        Value src; \
+        Value dst;) \
     X(Jump, \
         std::string target;) \
     X(JumpIfZero, \
@@ -42,6 +43,12 @@ namespace tac {
     X(FunctionCall, \
         std::string identifier; \
         std::vector<Value> args; \
+        Value dst;) \
+    X(SignExtend, \
+        Value src; \
+        Value dst;) \
+    X(Truncate, \
+        Value src; \
         Value dst;)
 
 #define TAC_TOP_LEVEL_LIST(X) \
@@ -52,6 +59,7 @@ namespace tac {
         std::vector<Instruction> inst;) \
     X(StaticVariable, \
         std::string name; \
+        Type type = Type{}; \
         bool global; \
         ConstantValue init;)
 

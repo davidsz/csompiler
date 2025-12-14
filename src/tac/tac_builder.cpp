@@ -1,4 +1,5 @@
 #include "tac_builder.h"
+#include "common/conversion.h"
 #include <format>
 
 namespace tac {
@@ -15,9 +16,19 @@ static std::string generateLabelName(std::string_view label)
     return std::format("{}_{}", label, counter++);
 }
 
+Variant TACBuilder::CreateTemporaryVariable(const Type &type)
+{
+    Variant var = Variant{ generateTempVariableName() };
+    (*m_symbolTable)[var.name] = SymbolEntry{
+        type,
+        IdentifierAttributes{ .type = IdentifierAttributes::Local }
+    };
+    return var;
+}
+
 Value TACBuilder::operator()(const parser::ConstantExpression &n)
 {
-    return Constant{ *std::get_if<int>(&n.value) };
+    return Constant{ n.value };
 }
 
 Value TACBuilder::operator()(const parser::VariableExpression &v)
@@ -25,9 +36,17 @@ Value TACBuilder::operator()(const parser::VariableExpression &v)
     return Variant{ v.identifier };
 }
 
-Value TACBuilder::operator()(const parser::CastExpression &)
+Value TACBuilder::operator()(const parser::CastExpression &c)
 {
-    return Constant{ -1 };
+    Value result = std::visit(*this, *c.expr);
+    if (c.inner_type == c.target_type)
+        return result;
+    Variant dst = CreateTemporaryVariable(c.target_type);
+    if (c.target_type.isBasic(BasicType::Long))
+        m_instructions.push_back(SignExtend{ result, dst });
+    else
+        m_instructions.push_back(Truncate{ result, dst });
+    return dst;
 }
 
 Value TACBuilder::operator()(const parser::UnaryExpression &u)
@@ -42,7 +61,7 @@ Value TACBuilder::operator()(const parser::UnaryExpression &u)
             target
         };
         if (u.postfix) {
-            Variant temp = Variant{ generateTempVariableName() };
+            Variant temp = CreateTemporaryVariable(u.type);
             m_instructions.push_back(Copy{ target, temp });
             m_instructions.push_back(mutation);
             return temp;
@@ -55,7 +74,7 @@ Value TACBuilder::operator()(const parser::UnaryExpression &u)
     auto unary = Unary{};
     unary.op = u.op;
     unary.src = std::visit(*this, *u.expr);
-    unary.dst = Variant{ generateTempVariableName() };
+    unary.dst = CreateTemporaryVariable(u.type);
     m_instructions.push_back(unary);
     return unary.dst;
 }
@@ -64,7 +83,7 @@ Value TACBuilder::operator()(const parser::BinaryExpression &b)
 {
     // Short-circuiting operators
     if (b.op == BinaryOperator::And || b.op == BinaryOperator::Or) {
-        auto result = Variant{ generateTempVariableName() };
+        Variant result = CreateTemporaryVariable(Type{ BasicType::Int });
         auto lhs_val = std::visit(*this, *b.lhs);
         auto label_true = generateLabelName("true_label");
         auto label_false = generateLabelName("false_label");
@@ -108,7 +127,7 @@ Value TACBuilder::operator()(const parser::BinaryExpression &b)
     binary.op = b.op;
     binary.src1 = std::visit(*this, *b.lhs);
     binary.src2 = std::visit(*this, *b.rhs);
-    binary.dst = Variant{ generateTempVariableName() };
+    binary.dst = CreateTemporaryVariable(b.type);
     m_instructions.push_back(binary);
     return binary.dst;
 }
@@ -126,7 +145,7 @@ Value TACBuilder::operator()(const parser::ConditionalExpression &c)
 {
     auto label_end = generateLabelName("end");
     auto label_false_branch = generateLabelName("false_branch");
-    Value result = Variant{ generateTempVariableName() };
+    Value result = CreateTemporaryVariable(c.type);
 
     Value condition = std::visit(*this, *c.condition);
     m_instructions.push_back(JumpIfZero{ condition, label_false_branch });
@@ -148,7 +167,7 @@ Value TACBuilder::operator()(const parser::FunctionCallExpression &f)
     ret.identifier = f.identifier;
     for (auto &a : f.args)
         ret.args.push_back(std::visit(*this, *a));
-    ret.dst = Variant{ generateTempVariableName() };
+    ret.dst = CreateTemporaryVariable(*f.type);
     m_instructions.push_back(ret);
     return ret.dst;
 }
@@ -283,7 +302,7 @@ Value TACBuilder::operator()(const parser::SwitchStatement &s)
         binary.op = BinaryOperator::Subtract;
         binary.src1 = condition;
         binary.src2 = Constant { c };
-        binary.dst = Variant{ generateTempVariableName() };
+        binary.dst = CreateTemporaryVariable(s.type);
         m_instructions.push_back(binary);
         m_instructions.push_back(JumpIfZero{
             binary.dst,
@@ -395,12 +414,14 @@ void TACBuilder::ProcessStaticSymbols()
             if (std::holds_alternative<Tentative>(entry.attrs.init)) {
                 m_topLevel.push_back(StaticVariable{
                     .name = name,
+                    .type = entry.type,
                     .global = entry.attrs.global,
-                    .init = 0
+                    .init = MakeConstantValue(0, entry.type)
                 });
             } else if (auto n = std::get_if<Initial>(&entry.attrs.init)) {
                 m_topLevel.push_back(StaticVariable{
                     .name = name,
+                    .type = entry.type,
                     .global = entry.attrs.global,
                     .init = n->i
                 });

@@ -84,7 +84,7 @@ namespace parser {
     X(CastExpression, \
         Type target_type; \
         std::unique_ptr<Expression> expr; \
-        Type type = Type{};) \
+        Type inner_type = Type{};) \
     X(UnaryExpression, \
         UnaryOperator op; \
         std::unique_ptr<Expression> expr; \

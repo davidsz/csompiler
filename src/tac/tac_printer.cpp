@@ -85,6 +85,26 @@ void TACPrinter::operator()(const tac::FunctionCall &f)
     shift_tab();
 }
 
+void TACPrinter::operator()(const tac::SignExtend &s)
+{
+    pad(); std::cout << "SignExtend(" << std::endl;
+    tab();
+    std::visit(*this, s.src);
+    std::visit(*this, s.dst);
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
+void TACPrinter::operator()(const tac::Truncate &t)
+{
+    pad(); std::cout << "Truncate(" << std::endl;
+    tab();
+    std::visit(*this, t.src);
+    std::visit(*this, t.dst);
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
 void TACPrinter::operator()(const tac::FunctionDefinition &f)
 {
     pad();

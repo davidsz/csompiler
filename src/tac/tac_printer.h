@@ -21,6 +21,8 @@ struct TACPrinter : public ITACVisitor<void> {
     void operator()(const tac::JumpIfNotZero &j) override;
     void operator()(const tac::Label &j) override;
     void operator()(const tac::FunctionCall &f) override;
+    void operator()(const tac::SignExtend &s) override;
+    void operator()(const tac::Truncate &t) override;
     void operator()(const tac::FunctionDefinition &f) override;
     void operator()(const tac::StaticVariable &s) override;
     void operator()(std::monostate) override {

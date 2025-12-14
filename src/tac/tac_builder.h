@@ -40,6 +40,8 @@ struct TACBuilder : public parser::IASTVisitor<tac::Value> {
     std::vector<Instruction> ConvertBlock(const std::vector<parser::BlockItem> &list);
     void ProcessStaticSymbols();
 
+    Variant CreateTemporaryVariable(const Type &type);
+
     std::vector<TopLevel> m_topLevel;
     std::vector<Instruction> m_instructions;
     std::shared_ptr<SymbolTable> m_symbolTable;

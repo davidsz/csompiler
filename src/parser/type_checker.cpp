@@ -29,7 +29,7 @@ static std::unique_ptr<Expression> explicit_cast(
     auto ret = std::make_unique<Expression>(CastExpression{
         .target_type = to_type,
         .expr = std::move(expr),
-        .type = to_type,
+        .inner_type = from_type,
     });
     return ret;
 }
@@ -50,8 +50,9 @@ Type TypeChecker::operator()(VariableExpression &v)
 
 Type TypeChecker::operator()(CastExpression &c)
 {
-    c.type = Type{ std::visit(*this, *c.expr) };
-    return c.type;
+    c.inner_type = Type{ std::visit(*this, *c.expr) };
+    // target_type is already determined in the AST builder
+    return c.target_type;
 }
 
 Type TypeChecker::operator()(UnaryExpression &u)
@@ -229,7 +230,7 @@ Type TypeChecker::operator()(CaseStatement &c)
     if (auto expr = std::get_if<ConstantExpression>(c.condition.get())) {
         SwitchStatement *s = m_switches.back();
         auto [it, inserted] = s->cases.insert(
-            ConvertValueIfNeeded(expr->value, s->type));
+            ConvertValue(expr->value, s->type));
         if (!inserted)
             Abort("Duplicate case in switch");
     }

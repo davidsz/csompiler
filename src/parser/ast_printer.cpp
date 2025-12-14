@@ -21,7 +21,7 @@ void ASTPrinter::operator()(const CastExpression &c)
 {
     pad(); std::cout << "CastExpression(" << c.target_type << std::endl;
     tab(); std::visit(*this, *c.expr); shift_tab();
-    pad(); std::cout << ") " << c.type << std::endl;
+    pad(); std::cout << ") " << c.inner_type << std::endl;
 }
 
 void ASTPrinter::operator()(const UnaryExpression &u)

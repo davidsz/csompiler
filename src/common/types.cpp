@@ -12,6 +12,13 @@ bool FunctionType::operator==(const FunctionType &other) const
     return *ret == *other.ret;
 }
 
+bool Type::isBasic(BasicType type) const
+{
+    if (auto p = std::get_if<BasicType>(&t))
+        return *p == type;
+    return false;
+}
+
 std::ostream &operator<<(std::ostream &os, const Type &type)
 {
     std::visit([&](auto &obj) {
