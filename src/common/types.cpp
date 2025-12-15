@@ -50,10 +50,21 @@ Type getType(const ConstantValue &v)
     return ret;
 }
 
+long forceLong(const ConstantValue &v)
+{
+    long ret = 0;
+    if (auto int_value = std::get_if<int>(&v))
+        ret = *int_value;
+    else if (auto long_value = std::get_if<long>(&v))
+        ret = *long_value;
+    return ret;
+}
+
 void DebugPrint(const SymbolTable &symbolTable)
 {
     for (const auto &[name, entry] : symbolTable) {
         std::cout << name << " ";
+        std::cout << "[" << entry.type << "] ";
         std::cout << (entry.attrs.defined ? "defined" : "undefined") << " ";
         std::cout << (entry.attrs.global ? "global" : "local") << " ";
         if (std::holds_alternative<Initial>(entry.attrs.init)) {

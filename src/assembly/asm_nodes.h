@@ -17,13 +17,14 @@ namespace assembly {
     X(R8, "r8", "r8d", "r8b") \
     X(R9, "r9", "r9d", "r9b") \
     X(R10, "r10", "r10d", "r10b") \
-    X(R11, "r11", "r11d", "r11b")
+    X(R11, "r11", "r11d", "r11b") \
+    X(SP, "rsp", "rsp", "rsp")
 
 #define ASM_OPERAND_LIST(X) \
     X(Reg, \
         Register reg; uint8_t bytes = 4;) \
     X(Imm, \
-        int value;) \
+        long value;) \
     X(Pseudo, \
         std::string name;) \
     X(Stack, \
@@ -34,21 +35,30 @@ namespace assembly {
 #define ASM_INSTRUCTION_LIST(X) \
     X(Mov, \
         Operand src; \
+        Operand dst; \
+        WordType type;) \
+    X(Movsx, \
+        Operand src; \
         Operand dst;) \
     X(Ret, /* no op */) \
     X(Unary, \
         ASMUnaryOperator op; \
-        Operand src;) \
+        Operand src; \
+        WordType type;) \
     X(Binary, \
         ASMBinaryOperator op; \
         Operand src; \
-        Operand dst;) \
+        Operand dst; \
+        WordType type;) \
     X(Idiv, \
-        Operand src;) \
-    X(Cdq, /* no op */) \
+        Operand src; \
+        WordType type;) \
+    X(Cdq, \
+        WordType type;) \
     X(Cmp, \
         Operand lhs; \
-        Operand rhs;) \
+        Operand rhs; \
+        WordType type;) \
     X(Jmp, \
         std::string identifier;) \
     X(JmpCC, \
@@ -62,11 +72,7 @@ namespace assembly {
     X(Push, \
         Operand op;) \
     X(Call, \
-        std::string identifier;) \
-    X(AllocateStack, \
-        size_t size;) \
-    X(DeallocateStack, \
-        size_t size;)
+        std::string identifier;)
 
 #define ASM_TOP_LEVEL_LIST(X) \
     X(Function, \
@@ -77,7 +83,13 @@ namespace assembly {
     X(StaticVariable, \
         std::string name; \
         bool global; \
-        ConstantValue init;)
+        ConstantValue init; \
+        int alignment;)
+
+enum WordType {
+    Longword,
+    Quadword
+};
 
 enum Register {
 #define ADD_REG_TO_ENUM(name, eightbytename, fourbytename, onebytename) name,

@@ -88,6 +88,11 @@ void ASMPrinter::operator()(const Mov &m)
     m_codeStream << std::endl;
 }
 
+void ASMPrinter::operator()(const Movsx &)
+{
+
+}
+
 void ASMPrinter::operator()(const Ret &)
 {
     // Epilogue
@@ -169,16 +174,6 @@ void ASMPrinter::operator()(const Call &c)
     m_codeStream << "    call _" << c.identifier << std::endl;
 }
 
-void ASMPrinter::operator()(const AllocateStack &a)
-{
-    m_codeStream << "    subq $" << a.size << ", %rsp" << std::endl;
-}
-
-void ASMPrinter::operator()(const DeallocateStack &d)
-{
-    m_codeStream << "    addq $" << d.size << ", %rsp" << std::endl;
-}
-
 void ASMPrinter::operator()(const Function &f)
 {
     // TODO: Annotating with _ is specific to MacOS
@@ -203,8 +198,7 @@ void ASMPrinter::operator()(const StaticVariable &s)
     if (s.global)
         m_codeStream << ".globl _" << s.name << std::endl;
 
-    // TODO: Type is not necessarily an integer
-    int s_init = *std::get_if<int>(&s.init);
+    long s_init = forceLong(s.init);
     if (s_init == 0)
         m_codeStream << ".bss" << std::endl;
     else

@@ -12,6 +12,7 @@ struct ASMPrinter : public IASMVisitor<void> {
     void operator()(const Stack &) override;
     void operator()(const Data &) override;
     void operator()(const Mov &) override;
+    void operator()(const Movsx &) override;
     void operator()(const Ret &) override;
     void operator()(const Unary &) override;
     void operator()(const Binary &) override;
@@ -24,8 +25,6 @@ struct ASMPrinter : public IASMVisitor<void> {
     void operator()(const Label &) override;
     void operator()(const Push &) override;
     void operator()(const Call &) override;
-    void operator()(const AllocateStack &) override;
-    void operator()(const DeallocateStack &) override;
     void operator()(const Function &) override;
     void operator()(const StaticVariable &) override;
     void operator()(std::monostate) override;

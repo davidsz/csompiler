@@ -51,6 +51,7 @@ using ConstantValue = std::variant<
 >;
 std::string toString(const ConstantValue &v);
 Type getType(const ConstantValue &v);
+long forceLong(const ConstantValue &v);
 
 #define TYPE_SPECIFIER_LIST(X) \
     X(Int, "int") \

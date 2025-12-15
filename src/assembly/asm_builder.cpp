@@ -46,11 +46,36 @@ static std::string toConditionCode(BinaryOperator op)
 }
 #pragma clang diagnostic pop
 
+ASMBuilder::ASMBuilder(std::shared_ptr<SymbolTable> symbolTable)
+    : m_symbolTable(symbolTable)
+{
+}
+
+WordType ASMBuilder::GetWordType(const tac::Value &value)
+{
+    if (auto c = std::get_if<tac::Constant>(&value)) {
+        if (std::holds_alternative<long>(c->value))
+            return WordType::Quadword;
+        else
+            return WordType::Longword;
+    } else if (auto v = std::get_if<tac::Variant>(&value)) {
+        const SymbolEntry &entry = (*m_symbolTable)[v->name];
+        if (entry.type.isBasic(BasicType::Long))
+            return WordType::Quadword;
+        else
+            return WordType::Longword;
+    } else {
+        assert(false);
+        return Longword;
+    }
+}
+
 Operand ASMBuilder::operator()(const tac::Return &r)
 {
     m_instructions.push_back(Mov{
         std::visit(*this, r.val),
-        Reg{Register::AX}
+        Reg{Register::AX},
+        GetWordType(r.val)
     });
     m_instructions.push_back(Ret{});
     return std::monostate();
@@ -62,11 +87,13 @@ Operand ASMBuilder::operator()(const tac::Unary &u)
         // !x is equivalent to x==0, so we implement it as a binary comparison
         m_instructions.push_back(Cmp{
             Imm{0},
-            std::visit(*this, u.src)
+            std::visit(*this, u.src),
+            GetWordType(u.src)
         });
         m_instructions.push_back(Mov{
             Imm{0},
-            std::visit(*this, u.dst)
+            std::visit(*this, u.dst),
+            GetWordType(u.dst)
         });
         m_instructions.push_back(SetCC{
             "e",
@@ -77,11 +104,13 @@ Operand ASMBuilder::operator()(const tac::Unary &u)
 
     m_instructions.push_back(Mov{
         std::visit(*this, u.src),
-        std::visit(*this, u.dst)
+        std::visit(*this, u.dst),
+        GetWordType(u.src)
     });
     m_instructions.push_back(Unary{
         toASMUnaryOperator(u.op),
-        std::visit(*this, u.dst)
+        std::visit(*this, u.dst),
+        GetWordType(u.dst)
     });
     return std::monostate();
 }
@@ -94,42 +123,55 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
     if (op != ASMBinaryOperator::Unknown_AB) {
         m_instructions.push_back(Mov{
             std::visit(*this, b.src1),
-            std::visit(*this, b.dst)
+            std::visit(*this, b.dst),
+            GetWordType(b.dst)
         });
         m_instructions.push_back(Binary{
             op,
             std::visit(*this, b.src2),
-            std::visit(*this, b.dst)
+            std::visit(*this, b.dst),
+            GetWordType(b.dst)
         });
         return std::monostate();
     }
 
     // Division, Remainder
     if (b.op == BinaryOperator::Divide || b.op == BinaryOperator::Remainder) {
+        WordType wordType = GetWordType(b.dst);
         m_instructions.push_back(Mov{
             std::visit(*this, b.src1),
-            Reg{Register::AX}
+            Reg{Register::AX},
+            wordType
         });
-        m_instructions.push_back(Cdq{});
-        m_instructions.push_back(Idiv{std::visit(*this, b.src2)});
+        m_instructions.push_back(Cdq{
+            wordType
+        });
+        m_instructions.push_back(Idiv{
+            std::visit(*this, b.src2),
+            wordType
+        });
         m_instructions.push_back(Mov{
             (b.op == BinaryOperator::Divide ? Reg{Register::AX} : Reg{Register::DX}),
             std::visit(*this, b.dst),
+            wordType
         });
         return std::monostate();
     }
 
     // Equal, NotEqual, LessThan, LessOrEqual, GreaterThan, GreaterOrEqual
     if (isRelationOperator(b.op)) {
+        WordType wordType = GetWordType(b.dst);
         // Comparing arguments; result stored in RFLAGS
         m_instructions.push_back(Cmp{
             std::visit(*this, b.src2),
-            std::visit(*this, b.src1)
+            std::visit(*this, b.src1),
+            wordType
         });
         // Null out the destination before placing the condition result in
         m_instructions.push_back(Mov{
             Imm{0},
-            std::visit(*this, b.dst)
+            std::visit(*this, b.dst),
+            wordType
         });
         // Conditionally set the lowest byte of the destination according to RFLAGS
         m_instructions.push_back(SetCC{
@@ -148,6 +190,7 @@ Operand ASMBuilder::operator()(const tac::Copy &c)
     m_instructions.push_back(Mov{
         std::visit(*this, c.src),
         std::visit(*this, c.dst),
+        GetWordType(c.dst)
     });
     return std::monostate();
 }
@@ -162,7 +205,8 @@ Operand ASMBuilder::operator()(const tac::JumpIfZero &j)
 {
     m_instructions.push_back(Cmp{
         Imm{0},
-        std::visit(*this, j.condition)
+        std::visit(*this, j.condition),
+        GetWordType(j.condition)
     });
     m_instructions.push_back(JmpCC{"e", j.target});
     return std::monostate();
@@ -172,7 +216,8 @@ Operand ASMBuilder::operator()(const tac::JumpIfNotZero &j)
 {
     m_instructions.push_back(Cmp{
         Imm{0},
-        std::visit(*this, j.condition)
+        std::visit(*this, j.condition),
+        GetWordType(j.condition)
     });
     m_instructions.push_back(JmpCC{"ne", j.target});
     return std::monostate();
@@ -198,8 +243,14 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
 
     // Adjust stack alignment to 16 bytes
     size_t stack_padding = (stack_args.size() % 2 == 0) ? 0 : 8;
-    if (stack_padding != 0)
-        m_instructions.push_back(AllocateStack{ stack_padding });
+    if (stack_padding != 0) {
+        m_instructions.push_back(Binary{
+            ASMBinaryOperator::Sub_AB,
+            Imm{ static_cast<int>(stack_padding) },
+            Reg{ SP },
+            WordType::Quadword
+        });
+    }
 
     // Move arguments into registers
     size_t reg_index = 0;
@@ -207,17 +258,24 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
         Register r = s_argRegisters[reg_index++];
         m_instructions.push_back(Mov{
             std::visit(*this, arg),
-            Reg { r }
+            Reg{ r },
+            GetWordType(arg)
         });
     }
 
     // Push remaining arguments to the stack (in reverse order)
     for (auto &arg : std::views::reverse(stack_args)) {
         auto asm_arg = std::visit(*this, arg);
-        if (std::holds_alternative<Reg>(asm_arg) || std::holds_alternative<Imm>(asm_arg))
+        if (std::holds_alternative<Reg>(asm_arg)
+            || std::holds_alternative<Imm>(asm_arg)
+            || GetWordType(arg) == WordType::Quadword)
             m_instructions.push_back(Push{ asm_arg });
         else {
-            m_instructions.push_back(Mov{ asm_arg, Reg{ AX } });
+            m_instructions.push_back(Mov{
+                asm_arg,
+                Reg{ AX },
+                WordType::Longword
+            });
             m_instructions.push_back(Push{ Reg{ AX, 8 } });
         }
     }
@@ -227,31 +285,52 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
 
     // The callee clears the stack
     size_t bytes_to_remove = 8 * stack_args.size() + stack_padding;
-    if (bytes_to_remove != 0)
-        m_instructions.push_back(DeallocateStack{ bytes_to_remove });
+    if (bytes_to_remove != 0) {
+        m_instructions.push_back(Binary{
+            ASMBinaryOperator::Add_AB,
+            Imm{ static_cast<int>(bytes_to_remove) },
+            Reg{ SP },
+            WordType::Quadword
+        });
+    }
 
     // Retrieve the return value from AX
     m_instructions.push_back(Mov{
         Reg{ AX },
-        std::visit(*this, f.dst)
+        std::visit(*this, f.dst),
+        GetWordType(f.dst)
     });
 
     return std::monostate();
 }
 
-Operand ASMBuilder::operator()(const tac::SignExtend &)
+Operand ASMBuilder::operator()(const tac::SignExtend &s)
 {
+    m_instructions.push_back(Movsx{
+        std::visit(*this, s.src),
+        std::visit(*this, s.dst)
+    });
     return std::monostate();
 }
 
-Operand ASMBuilder::operator()(const tac::Truncate &)
+Operand ASMBuilder::operator()(const tac::Truncate &t)
 {
+    m_instructions.push_back(Mov{
+        std::visit(*this, t.src),
+        std::visit(*this, t.dst),
+        WordType::Longword
+    });
     return std::monostate();
 }
 
 Operand ASMBuilder::operator()(const tac::Constant &c)
 {
-    return Imm{ *std::get_if<int>(&c.value) };
+    if (auto int_value = std::get_if<int>(&c.value))
+        return Imm{ *int_value };
+    else if (auto long_value = std::get_if<long>(&c.value))
+        return Imm{ *long_value };
+    assert(false);
+    return Imm{ 0 };
 }
 
 Operand ASMBuilder::operator()(const tac::Variant &v)
@@ -271,7 +350,8 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     for (size_t i = 0; i < f.params.size() && i < 6; i++) {
         func.instructions.push_back(Mov{
             Reg{ s_argRegisters[i] },
-            Pseudo{ f.params[i] }
+            Pseudo{ f.params[i] },
+            WordType::Longword
         });
     }
     // The others are on the stack
@@ -280,13 +360,14 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     for (size_t i = 6; i < f.params.size(); i++) {
         func.instructions.push_back(Mov{
             Stack{ (int)stack_offset },
-            Pseudo{ f.params[(size_t)i] }
+            Pseudo{ f.params[(size_t)i] },
+            WordType::Longword
         });
         stack_offset += 8;
     }
 
     // Body
-    ASMBuilder builder;
+    ASMBuilder builder(m_symbolTable);
     auto body_instructions = builder.ConvertInstructions(f.inst);
     std::copy(body_instructions.begin(),
                 body_instructions.end(),
@@ -300,7 +381,8 @@ Operand ASMBuilder::operator()(const tac::StaticVariable &s)
     m_topLevel.push_back(StaticVariable{
         .name = s.name,
         .global = s.global,
-        .init = s.init
+        .init = s.init,
+        .alignment = std::holds_alternative<long>(s.init) ? 8 : 4
     });
     return std::monostate();
 }

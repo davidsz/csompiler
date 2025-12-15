@@ -6,6 +6,8 @@
 namespace assembly {
 
 struct ASMBuilder : public tac::ITACVisitor<Operand> {
+    ASMBuilder(std::shared_ptr<SymbolTable> symbolTable);
+
     Operand operator()(const tac::Return &) override;
     Operand operator()(const tac::Unary &) override;
     Operand operator()(const tac::Binary &) override;
@@ -29,8 +31,11 @@ struct ASMBuilder : public tac::ITACVisitor<Operand> {
     std::list<TopLevel> ConvertTopLevel(const std::vector<tac::TopLevel>);
     std::list<Instruction> ConvertInstructions(const std::vector<tac::Instruction>);
 
+    WordType GetWordType(const tac::Value &);
+
     std::list<TopLevel> m_topLevel;
     std::list<Instruction> m_instructions;
+    std::shared_ptr<SymbolTable> m_symbolTable;
 };
 
 }; // assembly
