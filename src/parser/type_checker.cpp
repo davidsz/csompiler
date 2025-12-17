@@ -1,5 +1,6 @@
 #include "type_checker.h"
 #include "common/conversion.h"
+#include <cassert>
 
 namespace parser {
 
@@ -11,8 +12,32 @@ struct TypeError : public std::runtime_error
     }
 };
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wswitch-enum"
+static bool need_common_type(BinaryOperator op)
+{
+    switch (op) {
+        case BinaryOperator::Add:
+        case BinaryOperator::Subtract:
+        case BinaryOperator::Multiply:
+        case BinaryOperator::Divide:
+        case BinaryOperator::Remainder:
+        case BinaryOperator::LessThan:
+        case BinaryOperator::LessOrEqual:
+        case BinaryOperator::GreaterThan:
+        case BinaryOperator::GreaterOrEqual:
+        case BinaryOperator::Equal:
+        case BinaryOperator::NotEqual:
+            return true;
+        default:
+            return false;
+    }
+}
+#pragma clang diagnostic pop
+
 static Type get_common_type(const Type &first, const Type &second)
 {
+    assert(first.isInitialized() && second.isInitialized());
     if (first.t == second.t)
         return first;
     else
@@ -24,6 +49,7 @@ static std::unique_ptr<Expression> explicit_cast(
     const Type &from_type,
     const Type &to_type)
 {
+    assert(from_type.isInitialized() && to_type.isInitialized());
     if (from_type == to_type)
         return expr;
     auto ret = std::make_unique<Expression>(CastExpression{
@@ -36,7 +62,8 @@ static std::unique_ptr<Expression> explicit_cast(
 
 Type TypeChecker::operator()(ConstantExpression &c)
 {
-    return c.type = getType(c.value);
+    c.type = getType(c.value);
+    return c.type;
 }
 
 Type TypeChecker::operator()(VariableExpression &v)
@@ -76,11 +103,7 @@ Type TypeChecker::operator()(BinaryExpression &b)
     Type common_type = get_common_type(left_type, right_type);
     b.lhs = explicit_cast(std::move(b.lhs), left_type, common_type);
     b.rhs = explicit_cast(std::move(b.rhs), right_type, common_type);
-    if (b.op == BinaryOperator::Add
-        || b.op == BinaryOperator::Subtract
-        || b.op == BinaryOperator::Multiply
-        || b.op == BinaryOperator::Divide
-        || b.op == BinaryOperator::Remainder)
+    if (need_common_type(b.op))
         b.type = common_type;
     else
         b.type = Type{ BasicType::Int };
@@ -120,11 +143,11 @@ Type TypeChecker::operator()(FunctionCallExpression &f)
             f.args[i] = explicit_cast(std::move(f.args[i]), arg_type, *type.params[i]);
         }
         f.type = type.ret;
+        return *f.type;
     } else {
         // The symbol name exists, we verified it during the semantic analysis.
         Abort(std::format("'{}' is not a function name", f.identifier));
     }
-
     return Type{ std::monostate() };
 }
 

@@ -40,6 +40,9 @@
 #define ADD_OPERATOR_TO_ENUM(name, value, precedence, asm) \
     name,
 
+#define ADD_ASM_OPERATOR_TO_ENUM(name, longname, quadname) \
+    name,
+
 #define DEFINE_OPERATOR(EnumName, LIST_MACRO) \
     enum EnumName { \
     LIST_MACRO(ADD_OPERATOR_TO_ENUM) \
@@ -47,5 +50,5 @@
 
 #define DEFINE_ASM_OPERATOR(EnumName, LIST_MACRO) \
     enum EnumName { \
-    LIST_MACRO(ADD_TO_ENUM) \
+    LIST_MACRO(ADD_ASM_OPERATOR_TO_ENUM) \
     };

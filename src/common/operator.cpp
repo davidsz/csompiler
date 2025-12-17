@@ -49,23 +49,39 @@ std::string_view toString(UnaryOperator op)
     return "";
 }
 
-std::string_view toString(ASMUnaryOperator op)
+std::string_view toString(ASMUnaryOperator op, bool is_long)
 {
-    switch (op) {
-#define CASE_TO_STRING(name, str) case ASMUnaryOperator::name: return str;
+    if (is_long) {
+        switch (op) {
+#define CASE_TO_STRING(name, longname, quadname) case ASMUnaryOperator::name: return longname;
         ASM_UNARY_OPERATOR_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
+        }
+    } else {
+        switch (op) {
+#define CASE_TO_STRING(name, longname, quadname) case ASMUnaryOperator::name: return quadname;
+        ASM_UNARY_OPERATOR_LIST(CASE_TO_STRING)
+#undef CASE_TO_STRING
+        }
     }
     assert(false);
     return "";
 }
 
-std::string_view toString(ASMBinaryOperator op)
+std::string_view toString(ASMBinaryOperator op, bool is_long)
 {
-    switch (op) {
-#define CASE_TO_STRING(name, str) case ASMBinaryOperator::name: return str;
+    if (is_long) {
+        switch (op) {
+#define CASE_TO_STRING(name, longname, quadname) case ASMBinaryOperator::name: return longname;
         ASM_BINARY_OPERATOR_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
+        }
+    } else {
+        switch (op) {
+#define CASE_TO_STRING(name, longname, quadname) case ASMBinaryOperator::name: return quadname;
+        ASM_BINARY_OPERATOR_LIST(CASE_TO_STRING)
+#undef CASE_TO_STRING
+        }
     }
     assert(false);
     return "";

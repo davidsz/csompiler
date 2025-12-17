@@ -33,6 +33,8 @@ namespace assembly {
         std::string name;)
 
 #define ASM_INSTRUCTION_LIST(X) \
+    X(Comment, \
+        std::string text;) \
     X(Mov, \
         Operand src; \
         Operand dst; \

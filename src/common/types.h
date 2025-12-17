@@ -34,6 +34,7 @@ struct Type {
     const T *getAs() const { return std::get_if<T>(&t); }
 
     bool isBasic(BasicType type) const;
+    bool isInitialized() const { return !std::holds_alternative<std::monostate>(t); }
 
     friend bool operator==(const Type &a, const Type &b) {
         return a.t == b.t;

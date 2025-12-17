@@ -39,6 +39,11 @@ static std::string getOneByteName(Register reg)
     return "";
 }
 
+ASMPrinter::ASMPrinter(std::shared_ptr<ASMSymbolTable> symbolTable)
+    : m_symbolTable(symbolTable)
+{
+}
+
 void ASMPrinter::operator()(const Reg &r)
 {
     switch (r.bytes) {
@@ -79,18 +84,32 @@ void ASMPrinter::operator()(const Data &d)
     m_codeStream << "_" << d.name << "(%rip)";
 }
 
+void ASMPrinter::operator()(const Comment &c)
+{
+    m_codeStream << "    # " << c.text << std::endl;
+}
+
 void ASMPrinter::operator()(const Mov &m)
 {
-    m_codeStream << "    movl ";
+    if (m.type == WordType::Longword)
+        m_codeStream << "    movl ";
+    else
+        m_codeStream << "    movq ";
     std::visit(*this, m.src);
     m_codeStream << ", ";
     std::visit(*this, m.dst);
     m_codeStream << std::endl;
 }
 
-void ASMPrinter::operator()(const Movsx &)
+void ASMPrinter::operator()(const Movsx &m)
 {
-
+    // The MovsX instruction takes suffixes for both its source
+    // and destination operand sizes.
+    m_codeStream << "    movslq ";
+    std::visit(*this, m.src);
+    m_codeStream << ", ";
+    std::visit(*this, m.dst);
+    m_codeStream << std::endl;
 }
 
 void ASMPrinter::operator()(const Ret &)
@@ -105,14 +124,14 @@ void ASMPrinter::operator()(const Ret &)
 
 void ASMPrinter::operator()(const Unary &u)
 {
-    m_codeStream << "    " << toString(u.op) << " ";
+    m_codeStream << "    " << toString(u.op, u.type == Longword) << " ";
     std::visit(*this, u.src);
     m_codeStream << std::endl;
 }
 
 void ASMPrinter::operator()(const Binary &b)
 {
-    m_codeStream << "    " << toString(b.op) << " ";
+    m_codeStream << "    " << toString(b.op, b.type == Longword) << " ";
     std::visit(*this, b.src);
     m_codeStream << ", ";
     std::visit(*this, b.dst);
@@ -121,19 +140,28 @@ void ASMPrinter::operator()(const Binary &b)
 
 void ASMPrinter::operator()(const Idiv &d)
 {
-    m_codeStream << "    idivl ";
+    if (d.type == WordType::Longword)
+        m_codeStream << "    idivl ";
+    else
+        m_codeStream << "    idivq ";
     std::visit(*this, d.src);
     m_codeStream << std::endl;
 }
 
-void ASMPrinter::operator()(const Cdq &)
+void ASMPrinter::operator()(const Cdq &c)
 {
-    m_codeStream << "    cdq" << std::endl;
+    if (c.type == WordType::Longword)
+        m_codeStream << "    cdq" << std::endl;
+    else
+        m_codeStream << "    cqo" << std::endl;
 }
 
 void ASMPrinter::operator()(const Cmp &c)
 {
-    m_codeStream << "    cmpl ";
+    if (c.type == WordType::Longword)
+        m_codeStream << "    cmpl ";
+    else
+        m_codeStream << "    cmpq ";
     std::visit(*this, c.lhs);
     m_codeStream << ", ";
     std::visit(*this, c.rhs);
@@ -199,18 +227,26 @@ void ASMPrinter::operator()(const StaticVariable &s)
         m_codeStream << ".globl _" << s.name << std::endl;
 
     long s_init = forceLong(s.init);
+    bool is_long = std::holds_alternative<int>(s.init);
     if (s_init == 0)
         m_codeStream << ".bss" << std::endl;
     else
         m_codeStream << ".data" << std::endl;
 
-    m_codeStream << ".balign 4" << std::endl;
+    m_codeStream << ".balign " << s.alignment << std::endl;
     m_codeStream << "_" << s.name << ":" << std::endl;
 
-    if (s_init == 0)
-        m_codeStream << ".zero 4" << std::endl;
-    else
-        m_codeStream << ".long " << s_init << std::endl;
+    if (s_init == 0) {
+        if (is_long)
+            m_codeStream << ".zero 4" << std::endl;
+        else
+            m_codeStream << ".zero 8" << std::endl;
+    } else {
+        if (is_long)
+            m_codeStream << ".long " << s_init << std::endl;
+        else
+            m_codeStream << ".quad " << s_init << std::endl;
+    }
 }
 
 void ASMPrinter::operator()(std::monostate)

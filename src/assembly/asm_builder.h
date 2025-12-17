@@ -1,6 +1,7 @@
 #pragma once
 
 #include "asm_nodes.h"
+#include "asm_symbol_table.h"
 #include "tac/tac_visitor.h"
 
 namespace assembly {
@@ -32,7 +33,9 @@ struct ASMBuilder : public tac::ITACVisitor<Operand> {
     std::list<Instruction> ConvertInstructions(const std::vector<tac::Instruction>);
 
     WordType GetWordType(const tac::Value &);
+    void Comment(std::list<Instruction> &i, const std::string &text);
 
+    bool m_commentsEnabled = true;
     std::list<TopLevel> m_topLevel;
     std::list<Instruction> m_instructions;
     std::shared_ptr<SymbolTable> m_symbolTable;

@@ -46,6 +46,18 @@ static std::string toConditionCode(BinaryOperator op)
 }
 #pragma clang diagnostic pop
 
+static uint8_t getBytesOfWordType(WordType type)
+{
+    switch (type) {
+    case WordType::Longword:
+        return 4;
+    case WordType::Quadword:
+        return 8;
+    default:
+        return 4;
+    }
+}
+
 ASMBuilder::ASMBuilder(std::shared_ptr<SymbolTable> symbolTable)
     : m_symbolTable(symbolTable)
 {
@@ -70,12 +82,19 @@ WordType ASMBuilder::GetWordType(const tac::Value &value)
     }
 }
 
+void ASMBuilder::Comment(std::list<Instruction> &i, const std::string &text)
+{
+    if (m_commentsEnabled)
+        i.push_back(assembly::Comment{ text });
+}
+
 Operand ASMBuilder::operator()(const tac::Return &r)
 {
+    WordType type = GetWordType(r.val);
     m_instructions.push_back(Mov{
         std::visit(*this, r.val),
-        Reg{Register::AX},
-        GetWordType(r.val)
+        Reg{Register::AX, getBytesOfWordType(type)},
+        type
     });
     m_instructions.push_back(Ret{});
     return std::monostate();
@@ -138,9 +157,10 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
     // Division, Remainder
     if (b.op == BinaryOperator::Divide || b.op == BinaryOperator::Remainder) {
         WordType wordType = GetWordType(b.dst);
+        uint8_t bytes = getBytesOfWordType(wordType);
         m_instructions.push_back(Mov{
             std::visit(*this, b.src1),
-            Reg{Register::AX},
+            Reg{Register::AX, bytes},
             wordType
         });
         m_instructions.push_back(Cdq{
@@ -151,7 +171,8 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
             wordType
         });
         m_instructions.push_back(Mov{
-            (b.op == BinaryOperator::Divide ? Reg{Register::AX} : Reg{Register::DX}),
+            (b.op == BinaryOperator::Divide
+                ? Reg{Register::AX, bytes} : Reg{Register::DX, bytes}),
             std::visit(*this, b.dst),
             wordType
         });
@@ -241,29 +262,35 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
             stack_args.push_back(f.args[i]);
     }
 
-    // Adjust stack alignment to 16 bytes
+    // Adjust stack alignment to 16 bytes and allocate stack
     size_t stack_padding = (stack_args.size() % 2 == 0) ? 0 : 8;
     if (stack_padding != 0) {
+        Comment(m_instructions, "Allocating stack");
         m_instructions.push_back(Binary{
             ASMBinaryOperator::Sub_AB,
             Imm{ static_cast<int>(stack_padding) },
-            Reg{ SP },
+            Reg{ SP, 8 },
             WordType::Quadword
         });
     }
 
     // Move arguments into registers
     size_t reg_index = 0;
+    if (register_args.size() > 0)
+        Comment(m_instructions, "Moving the first six arguments into registers");
     for (auto &arg : register_args) {
+        WordType type = GetWordType(arg);
         Register r = s_argRegisters[reg_index++];
         m_instructions.push_back(Mov{
             std::visit(*this, arg),
-            Reg{ r },
-            GetWordType(arg)
+            Reg{ r, getBytesOfWordType(type) },
+            type
         });
     }
 
     // Push remaining arguments to the stack (in reverse order)
+    if (stack_args.size() > 0)
+        Comment(m_instructions, "Pushing the rest of the arguments onto the stack");
     for (auto &arg : std::views::reverse(stack_args)) {
         auto asm_arg = std::visit(*this, arg);
         if (std::holds_alternative<Reg>(asm_arg)
@@ -273,7 +300,7 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
         else {
             m_instructions.push_back(Mov{
                 asm_arg,
-                Reg{ AX },
+                Reg{ AX, 4 },
                 WordType::Longword
             });
             m_instructions.push_back(Push{ Reg{ AX, 8 } });
@@ -286,19 +313,22 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
     // The callee clears the stack
     size_t bytes_to_remove = 8 * stack_args.size() + stack_padding;
     if (bytes_to_remove != 0) {
+        Comment(m_instructions, "Clearing the stack");
         m_instructions.push_back(Binary{
             ASMBinaryOperator::Add_AB,
             Imm{ static_cast<int>(bytes_to_remove) },
-            Reg{ SP },
+            Reg{ SP, 8 },
             WordType::Quadword
         });
     }
 
     // Retrieve the return value from AX
+    Comment(m_instructions, "The return value is in AX");
+    WordType type = GetWordType(f.dst);
     m_instructions.push_back(Mov{
-        Reg{ AX },
+        Reg{ AX, getBytesOfWordType(type) },
         std::visit(*this, f.dst),
-        GetWordType(f.dst)
+        type
     });
 
     return std::monostate();
@@ -347,21 +377,42 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     // We copy each of the parameters into the current stack frame
     // to make life easier. This can be optimised out later.
     // First six parameters are in registers
+    if (f.params.size() > 0)
+        Comment(func.instructions, "Getting the first six parameters from registers");
     for (size_t i = 0; i < f.params.size() && i < 6; i++) {
+        WordType type = WordType::Longword;
+        // TODO: Refactor this duplication
+        if (m_symbolTable->contains(f.params[i])) {
+            const SymbolEntry &entry = (*m_symbolTable)[f.params[i]];
+            if (const BasicType *basic_type = entry.type.getAs<BasicType>())
+                type = (*basic_type == BasicType::Int)
+                    ? WordType::Longword : WordType::Quadword;
+        }
         func.instructions.push_back(Mov{
-            Reg{ s_argRegisters[i] },
+            Reg{ s_argRegisters[i], getBytesOfWordType(type) },
             Pseudo{ f.params[i] },
-            WordType::Longword
+            type
         });
     }
     // The others are on the stack
     // The 8 byte RBP are already on the stack (prologue)
+    if (f.params.size() > 6)
+        Comment(func.instructions, "Getting the rest of the arguments from the stack");
     size_t stack_offset = 16;
     for (size_t i = 6; i < f.params.size(); i++) {
+        std::string param_name = f.params[(size_t)i];
+        WordType type = WordType::Longword;
+        // TODO: Refactor this duplication
+        if (m_symbolTable->contains(param_name)) {
+            const SymbolEntry &entry = (*m_symbolTable)[param_name];
+            if (const BasicType *basic_type = entry.type.getAs<BasicType>())
+                type = (*basic_type == BasicType::Int)
+                    ? WordType::Longword : WordType::Quadword;
+        }
         func.instructions.push_back(Mov{
             Stack{ (int)stack_offset },
-            Pseudo{ f.params[(size_t)i] },
-            WordType::Longword
+            Pseudo{ param_name },
+            type
         });
         stack_offset += 8;
     }

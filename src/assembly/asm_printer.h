@@ -1,16 +1,20 @@
 #pragma once
 
 #include "asm_visitor.h"
+#include "asm_symbol_table.h"
 #include <sstream>
 
 namespace assembly {
 
 struct ASMPrinter : public IASMVisitor<void> {
+    ASMPrinter(std::shared_ptr<ASMSymbolTable> symbolTable);
+
     void operator()(const Reg &) override;
     void operator()(const Imm &) override;
     void operator()(const Pseudo &) override;
     void operator()(const Stack &) override;
     void operator()(const Data &) override;
+    void operator()(const Comment &) override;
     void operator()(const Mov &) override;
     void operator()(const Movsx &) override;
     void operator()(const Ret &) override;
@@ -32,6 +36,7 @@ struct ASMPrinter : public IASMVisitor<void> {
     std::string ToText(std::list<TopLevel>);
 
     std::ostringstream m_codeStream;
+    std::shared_ptr<ASMSymbolTable> m_symbolTable;
 };
 
 }; // assembly

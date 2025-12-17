@@ -97,11 +97,25 @@ static bool isMemoryAddress(const Operand &op)
 // sign extend their immediate operands from 32 to 64 bits. If an immediate value can
 // be represented in 32 bits only as an unsigned integer—which implies that its upper
 // bit is set—sign extending it will change its value."
-static bool isFourBytesImm(const Operand &op)
+static bool isEightBytesImm(const Operand &op)
 {
-    if (const Imm *imm = std::get_if<Imm>(&op))
-        return std::numeric_limits<int32_t>::max() < imm->value;
+    if (const Imm *imm = std::get_if<Imm>(&op)) {
+        return imm->value <= std::numeric_limits<int32_t>::lowest() ||
+               imm->value >= std::numeric_limits<int32_t>::max();
+    }
     return false;
+}
+
+static uint8_t getBytesOfWordType(WordType type)
+{
+    switch (type) {
+    case WordType::Longword:
+        return 4;
+    case WordType::Quadword:
+        return 8;
+    default:
+        return 4;
+    }
 }
 
 static std::list<Instruction>::iterator postprocessMov(std::list<Instruction> &asmList, std::list<Instruction>::iterator it)
@@ -111,9 +125,10 @@ static std::list<Instruction>::iterator postprocessMov(std::list<Instruction> &a
     if ((isMemoryAddress(obj.src) && isMemoryAddress(obj.dst))
         || obj.type == WordType::Quadword) {
         auto current = obj;
+        uint8_t bytes = getBytesOfWordType(current.type);
         it = asmList.erase(it);
-        it = asmList.emplace(it, Mov{current.src, Reg{R10}, current.type});
-        it = asmList.emplace(std::next(it), Mov{Reg{R10}, current.dst, current.type});
+        it = asmList.emplace(it, Mov{current.src, Reg{R10, bytes}, current.type});
+        it = asmList.emplace(std::next(it), Mov{Reg{R10, bytes}, current.dst, current.type});
     }
     return std::next(it);
 }
@@ -121,35 +136,55 @@ static std::list<Instruction>::iterator postprocessMov(std::list<Instruction> &a
 static std::list<Instruction>::iterator postprocessMovsx(std::list<Instruction> &asmList, std::list<Instruction>::iterator it)
 {
     auto &obj = std::get<Movsx>(*it);
+
+    // MOVSLQ's source register always 4 bytes, the destination is 8 bytes
+    if (auto r = std::get_if<Reg>(&obj.src))
+        *it = Movsx{Reg{r->reg, 4}, obj.dst};
+    if (auto r = std::get_if<Reg>(&obj.dst))
+        *it = Movsx{obj.src, Reg{r->reg, 8}};
+
     // MOVSX instruction can't use memory address as destination
     // or an immediate value as a source
     // TODO: Check both operands individually?
-    if (std::holds_alternative<Imm>(obj.src) && isMemoryAddress(obj.dst)) {
+    if (std::holds_alternative<Imm>(obj.src) || isMemoryAddress(obj.dst)) {
         auto current = obj;
         it = asmList.erase(it);
-        it = asmList.emplace(it, Mov{current.src, Reg{R10}, WordType::Longword});
-        it = asmList.emplace(std::next(it), Movsx{Reg{R10}, Reg{R11}});
-        it = asmList.emplace(std::next(it), Mov{Reg{R11}, current.dst, WordType::Quadword});
+        it = asmList.emplace(it, Mov{current.src, Reg{R10, 8}, WordType::Quadword});
+        it = asmList.emplace(std::next(it), Movsx{Reg{R10, 4}, Reg{R11, 8}});
+        it = asmList.emplace(std::next(it), Mov{Reg{R11, 8}, current.dst, WordType::Quadword});
     }
+
     return std::next(it);
 }
 
 static std::list<Instruction>::iterator postprocessCmp(std::list<Instruction> &asmList, std::list<Instruction>::iterator it)
 {
-    // TODO: Handle Quadword immediate values
     auto &obj = std::get<Cmp>(*it);
-    if (isMemoryAddress(obj.lhs) && isMemoryAddress(obj.rhs)) {
+    if (std::holds_alternative<Imm>(obj.rhs)
+        && obj.type == WordType::Quadword) {
+        // TODO: Implement this complex case in a nicer way
+        // Both rule applies at once
+        auto current = obj;
+        uint8_t bytes = getBytesOfWordType(current.type);
+        it = asmList.erase(it);
+        it = asmList.emplace(it, Mov{current.lhs, Reg{R10, bytes}, current.type});
+        it = asmList.emplace(std::next(it), Mov{current.rhs, Reg{R11, bytes}, current.type});
+        it = asmList.emplace(std::next(it), Cmp{Reg{R10, bytes}, Reg{R11, bytes}, current.type});
+    } else if ((isMemoryAddress(obj.lhs) && isMemoryAddress(obj.rhs))
+        || obj.type == WordType::Quadword) {
         // CMP instruction can't have memory addresses both in source and destination
         auto current = obj;
+        uint8_t bytes = getBytesOfWordType(current.type);
         it = asmList.erase(it);
-        it = asmList.emplace(it, Mov{current.lhs, Reg{R10}, current.type});
-        it = asmList.emplace(std::next(it), Cmp{Reg{R10}, current.rhs, current.type});
+        it = asmList.emplace(it, Mov{current.lhs, Reg{R10, bytes}, current.type});
+        it = asmList.emplace(std::next(it), Cmp{Reg{R10, bytes}, current.rhs, current.type});
     } else if (std::holds_alternative<Imm>(obj.rhs)) {
         // The second operand of CMP can't be a constant
         auto current = obj;
+        uint8_t bytes = getBytesOfWordType(current.type);
         it = asmList.erase(it);
-        it = asmList.emplace(it, Mov{current.rhs, Reg{R11}, current.type});
-        it = asmList.emplace(std::next(it), Cmp{current.lhs, Reg{R11}, current.type});
+        it = asmList.emplace(it, Mov{current.rhs, Reg{R11, bytes}, current.type});
+        it = asmList.emplace(std::next(it), Cmp{current.lhs, Reg{R11, bytes}, current.type});
     }
     return std::next(it);
 }
@@ -166,11 +201,12 @@ static std::list<Instruction>::iterator postprocessSetCC(std::list<Instruction> 
 static std::list<Instruction>::iterator postprocessPush(std::list<Instruction> &asmList, std::list<Instruction>::iterator it)
 {
     auto &obj = std::get<Push>(*it);
-    if (isFourBytesImm(obj.op)) {
+    // PUSHQ can handle quadwords only
+    if (isEightBytesImm(obj.op)) {
         auto current = obj;
         it = asmList.erase(it);
-        it = asmList.emplace(it, Mov{current.op, Reg{R10}, WordType::Longword});
-        it = asmList.emplace(std::next(it), Push{Reg{R10}});
+        it = asmList.emplace(it, Mov{current.op, Reg{R10, 8}, WordType::Quadword});
+        it = asmList.emplace(std::next(it), Push{Reg{R10, 8}});
     }
     return std::next(it);
 }
@@ -189,9 +225,10 @@ static std::list<Instruction>::iterator postprocessBinary(std::list<Instruction>
         if ((isMemoryAddress(obj.src) && isMemoryAddress(obj.dst))
             || obj.type == WordType::Quadword) {
             auto current = obj;
+            uint8_t bytes = getBytesOfWordType(current.type);
             it = asmList.erase(it);
-            it = asmList.emplace(it, Mov{current.src, Reg{R10}, current.type});
-            it = asmList.emplace(std::next(it), Binary{current.op, Reg{R10}, current.dst, current.type});
+            it = asmList.emplace(it, Mov{current.src, Reg{R10, bytes}, current.type});
+            it = asmList.emplace(std::next(it), Binary{current.op, Reg{R10, bytes}, current.dst, current.type});
         }
     } else if (obj.op == Mult_AB) {
         // IMUL can't use memory address as its destination
@@ -201,28 +238,30 @@ static std::list<Instruction>::iterator postprocessBinary(std::list<Instruction>
         if (obj.type == WordType::Quadword && isMemoryAddress(obj.dst)) {
             auto current = obj;
             it = asmList.erase(it);
-            it = asmList.emplace(it, Mov{current.src, Reg{R10}, current.type});
-            it = asmList.emplace(std::next(it), Mov{current.dst, Reg{R11}, current.type});
-            it = asmList.emplace(std::next(it), Binary{current.op, Reg{R10}, Reg{R11}, WordType::Quadword});
-            it = asmList.emplace(std::next(it), Mov{Reg{R11}, current.dst, current.type});
+            it = asmList.emplace(it, Mov{current.src, Reg{R10, 8}, current.type});
+            it = asmList.emplace(std::next(it), Mov{current.dst, Reg{R11, 8}, current.type});
+            it = asmList.emplace(std::next(it), Binary{current.op, Reg{R10, 8}, Reg{R11, 8}, WordType::Quadword});
+            it = asmList.emplace(std::next(it), Mov{Reg{R11, 8}, current.dst, current.type});
         } else if (isMemoryAddress(obj.dst)) {
             auto current = obj;
+            uint8_t bytes = getBytesOfWordType(current.type);
             it = asmList.erase(it);
-            it = asmList.emplace(it, Mov{current.dst, Reg{R11}, current.type});
-            it = asmList.emplace(std::next(it), Binary{current.op, current.src, Reg{R11}, current.type});
-            it = asmList.emplace(std::next(it), Mov{Reg{R11}, current.dst, current.type});
+            it = asmList.emplace(it, Mov{current.dst, Reg{R11, bytes}, current.type});
+            it = asmList.emplace(std::next(it), Binary{current.op, current.src, Reg{R11, bytes}, current.type});
+            it = asmList.emplace(std::next(it), Mov{Reg{R11, bytes}, current.dst, current.type});
         } else if (obj.type == WordType::Quadword) {
             auto current = obj;
             it = asmList.erase(it);
-            it = asmList.emplace(it, Mov{current.src, Reg{R10}, WordType::Quadword});
-            it = asmList.emplace(std::next(it), Binary{current.op, Reg{R10}, current.dst, WordType::Quadword});
+            it = asmList.emplace(it, Mov{current.src, Reg{R10, 8}, WordType::Quadword});
+            it = asmList.emplace(std::next(it), Binary{current.op, Reg{R10, 8}, current.dst, WordType::Quadword});
         }
     } else if (obj.op == ShiftL_AB || obj.op == ShiftRU_AB || obj.op == ShiftRS_AB) {
         // SHL, SHR and SAR can only have constant or CL register on their left (count)
         if (isMemoryAddress(obj.src)) {
             auto current = obj;
+            uint8_t bytes = getBytesOfWordType(current.type);
             it = asmList.erase(it);
-            it = asmList.emplace(it, Mov{current.src, Reg{CX}, current.type});
+            it = asmList.emplace(it, Mov{current.src, Reg{CX, bytes}, current.type});
             it = asmList.emplace(std::next(it), Binary{current.op, Reg{CX, 1}, current.dst, current.type});
         }
     }
@@ -235,9 +274,10 @@ static std::list<Instruction>::iterator postprocessIdiv(std::list<Instruction> &
     // IDIV can't have constant operand
     if (std::holds_alternative<Imm>(obj.src)) {
         auto current = obj;
+        uint8_t bytes = getBytesOfWordType(current.type);
         it = asmList.erase(it);
-        it = asmList.emplace(it, Mov{current.src, Reg{R10}, current.type});
-        it = asmList.emplace(std::next(it), Idiv{Reg{R10}, current.type});
+        it = asmList.emplace(it, Mov{current.src, Reg{R10, bytes}, current.type});
+        it = asmList.emplace(std::next(it), Idiv{Reg{R10, bytes}, current.type});
     }
     return std::next(it);
 }

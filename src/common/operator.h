@@ -46,9 +46,9 @@
     X(Not, "!", 75, Unknown_AU)
 
 #define ASM_UNARY_OPERATOR_LIST(X) \
-    X(Unknown_AU, "UNKNOWN_OP") \
-    X(Neg_AU, "negl") \
-    X(Not_AU, "notl")
+    X(Unknown_AU, "UNKNOWN_OP_L", "UNKNOWN_OP_Q") \
+    X(Neg_AU, "negl", "negq") \
+    X(Not_AU, "notl", "notq")
 
 /*
 FIXME: Use the proper right shift command in assembly
@@ -58,16 +58,16 @@ operand expressions
 	- Unsigned left operand: shrl
 */
 #define ASM_BINARY_OPERATOR_LIST(X) \
-    X(Unknown_AB, "UNKNOWN_OP") \
-    X(Add_AB, "addl") \
-    X(Sub_AB, "subl") \
-    X(Mult_AB, "imull") \
-    X(ShiftL_AB, "shll") \
-    X(ShiftRU_AB, "shrl") \
-    X(ShiftRS_AB, "sarl") \
-    X(BWAnd_AB, "andl") \
-    X(BWXor_AB, "xorl") \
-    X(BWOr_AB, "orl")
+    X(Unknown_AB, "UNKNOWN_OP_L",  "UNKNOWN_OP_Q") \
+    X(Add_AB, "addl", "addq") \
+    X(Sub_AB, "subl", "subq") \
+    X(Mult_AB, "imull", "imulq") \
+    X(ShiftL_AB, "shll", "shlq") \
+    X(ShiftRU_AB, "shrl", "shrq") \
+    X(ShiftRS_AB, "sarl", "sarq") \
+    X(BWAnd_AB, "andl", "andq") \
+    X(BWXor_AB, "xorl", "xorq") \
+    X(BWOr_AB, "orl", "orq")
 
 DEFINE_OPERATOR(BinaryOperator, BINARY_OPERATOR_LIST);
 DEFINE_OPERATOR(UnaryOperator, UNARY_OPERATOR_LIST);
@@ -76,8 +76,8 @@ DEFINE_ASM_OPERATOR(ASMBinaryOperator, ASM_BINARY_OPERATOR_LIST);
 
 std::string_view toString(BinaryOperator op);
 std::string_view toString(UnaryOperator op);
-std::string_view toString(ASMUnaryOperator op);
-std::string_view toString(ASMBinaryOperator op);
+std::string_view toString(ASMUnaryOperator op, bool is_long);
+std::string_view toString(ASMBinaryOperator op, bool is_long);
 
 bool isBinaryOperator(std::string_view op);
 bool isUnaryOperator(std::string_view op);

@@ -74,7 +74,11 @@ void ASTPrinter::operator()(const FunctionCallExpression &f)
     for (auto &a : f.args)
         std::visit(*this, *a);
     shift_tab();
-    pad(); std::cout << ") " << f.type << std::endl;
+    pad(); std::cout << ") ";
+    if (f.type)
+        std::cout << *f.type << std::endl;
+    else
+        std::cout << "typeless" << std::endl;
 }
 
 void ASTPrinter::operator()(const ReturnStatement &r)
