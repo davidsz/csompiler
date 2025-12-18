@@ -12,29 +12,6 @@ struct TypeError : public std::runtime_error
     }
 };
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wswitch-enum"
-static bool need_common_type(BinaryOperator op)
-{
-    switch (op) {
-        case BinaryOperator::Add:
-        case BinaryOperator::Subtract:
-        case BinaryOperator::Multiply:
-        case BinaryOperator::Divide:
-        case BinaryOperator::Remainder:
-        case BinaryOperator::LessThan:
-        case BinaryOperator::LessOrEqual:
-        case BinaryOperator::GreaterThan:
-        case BinaryOperator::GreaterOrEqual:
-        case BinaryOperator::Equal:
-        case BinaryOperator::NotEqual:
-            return true;
-        default:
-            return false;
-    }
-}
-#pragma clang diagnostic pop
-
 static Type get_common_type(const Type &first, const Type &second)
 {
     assert(first.isInitialized() && second.isInitialized());
@@ -97,16 +74,14 @@ Type TypeChecker::operator()(BinaryExpression &b)
     Type left_type = std::visit(*this, *b.lhs);
     Type right_type = std::visit(*this, *b.rhs);
     if (b.op == BinaryOperator::And || b.op == BinaryOperator::Or) {
+        // Return value of logical operators can be represented as an integer
         b.type = Type{ BasicType::Int };
         return b.type;
     }
     Type common_type = get_common_type(left_type, right_type);
     b.lhs = explicit_cast(std::move(b.lhs), left_type, common_type);
     b.rhs = explicit_cast(std::move(b.rhs), right_type, common_type);
-    if (need_common_type(b.op))
-        b.type = common_type;
-    else
-        b.type = Type{ BasicType::Int };
+    b.type = isAssignment(b.op) ? left_type : common_type;
     return b.type;
 }
 
@@ -252,8 +227,10 @@ Type TypeChecker::operator()(CaseStatement &c)
     std::visit(*this, *c.condition);
     if (auto expr = std::get_if<ConstantExpression>(c.condition.get())) {
         SwitchStatement *s = m_switches.back();
-        auto [it, inserted] = s->cases.insert(
-            ConvertValue(expr->value, s->type));
+        // We use the converted value to create the label
+        auto value = ConvertValue(expr->value, s->type);
+        c.label = std::format("case_{}_{}", s->label, toLabel(value));
+        auto [it, inserted] = s->cases.insert(value);
         if (!inserted)
             Abort("Duplicate case in switch");
     }

@@ -72,7 +72,7 @@ int main(int argc, char **argv)
     deleteFile(output_preprocessed);
 
 #if 1
-    std::cout << "Source code:" << std::endl;
+    std::cout << "Preprocessed source code:" << std::endl;
     std::cout << file_content << std::endl;
 #endif
 
@@ -98,7 +98,7 @@ int main(int argc, char **argv)
         return parser_result.return_code;
     }
 
-#if 1
+#if 0
     std::cout << std::endl << "AST:" << std::endl;
     parser::ASTPrinter astPrinter;
     astPrinter.print(parser_result.root);
@@ -114,7 +114,8 @@ int main(int argc, char **argv)
 
 #if 0
     std::cout << std::endl << "After semantic analysis:" << std::endl;
-    astPrinter.print(parser_result.root);
+    parser::ASTPrinter semanticPrinter;
+    semanticPrinter.print(parser_result.root);
 #endif
 
     parser::TypeChecker typeChecker;
@@ -123,7 +124,8 @@ int main(int argc, char **argv)
 
 #if 1
     std::cout << std::endl << "After type checking:" << std::endl;
-    astPrinter.print(parser_result.root);
+    parser::ASTPrinter typePrinter;
+    typePrinter.print(parser_result.root);
 #endif
 
 #if 1

@@ -90,6 +90,7 @@ ASMBinaryOperator toASMBinaryOperator(BinaryOperator op);
 int getPrecedence(BinaryOperator op);
 int getPrecedence(UnaryOperator op);
 
+bool isAssignment(BinaryOperator op);
 bool isCompoundAssignment(BinaryOperator op);
 BinaryOperator compoundToBinary(BinaryOperator op);
 

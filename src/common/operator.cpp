@@ -144,6 +144,28 @@ int getPrecedence(UnaryOperator op)
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wswitch-enum"
+bool isAssignment(BinaryOperator op)
+{
+    switch (op) {
+        case BinaryOperator::LeftShift:
+        case BinaryOperator::RightShift:
+        case BinaryOperator::Assign:
+        case BinaryOperator::AssignAdd:
+        case BinaryOperator::AssignSub:
+        case BinaryOperator::AssignMult:
+        case BinaryOperator::AssignDiv:
+        case BinaryOperator::AssignMod:
+        case BinaryOperator::AssignLShift:
+        case BinaryOperator::AssignRShift:
+        case BinaryOperator::AssignBitwiseAnd:
+        case BinaryOperator::AssignBitwiseXor:
+        case BinaryOperator::AssignBitwiseOr:
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool isCompoundAssignment(BinaryOperator op)
 {
     switch (op) {

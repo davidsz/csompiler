@@ -19,6 +19,18 @@ bool Type::isBasic(BasicType type) const
     return false;
 }
 
+int Type::getBytes()
+{
+    switch (*std::get_if<BasicType>(&t)) {
+    case BasicType::Int:
+        return 4;
+    case BasicType::Long:
+        return 8;
+    default:
+        return 0;
+    }
+}
+
 std::ostream &operator<<(std::ostream &os, const Type &type)
 {
     std::visit([&](auto &obj) {
@@ -36,6 +48,17 @@ std::ostream &operator<<(std::ostream &os, const Type &type)
 std::string toString(const ConstantValue &v)
 {
     return std::visit([](auto x) {
+        return std::to_string(x);
+    }, v);
+}
+
+std::string toLabel(const ConstantValue &v)
+{
+    return std::visit([](auto x) {
+        if (x < 0) {
+            x *= -1;
+            return std::format("_{}", std::to_string(x));
+        }
         return std::to_string(x);
     }, v);
 }

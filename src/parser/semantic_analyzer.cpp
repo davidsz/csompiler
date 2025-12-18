@@ -300,10 +300,9 @@ void SemanticAnalyzer::operator()(SwitchStatement &s)
 void SemanticAnalyzer::operator()(CaseStatement &c)
 {
     if (m_currentStage == LOOP_LABELING) {
-        if (auto switch_label = getInnermostSwitchLabel()) {
-            if (auto expr = std::get_if<ConstantExpression>(c.condition.get()))
-                c.label = std::format("case_{}_{}", *switch_label, toString(expr->value));
-            else
+        // We check for duplications later, because we need the type conversions first.
+        if (!m_switches.empty()) {
+            if (!std::holds_alternative<ConstantExpression>(*c.condition.get()))
                 Abort("Invalid expression in case statement");
         } else
             Abort("Case statement is not allowed outside of switch");

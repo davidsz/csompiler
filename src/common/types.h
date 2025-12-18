@@ -35,6 +35,7 @@ struct Type {
 
     bool isBasic(BasicType type) const;
     bool isInitialized() const { return !std::holds_alternative<std::monostate>(t); }
+    int getBytes();
 
     friend bool operator==(const Type &a, const Type &b) {
         return a.t == b.t;
@@ -51,6 +52,7 @@ using ConstantValue = std::variant<
     int, long
 >;
 std::string toString(const ConstantValue &v);
+std::string toLabel(const ConstantValue &v);
 Type getType(const ConstantValue &v);
 long forceLong(const ConstantValue &v);
 

@@ -19,9 +19,10 @@ void ASTPrinter::operator()(const VariableExpression &v)
 
 void ASTPrinter::operator()(const CastExpression &c)
 {
-    pad(); std::cout << "CastExpression(" << c.target_type << std::endl;
+    pad(); std::cout << "CastExpression(";
+    std::cout << c.inner_type << " -> " << c.target_type << std::endl;
     tab(); std::visit(*this, *c.expr); shift_tab();
-    pad(); std::cout << ") " << c.inner_type << std::endl;
+    pad(); std::cout << ") " << std::endl;
 }
 
 void ASTPrinter::operator()(const UnaryExpression &u)
@@ -126,7 +127,7 @@ void ASTPrinter::operator()(const BlockStatement &s)
 
 void ASTPrinter::operator()(const ExpressionStatement &e)
 {
-    pad(); std::cout << "Expression" << std::endl;
+    pad(); std::cout << "ExpressionStatement" << std::endl;
     tab(); std::visit(*this, *e.expr); shift_tab();
 }
 

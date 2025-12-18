@@ -110,19 +110,6 @@ Value TACBuilder::operator()(const parser::BinaryExpression &b)
         return result;
     }
 
-    // Compound assignments
-    if (isCompoundAssignment(b.op)) {
-        auto binary = Binary{};
-        BinaryOperator op = compoundToBinary(b.op);
-        binary.op = op;
-        Value left = std::visit(*this, *b.lhs);
-        binary.src1 = left;
-        binary.src2 = std::visit(*this, *b.rhs);
-        binary.dst = left;
-        m_instructions.push_back(binary);
-        return binary.dst;
-    }
-
     auto binary = Binary{};
     binary.op = b.op;
     binary.src1 = std::visit(*this, *b.lhs);
@@ -306,7 +293,7 @@ Value TACBuilder::operator()(const parser::SwitchStatement &s)
         m_instructions.push_back(binary);
         m_instructions.push_back(JumpIfZero{
             binary.dst,
-            std::format("case_{}_{}", s.label, toString(c))
+            std::format("case_{}_{}", s.label, toLabel(c))
         });
     }
     if (s.hasDefault)
