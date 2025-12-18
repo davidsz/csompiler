@@ -1,6 +1,7 @@
 #pragma once
 
 #include "types.h"
+#include "values.h"
 
 // Convert the value to a given type
 ConstantValue ConvertValue(const ConstantValue &v, const Type &t);

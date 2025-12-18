@@ -71,8 +71,7 @@ WordType ASMBuilder::GetWordType(const tac::Value &value)
         else
             return WordType::Longword;
     } else if (auto v = std::get_if<tac::Variant>(&value)) {
-        const SymbolEntry &entry = (*m_symbolTable)[v->name];
-        if (entry.type.isBasic(BasicType::Long))
+        if (*m_symbolTable->getTypeAs<BasicType>(v->name) == BasicType::Long)
             return WordType::Quadword;
         else
             return WordType::Longword;
@@ -381,12 +380,9 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
         Comment(func.instructions, "Getting the first six parameters from registers");
     for (size_t i = 0; i < f.params.size() && i < 6; i++) {
         WordType type = WordType::Longword;
-        // TODO: Refactor this duplication
-        if (m_symbolTable->contains(f.params[i])) {
-            const SymbolEntry &entry = (*m_symbolTable)[f.params[i]];
-            if (const BasicType *basic_type = entry.type.getAs<BasicType>())
-                type = (*basic_type == BasicType::Int)
-                    ? WordType::Longword : WordType::Quadword;
+        if (const BasicType *basic_type = m_symbolTable->getTypeAs<BasicType>(f.params[i])) {
+            type = (*basic_type == BasicType::Int)
+                ? WordType::Longword : WordType::Quadword;
         }
         func.instructions.push_back(Mov{
             Reg{ s_argRegisters[i], getBytesOfWordType(type) },
@@ -402,12 +398,9 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     for (size_t i = 6; i < f.params.size(); i++) {
         std::string param_name = f.params[(size_t)i];
         WordType type = WordType::Longword;
-        // TODO: Refactor this duplication
-        if (m_symbolTable->contains(param_name)) {
-            const SymbolEntry &entry = (*m_symbolTable)[param_name];
-            if (const BasicType *basic_type = entry.type.getAs<BasicType>())
-                type = (*basic_type == BasicType::Int)
-                    ? WordType::Longword : WordType::Quadword;
+        if (const BasicType *basic_type = m_symbolTable->getTypeAs<BasicType>(param_name)) {
+            type = (*basic_type == BasicType::Int)
+                ? WordType::Longword : WordType::Quadword;
         }
         func.instructions.push_back(Mov{
             Stack{ (int)stack_offset },

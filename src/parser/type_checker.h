@@ -2,6 +2,7 @@
 
 #include "ast_mutating_visitor.h"
 #include "common/error.h"
+#include "common/symbol_table.h"
 
 namespace parser {
 
@@ -40,11 +41,6 @@ struct TypeChecker : public IASTMutatingVisitor<Type> {
 
 private:
     std::shared_ptr<SymbolTable> m_symbolTable = std::make_shared<SymbolTable>();
-    void insertSymbol(const std::string &name, const Type &, const IdentifierAttributes &);
-
-    template <typename T>
-    std::optional<std::pair<const T &, const IdentifierAttributes &>>
-    lookupSymbolAs(const std::string &name);
 
     bool m_fileScope = false;
     bool m_forLoopInitializer = false;

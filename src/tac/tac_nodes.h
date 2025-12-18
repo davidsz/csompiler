@@ -3,6 +3,7 @@
 #include "common/macro.h"
 #include "common/operator.h"
 #include "common/types.h"
+#include "common/values.h"
 #include <cassert>
 #include <string>
 #include <vector>

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "parser/ast_visitor.h"
+#include "common/symbol_table.h"
 #include "tac_nodes.h"
 #include <vector>
 

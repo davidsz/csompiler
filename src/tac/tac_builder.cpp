@@ -19,10 +19,9 @@ static std::string generateLabelName(std::string_view label)
 Variant TACBuilder::CreateTemporaryVariable(const Type &type)
 {
     Variant var = Variant{ generateTempVariableName() };
-    (*m_symbolTable)[var.name] = SymbolEntry{
-        type,
+    m_symbolTable->insert(var.name, type,
         IdentifierAttributes{ .type = IdentifierAttributes::Local }
-    };
+    );
     return var;
 }
 
@@ -339,10 +338,8 @@ Value TACBuilder::operator()(const parser::FunctionDeclaration &f)
         func.inst.push_back(Return{ Constant{ 0 } });
     }
 
-    if (m_symbolTable->contains(f.name)) {
-        const SymbolEntry &entry = (*m_symbolTable)[f.name];
-        func.global = entry.attrs.global;
-    }
+    if (const SymbolEntry *entry = m_symbolTable->get(f.name))
+        func.global = entry->attrs.global;
 
     m_topLevel.push_back(func);
     return std::monostate();
@@ -351,9 +348,8 @@ Value TACBuilder::operator()(const parser::FunctionDeclaration &f)
 Value TACBuilder::operator()(const parser::VariableDeclaration &v)
 {
     // We will move static variable declarations to the top level in a later step
-    if (m_symbolTable->contains(v.identifier)) {
-        const SymbolEntry &entry = (*m_symbolTable)[v.identifier];
-        if (entry.attrs.type == IdentifierAttributes::Static)
+    if (const SymbolEntry *entry = m_symbolTable->get(v.identifier)) {
+        if (entry->attrs.type == IdentifierAttributes::Static)
             return std::monostate();
     }
     // We discard declarations, but we handle their init expressions
@@ -396,7 +392,7 @@ std::vector<Instruction> TACBuilder::ConvertBlock(const std::vector<parser::Bloc
 
 void TACBuilder::ProcessStaticSymbols()
 {
-    for (const auto &[name, entry] : *m_symbolTable) {
+    for (const auto &[name, entry] : m_symbolTable->m_table) {
         if (entry.attrs.type == IdentifierAttributes::Static) {
             if (std::holds_alternative<Tentative>(entry.attrs.init)) {
                 m_topLevel.push_back(StaticVariable{

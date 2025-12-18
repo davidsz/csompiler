@@ -45,10 +45,12 @@ Type TypeChecker::operator()(ConstantExpression &c)
 
 Type TypeChecker::operator()(VariableExpression &v)
 {
-    auto it = m_symbolTable->find(v.identifier);
-    if (it != m_symbolTable->end() && it->second.type.getAs<FunctionType>())
-        Abort(std::format("Function name '{}' is used as variable", v.identifier));
-    v.type = it->second.type;
+    if (const SymbolEntry *entry = m_symbolTable->get(v.identifier)) {
+        if (entry->type.getAs<FunctionType>())
+            Abort(std::format("Function name '{}' is used as variable", v.identifier));
+        v.type = entry->type;
+    } else
+        Abort(std::format("Undeclared variable '{}'", v.identifier));
     return v.type;
 }
 
@@ -108,16 +110,15 @@ Type TypeChecker::operator()(ConditionalExpression &c)
 
 Type TypeChecker::operator()(FunctionCallExpression &f)
 {
-    if (auto symbol = lookupSymbolAs<FunctionType>(f.identifier)) {
-        auto &[type, attrs] = *symbol;
-        if (type.params.size() != f.args.size())
+    if (const FunctionType *type = m_symbolTable->getTypeAs<FunctionType>(f.identifier)) {
+        if (type->params.size() != f.args.size())
             Abort(std::format("Function '{}' is called with wrong number of arguments", f.identifier));
 
         for (size_t i = 0; i < f.args.size(); i++) {
             Type arg_type = std::visit(*this, *f.args[i]);
-            f.args[i] = explicit_cast(std::move(f.args[i]), arg_type, *type.params[i]);
+            f.args[i] = explicit_cast(std::move(f.args[i]), arg_type, *type->params[i]);
         }
-        f.type = type.ret;
+        f.type = type->ret;
         return *f.type;
     } else {
         // The symbol name exists, we verified it during the semantic analysis.
@@ -252,19 +253,18 @@ Type TypeChecker::operator()(FunctionDeclaration &f)
     bool already_defined = false;
     bool is_global = f.storage != StorageStatic;
 
-    if (m_symbolTable->contains(f.name)) {
-        const SymbolEntry &entry = (*m_symbolTable)[f.name];
-        if (entry.type != f.type)
+    if (const SymbolEntry *entry = m_symbolTable->get(f.name)) {
+        if (entry->type != f.type)
             Abort(std::format("Incompatible function declarations of '{}'", f.name));
-        if (entry.attrs.defined && f.body)
+        if (entry->attrs.defined && f.body)
             Abort(std::format("Function '{}' is defined more than once", f.name));
-        already_defined = entry.attrs.defined;
-        if (entry.attrs.global && f.storage == StorageStatic)
+        already_defined = entry->attrs.defined;
+        if (entry->attrs.global && f.storage == StorageStatic)
             Abort(std::format("Static function declaration '{}' follows non-static", f.name));
-        is_global = entry.attrs.global;
+        is_global = entry->attrs.global;
     }
 
-    insertSymbol(f.name, f.type, IdentifierAttributes{
+    m_symbolTable->insert(f.name, f.type, IdentifierAttributes{
         .type = IdentifierAttributes::Function,
         .defined = already_defined || (bool)f.body,
         .global = is_global
@@ -273,7 +273,7 @@ Type TypeChecker::operator()(FunctionDeclaration &f)
     if (f.body) {
         auto params_types = std::get<FunctionType>(f.type.t).params;
         for (size_t i = 0; i < f.params.size(); i++) {
-            insertSymbol(f.params[i], *params_types[i], IdentifierAttributes{
+            m_symbolTable->insert(f.params[i], *params_types[i], IdentifierAttributes{
                 .type = IdentifierAttributes::Local,
                 .defined = false
             });
@@ -307,26 +307,25 @@ Type TypeChecker::operator()(VariableDeclaration &v)
 
         bool is_global = (v.storage != StorageStatic);
 
-        if (m_symbolTable->contains(v.identifier)) {
-            const SymbolEntry &entry = (*m_symbolTable)[v.identifier];
-            if (entry.type != v.type)
+        if (const SymbolEntry *entry = m_symbolTable->get(v.identifier)) {
+            if (entry->type != v.type)
                 Abort(std::format("'{}' redeclared with different type", v.identifier));
 
             if (v.storage == StorageExtern)
-                is_global = entry.attrs.global;
-            else if (entry.attrs.global != is_global)
+                is_global = entry->attrs.global;
+            else if (entry->attrs.global != is_global)
                 Abort(std::format("Conflicting variable linkage ('{}')", v.identifier));
 
-            if (std::get_if<Initial>(&entry.attrs.init)) {
+            if (std::get_if<Initial>(&entry->attrs.init)) {
                 if (std::get_if<Initial>(&init))
                     Abort(std::format("Conflicting file scope variable definition ('{}')", v.identifier));
                 else
-                    init = entry.attrs.init;
-            } else if (!std::holds_alternative<Initial>(init) && std::holds_alternative<Tentative>(entry.attrs.init))
+                    init = entry->attrs.init;
+            } else if (!std::holds_alternative<Initial>(init) && std::holds_alternative<Tentative>(entry->attrs.init))
                 init = Tentative{};
         }
 
-        insertSymbol(v.identifier, v.type, IdentifierAttributes{
+        m_symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
             .type = IdentifierAttributes::Static,
             .global = is_global,
             .init = init
@@ -337,12 +336,11 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             if (v.init)
                 Abort(std::format("Initializer on local extern variable '{}'", v.identifier));
 
-            if (m_symbolTable->contains(v.identifier)) {
-                const SymbolEntry &entry = (*m_symbolTable)[v.identifier];
-                if (entry.type != v.type)
+            if (const SymbolEntry *entry = m_symbolTable->get(v.identifier)) {
+                if (entry->type != v.type)
                     Abort(std::format("'{}' redeclared with different type", v.identifier));
             } else {
-                insertSymbol(v.identifier, v.type, IdentifierAttributes{
+                m_symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
                     .type = IdentifierAttributes::Static,
                     .global = true,
                     .init = NoInitializer{}
@@ -357,13 +355,13 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             else
                 Abort(std::format("Non-constant initializer on local static variable '{}'", v.identifier));
 
-            insertSymbol(v.identifier, v.type, IdentifierAttributes{
+            m_symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
                 .type = IdentifierAttributes::Static,
                 .global = false,
                 .init = init
             });
         } else {
-            insertSymbol(v.identifier, v.type, IdentifierAttributes{
+            m_symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
                 .type = IdentifierAttributes::Local
             });
 
@@ -400,27 +398,6 @@ void TypeChecker::Abort(std::string_view message)
 {
     throw TypeError(
         std::format("[Type error] {}", message));
-}
-
-void TypeChecker::insertSymbol(
-    const std::string &name,
-    const Type &type,
-    const IdentifierAttributes &attr)
-{
-    (*m_symbolTable)[name] = SymbolEntry{ type , attr };
-}
-
-template <typename T>
-std::optional<std::pair<const T &, const IdentifierAttributes &>>
-TypeChecker::lookupSymbolAs(const std::string &name)
-{
-    auto it = m_symbolTable->find(name);
-    if (it == m_symbolTable->end())
-        return std::nullopt;
-    const TypeInfo &info = it->second.type.t;
-    if (const T *ptr = std::get_if<T>(&info))
-        return std::make_pair(std::cref(*ptr), it->second.attrs);
-    return std::nullopt;
 }
 
 }; // namespace parser

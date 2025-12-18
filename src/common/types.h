@@ -1,11 +1,10 @@
 #pragma once
 
-#include <stddef.h>
 #include <string>
-#include <unordered_map>
 #include <variant>
 #include <vector>
 
+// Recursive type which represents types
 struct Type;
 
 enum BasicType {
@@ -24,6 +23,7 @@ using TypeInfo = std::variant<
     BasicType,
     FunctionType
 >;
+
 struct Type {
     TypeInfo t; // std::monostate until initialized
 
@@ -48,14 +48,7 @@ struct Type {
     friend std::ostream &operator<<(std::ostream &os, const Type &t);
 };
 
-using ConstantValue = std::variant<
-    int, long
->;
-std::string toString(const ConstantValue &v);
-std::string toLabel(const ConstantValue &v);
-Type getType(const ConstantValue &v);
-long forceLong(const ConstantValue &v);
-
+// Type and storage specifiers
 #define TYPE_SPECIFIER_LIST(X) \
     X(Int, "int") \
     X(Long, "long")
@@ -69,34 +62,3 @@ enum StorageClass {
     StorageStatic,
     StorageExtern
 };
-
-
-// Symbol table
-struct Tentative {};
-struct NoInitializer {};
-struct Initial {
-    ConstantValue i;
-    auto operator<=>(const Initial &) const = default;
-};
-using InitialValue = std::variant<Tentative, NoInitializer, Initial>;
-
-struct IdentifierAttributes {
-    enum AttrType {
-        Function,
-        Static,
-        Local
-    };
-    AttrType type = Local;
-    bool defined = false;
-    bool global = false;
-    InitialValue init = NoInitializer{};
-};
-
-struct SymbolEntry {
-    Type type;
-    IdentifierAttributes attrs;
-};
-
-using SymbolTable = std::unordered_map<std::string, SymbolEntry>;
-
-void DebugPrint(const SymbolTable &);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "asm_nodes.h"
+#include "common/symbol_table.h"
 
 namespace assembly {
 

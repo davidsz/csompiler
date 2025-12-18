@@ -130,7 +130,7 @@ int main(int argc, char **argv)
 
 #if 1
     std::cout << std::endl << "Symbol table:" << std::endl;
-    DebugPrint(*typeChecker.symbolTable());
+    typeChecker.symbolTable()->print();
 #endif
 
     if (has_flag("validate"))

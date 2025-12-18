@@ -2,6 +2,7 @@
 
 #include "tac/tac_nodes.h"
 #include "common/types.h"
+#include "common/symbol_table.h"
 
 namespace assembly {
 
