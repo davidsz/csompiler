@@ -352,6 +352,11 @@ Operand ASMBuilder::operator()(const tac::Truncate &t)
     return std::monostate();
 }
 
+Operand ASMBuilder::operator()(const tac::ZeroExtend &)
+{
+    return std::monostate();
+}
+
 Operand ASMBuilder::operator()(const tac::Constant &c)
 {
     if (auto int_value = std::get_if<int>(&c.value))

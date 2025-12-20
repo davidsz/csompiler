@@ -105,6 +105,16 @@ void TACPrinter::operator()(const tac::Truncate &t)
     pad(); std::cout << ")" << std::endl;
 }
 
+void TACPrinter::operator()(const tac::ZeroExtend &z)
+{
+    pad(); std::cout << "ZeroExtend(" << std::endl;
+    tab();
+    std::visit(*this, z.src);
+    std::visit(*this, z.dst);
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
 void TACPrinter::operator()(const tac::FunctionDefinition &f)
 {
     pad();

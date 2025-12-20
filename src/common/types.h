@@ -10,6 +10,8 @@ struct Type;
 enum BasicType {
     Int,
     Long,
+    UInt,
+    ULong,
 };
 
 struct FunctionType {
@@ -34,8 +36,9 @@ struct Type {
     const T *getAs() const { return std::get_if<T>(&t); }
 
     bool isBasic(BasicType type) const;
+    bool isSigned() const;
     bool isInitialized() const { return !std::holds_alternative<std::monostate>(t); }
-    int getBytes();
+    int size() const;
 
     friend bool operator==(const Type &a, const Type &b) {
         return a.t == b.t;
@@ -50,8 +53,10 @@ struct Type {
 
 // Type and storage specifiers
 #define TYPE_SPECIFIER_LIST(X) \
-    X(Int, "int") \
-    X(Long, "long")
+    X("int") \
+    X("long") \
+    X("signed") \
+    X("unsigned")
 
 #define STORAGE_CLASS_LIST(X) \
     X(StorageStatic, "static") \

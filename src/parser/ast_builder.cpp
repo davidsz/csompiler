@@ -12,24 +12,42 @@ struct SyntaxError : public std::runtime_error
     explicit SyntaxError(const std::string &message) : std::runtime_error(message) {}
 };
 
-static const std::unordered_map<std::string, BasicType> s_typeSpecifiers {
-#define ADD_TYPE_TO_MAP(enumname, stringname) {stringname, enumname},
-    TYPE_SPECIFIER_LIST(ADD_TYPE_TO_MAP)
-#undef ADD_TYPE_TO_MAP
+static const std::unordered_set<std::string> s_typeSpecifiers {
+#define ADD_TYPE_TO_SET(stringname) stringname,
+    TYPE_SPECIFIER_LIST(ADD_TYPE_TO_SET)
+#undef ADD_TYPE_TO_SET
 };
 
 static const std::unordered_map<std::string, StorageClass> s_storageClasses {
-#define ADD_TYPE_TO_MAP(enumname, stringname) {stringname, enumname},
-    STORAGE_CLASS_LIST(ADD_TYPE_TO_MAP)
-#undef ADD_TYPE_TO_MAP
+#define ADD_CLASS_TO_MAP(enumname, stringname) {stringname, enumname},
+    STORAGE_CLASS_LIST(ADD_CLASS_TO_MAP)
+#undef ADD_CLASS_TO_MAP
 };
 
 static const std::unordered_set<std::string> s_specifiers {
-#define ADD_TYPE_TO_SET(enumname, stringname) stringname,
+#define ADD_TYPE_TO_SET(stringname) stringname,
     TYPE_SPECIFIER_LIST(ADD_TYPE_TO_SET)
-    STORAGE_CLASS_LIST(ADD_TYPE_TO_SET)
 #undef ADD_TYPE_TO_SET
+#define ADD_CLASS_TO_SET(enumname, stringname) stringname,
+    STORAGE_CLASS_LIST(ADD_CLASS_TO_SET)
+#undef ADD_CLASS_TO_SET
 };
+
+static std::optional<Type> determineType(const std::set<std::string> &type_specifiers)
+{
+    if (type_specifiers.empty())
+        return std::nullopt;
+    if (type_specifiers.contains("signed") && type_specifiers.contains("unsigned"))
+        return std::nullopt;
+
+    if (type_specifiers.contains("unsigned") && type_specifiers.contains("long"))
+        return Type { BasicType::ULong };
+    else if (type_specifiers.contains("unsigned"))
+        return Type { BasicType::UInt };
+    else if (type_specifiers.contains("long"))
+        return Type { BasicType::Long };
+    return Type { BasicType::Int };
+}
 
 ASTBuilder::ASTBuilder(const std::list<lexer::Token> &tokens)
     : m_tokens(tokens)
@@ -142,7 +160,7 @@ Expression ASTBuilder::ParseFactor()
     auto next = Peek();
     if (next->type() == TokenType::Punctator && next->value() == "(") {
         Consume(TokenType::Punctator, "(");
-        if (Peek()->type() == TokenType::Keyword && Peek(1)->value() == ")") {
+        if (Peek()->type() == TokenType::Keyword) {
             LOG("CastExpression");
             auto ret = CastExpression{};
             ret.target_type = ParseTypes();
@@ -150,6 +168,7 @@ Expression ASTBuilder::ParseFactor()
             ret.expr = unique_expression(ParseFactor());
             return ret;
         }
+        LOG("( Expression )");
         auto expr = ParseExpression(0);
         Consume(TokenType::Punctator, ")");
         return expr;
@@ -198,21 +217,39 @@ Expression ASTBuilder::ParseNumericLiteral()
     LOG("ParseNumericLiteral");
     std::string literal = Consume(TokenType::NumericLiteral);
     bool hasL = false;
+    bool hasU = false;
     while (!literal.empty() && std::isalpha(literal.back())) {
         if (literal.back() == 'l' || literal.back() == 'L') {
             hasL = true;
             literal.pop_back();
-        }
+        } else if (literal.back() == 'u' || literal.back() == 'U') {
+            hasU = true;
+            literal.pop_back();
+        } else
+            Abort(std::format("Unsupported '{}' in numeric literal", literal.back()));
     }
 
-    long value = std::stol(literal);
-    if (hasL)
+    if (hasU) {
+        // Unsigned
+        unsigned long value = std::stoul(literal);
+        if (hasL)
+            return ConstantExpression{ value };
+        if (value > std::numeric_limits<uint32_t>::min() &&
+            value < std::numeric_limits<uint32_t>::max()) {
+                return ConstantExpression{ static_cast<uint32_t>(value) };
+        }
         return ConstantExpression{ value };
-    if (value > std::numeric_limits<int>::min() &&
-        value < std::numeric_limits<int>::max()) {
-            return ConstantExpression{ static_cast<int>(value) };
+    } else {
+        // Signed
+        long value = std::stol(literal);
+        if (hasL)
+            return ConstantExpression{ value };
+        if (value > std::numeric_limits<int>::min() &&
+            value < std::numeric_limits<int>::max()) {
+                return ConstantExpression{ static_cast<int>(value) };
+        }
+        return ConstantExpression{ value };
     }
-    return ConstantExpression{ value };
 }
 
 Statement ASTBuilder::ParseReturn()
@@ -511,15 +548,14 @@ Declaration ASTBuilder::ParseDeclaration(bool allow_function)
 std::pair<StorageClass, Type> ASTBuilder::ParseTypeSpecifierList()
 {
     LOG("ParseTypeSpecifierList");
-    std::set<BasicType> type_specifiers;
+    std::set<std::string> type_specifiers;
     std::vector<StorageClass> storage_classes;
     std::optional<lexer::Token> next;
     for (next = Peek();
         next->type() == TokenType::Keyword && s_specifiers.contains(next->value());
         next = Peek()) {
-        auto type_it = s_typeSpecifiers.find(next->value());
-        if (type_it != s_typeSpecifiers.end()) {
-            auto [it, inserted] = type_specifiers.insert(type_it->second);
+        if (s_typeSpecifiers.contains(next->value())) {
+            auto [it, inserted] = type_specifiers.insert(next->value());
             if (!inserted)
                 Abort(std::format("Duplicated type specifier '{}'", next->value()));
             Consume(TokenType::Keyword);
@@ -534,33 +570,26 @@ std::pair<StorageClass, Type> ASTBuilder::ParseTypeSpecifierList()
         }
     }
 
-    Type type = Type{};
-    if (type_specifiers.size() == 1)
-        type.t = *type_specifiers.begin();
-    else if (type_specifiers.size() == 2
-        && type_specifiers.contains(BasicType::Long)
-        && type_specifiers.contains(BasicType::Int))
-        type.t = BasicType::Long;
-    else
+    std::optional<Type> type = determineType(type_specifiers);
+    if (!type)
         Abort("Invalid type specification");
 
     if (storage_classes.size() > 1)
         Abort("Invalid storage class");
     StorageClass storage = storage_classes.empty() ? StorageClass::StorageDefault : storage_classes[0];
 
-    return std::make_pair(storage, type);
+    return std::make_pair(storage, *type);
 }
 
 Type ASTBuilder::ParseTypes()
 {
     LOG("ParseTypes");
-    std::set<BasicType> type_specifiers;
+    std::set<std::string> type_specifiers;
     for (std::optional<lexer::Token> next = Peek();
         next->type() == TokenType::Keyword && s_typeSpecifiers.contains(next->value());
         next = Peek()) {
-        auto type_it = s_typeSpecifiers.find(next->value());
-        if (type_it != s_typeSpecifiers.end()) {
-            auto [it, inserted] = type_specifiers.insert(type_it->second);
+        if (s_typeSpecifiers.contains(next->value())) {
+            auto [it, inserted] = type_specifiers.insert(next->value());
             if (!inserted)
                 Abort(std::format("Duplicated type specifier '{}'", next->value()));
             Consume(TokenType::Keyword);
@@ -568,17 +597,10 @@ Type ASTBuilder::ParseTypes()
         }
     }
 
-    Type type = Type{};
-    if (type_specifiers.size() == 1)
-        type.t = *type_specifiers.begin();
-    else if (type_specifiers.size() == 2
-        && type_specifiers.contains(BasicType::Long)
-        && type_specifiers.contains(BasicType::Int))
-        type.t = BasicType::Long;
-    else
+    std::optional<Type> type = determineType(type_specifiers);
+    if (!type)
         Abort("Invalid type specification");
-
-    return type;
+    return *type;
 }
 
 void ASTBuilder::Abort(std::string_view message, size_t line)

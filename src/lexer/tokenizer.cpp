@@ -128,18 +128,23 @@ Token Tokenizer::MakeNumericLiteral()
     // - Binary: [0b/0B][0-1]
     // - Octal: 0[0-7]
     // - Hexadecimal [0x/0X][0-9a-fA-F]
-    // - Combinations of Uu and Ll suffixes
 
     size_t l_count = 0;
+    size_t u_count = 0;
     do {
         Step();
         literal += next;
         next = PeekNextChar();
-        if (l_count == 0 && std::isdigit(next))
+        if (l_count == 0 && u_count == 0 && std::isdigit(next))
             continue;
         if (next == 'l' || next == 'L') {
             if (++l_count > 1)
                 AbortAtPosition("Numeric literals can have only one L suffix.");
+            continue;
+        }
+        if (next == 'u' || next == 'U') {
+            if (++u_count > 1)
+                AbortAtPosition("Numeric literals can have only one U suffix.");
             continue;
         }
         break;

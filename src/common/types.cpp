@@ -19,12 +19,33 @@ bool Type::isBasic(BasicType type) const
     return false;
 }
 
-int Type::getBytes()
+bool Type::isSigned() const
 {
-    switch (*std::get_if<BasicType>(&t)) {
+    const BasicType *basic_type = std::get_if<BasicType>(&t);
+    if (!basic_type)
+        return false;
+    switch (*basic_type) {
     case BasicType::Int:
+    case BasicType::Long:
+        return true;
+    case BasicType::UInt:
+    case BasicType::ULong:
+    default:
+        return false;
+    }
+}
+
+int Type::size() const
+{
+    const BasicType *basic_type = std::get_if<BasicType>(&t);
+    if (!basic_type)
+        return 0;
+    switch (*basic_type) {
+    case BasicType::Int:
+    case BasicType::UInt:
         return 4;
     case BasicType::Long:
+    case BasicType::ULong:
         return 8;
     default:
         return 0;

@@ -50,6 +50,9 @@ namespace tac {
         Value dst;) \
     X(Truncate, \
         Value src; \
+        Value dst;) \
+    X(ZeroExtend, \
+        Value src; \
         Value dst;)
 
 #define TAC_TOP_LEVEL_LIST(X) \

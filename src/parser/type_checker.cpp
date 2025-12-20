@@ -1,5 +1,4 @@
 #include "type_checker.h"
-#include "common/conversion.h"
 #include <cassert>
 
 namespace parser {
@@ -12,16 +11,17 @@ struct TypeError : public std::runtime_error
     }
 };
 
-static Type get_common_type(const Type &first, const Type &second)
+static Type getCommonType(const Type &first, const Type &second)
 {
     assert(first.isInitialized() && second.isInitialized());
     if (first.t == second.t)
         return first;
-    else
-        return Type{ BasicType::Long };
+    if (first.size() == second.size())
+        return first.isSigned() ? second : first;
+    return first.size() > second.size() ? first : second;
 }
 
-static std::unique_ptr<Expression> explicit_cast(
+static std::unique_ptr<Expression> explicitCast(
     std::unique_ptr<Expression> expr,
     const Type &from_type,
     const Type &to_type)
@@ -80,9 +80,9 @@ Type TypeChecker::operator()(BinaryExpression &b)
         b.type = Type{ BasicType::Int };
         return b.type;
     }
-    Type common_type = get_common_type(left_type, right_type);
-    b.lhs = explicit_cast(std::move(b.lhs), left_type, common_type);
-    b.rhs = explicit_cast(std::move(b.rhs), right_type, common_type);
+    Type common_type = getCommonType(left_type, right_type);
+    b.lhs = explicitCast(std::move(b.lhs), left_type, common_type);
+    b.rhs = explicitCast(std::move(b.rhs), right_type, common_type);
     b.type = isAssignment(b.op) ? left_type : common_type;
     return b.type;
 }
@@ -91,7 +91,7 @@ Type TypeChecker::operator()(AssignmentExpression &a)
 {
     Type left_type = std::visit(*this, *a.lhs);
     Type right_type = std::visit(*this, *a.rhs);
-    a.rhs = explicit_cast(std::move(a.rhs), right_type, left_type);
+    a.rhs = explicitCast(std::move(a.rhs), right_type, left_type);
     a.type = left_type;
     return a.type;
 }
@@ -101,9 +101,9 @@ Type TypeChecker::operator()(ConditionalExpression &c)
     std::visit(*this, *c.condition);
     Type true_type = std::visit(*this, *c.trueBranch);
     Type false_type = std::visit(*this, *c.falseBranch);
-    Type common_type = get_common_type(true_type, false_type);
-    c.trueBranch = explicit_cast(std::move(c.trueBranch), true_type, common_type);
-    c.falseBranch = explicit_cast(std::move(c.falseBranch), false_type, common_type);
+    Type common_type = getCommonType(true_type, false_type);
+    c.trueBranch = explicitCast(std::move(c.trueBranch), true_type, common_type);
+    c.falseBranch = explicitCast(std::move(c.falseBranch), false_type, common_type);
     c.type = common_type;
     return c.type;
 }
@@ -116,7 +116,7 @@ Type TypeChecker::operator()(FunctionCallExpression &f)
 
         for (size_t i = 0; i < f.args.size(); i++) {
             Type arg_type = std::visit(*this, *f.args[i]);
-            f.args[i] = explicit_cast(std::move(f.args[i]), arg_type, *type->params[i]);
+            f.args[i] = explicitCast(std::move(f.args[i]), arg_type, *type->params[i]);
         }
         f.type = type->ret;
         return *f.type;
@@ -130,7 +130,7 @@ Type TypeChecker::operator()(FunctionCallExpression &f)
 Type TypeChecker::operator()(ReturnStatement &r)
 {
     Type ret_type = std::visit(*this, *r.expr);
-    r.expr = explicit_cast(
+    r.expr = explicitCast(
         std::move(r.expr),
         ret_type,
         *std::get<FunctionType>(m_functionTypeStack.back().t).ret);
@@ -301,7 +301,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             else
                 init = Tentative{};
         } else if (auto n = std::get_if<ConstantExpression>(v.init.get()))
-            init = Initial{ .i = ConvertValueIfNeeded(n->value, v.type) };
+            init = Initial{ .i = ConvertValue(n->value, v.type) };
         else
             Abort(std::format("Non-constant initializer of '{}'", v.identifier));
 
@@ -351,7 +351,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             if (!v.init)
                 init = Initial{ .i = 0 };
             else if (auto n = std::get_if<ConstantExpression>(v.init.get()))
-                init = Initial{ .i = ConvertValueIfNeeded(n->value, v.type) };
+                init = Initial{ .i = ConvertValue(n->value, v.type) };
             else
                 Abort(std::format("Non-constant initializer on local static variable '{}'", v.identifier));
 
@@ -368,7 +368,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             if (v.init) {
                 m_fileScope = false;
                 Type init_type = std::visit(*this, *v.init);
-                v.init = explicit_cast(std::move(v.init), init_type, v.type);
+                v.init = explicitCast(std::move(v.init), init_type, v.type);
             }
         }
     }

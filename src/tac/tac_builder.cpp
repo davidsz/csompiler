@@ -1,5 +1,4 @@
 #include "tac_builder.h"
-#include "common/conversion.h"
 #include <format>
 
 namespace tac {
@@ -38,13 +37,19 @@ Value TACBuilder::operator()(const parser::VariableExpression &v)
 Value TACBuilder::operator()(const parser::CastExpression &c)
 {
     Value result = std::visit(*this, *c.expr);
-    if (c.inner_type == c.target_type)
+    if (c.target_type == c.inner_type)
         return result;
     Variant dst = CreateTemporaryVariable(c.target_type);
-    if (c.target_type.isBasic(BasicType::Long))
+    // The are preserving type information for assembly generation
+    // by using the seemingly redunant Copy
+    if (c.target_type.size() == c.inner_type.size())
+        m_instructions.push_back(Copy{ result, dst });
+    else if (c.target_type.size() < c.inner_type.size())
+        m_instructions.push_back(Truncate{ result, dst });
+    else if (c.inner_type.isSigned())
         m_instructions.push_back(SignExtend{ result, dst });
     else
-        m_instructions.push_back(Truncate{ result, dst });
+        m_instructions.push_back(ZeroExtend{ result, dst });
     return dst;
 }
 
