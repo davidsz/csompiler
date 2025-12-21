@@ -98,15 +98,19 @@ ASMUnaryOperator toASMUnaryOperator(UnaryOperator op)
     }
 }
 
-ASMBinaryOperator toASMBinaryOperator(BinaryOperator op)
+ASMBinaryOperator toASMBinaryOperator(BinaryOperator op, bool isSigned)
 {
+    ASMBinaryOperator ret;
     switch (op) {
 #define CASE_TO_STRING(name, str, prec, asm) \
     case BinaryOperator::name: \
-        return ASMBinaryOperator::asm;
+        ret = ASMBinaryOperator::asm; break;
     BINARY_OPERATOR_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
     }
+    if (ret == ASMBinaryOperator::ShiftRS_AB && !isSigned)
+        ret = ASMBinaryOperator::ShiftRU_AB;
+    return ret;
 }
 
 std::string_view toString(BinaryOperator op)

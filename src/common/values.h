@@ -10,6 +10,7 @@ using ConstantValue = std::variant<
 std::string toString(const ConstantValue &v);
 std::string toLabel(const ConstantValue &v);
 Type getType(const ConstantValue &v);
+bool fitsLongWord(const ConstantValue &v);
 long forceLong(const ConstantValue &v);
 
 ConstantValue ConvertValue(const ConstantValue &v, const Type &t);

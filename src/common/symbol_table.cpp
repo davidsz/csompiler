@@ -14,6 +14,14 @@ const SymbolEntry *SymbolTable::get(const std::string &name)
     return nullptr;
 }
 
+int SymbolTable::getByteSize(const std::string &name)
+{
+    auto it = m_table.find(name);
+    if (it != m_table.end())
+        return it->second.type.size();
+    return 0;
+}
+
 void SymbolTable::insert(const std::string &name, const Type &type, const IdentifierAttributes &attr)
 {
     m_table[name] = SymbolEntry{ type , attr };

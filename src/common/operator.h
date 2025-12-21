@@ -50,13 +50,6 @@
     X(Neg_AU, "negl", "negq") \
     X(Not_AU, "notl", "notq")
 
-/*
-FIXME: Use the proper right shift command in assembly
-once we have information about the signedness of the
-operand expressions
-	- Signed left operand: sarl
-	- Unsigned left operand: shrl
-*/
 #define ASM_BINARY_OPERATOR_LIST(X) \
     X(Unknown_AB, "UNKNOWN_OP_L",  "UNKNOWN_OP_Q") \
     X(Add_AB, "addl", "addq") \
@@ -85,7 +78,7 @@ bool isUnaryOperator(std::string_view op);
 BinaryOperator toBinaryOperator(std::string_view s);
 UnaryOperator toUnaryOperator(std::string_view s);
 ASMUnaryOperator toASMUnaryOperator(UnaryOperator op);
-ASMBinaryOperator toASMBinaryOperator(BinaryOperator op);
+ASMBinaryOperator toASMBinaryOperator(BinaryOperator op, bool isSigned);
 
 int getPrecedence(BinaryOperator op);
 int getPrecedence(UnaryOperator op);

@@ -35,6 +35,11 @@ bool Type::isSigned() const
     }
 }
 
+bool Type::isInitialized() const
+{
+    return !std::holds_alternative<std::monostate>(t);
+}
+
 int Type::size() const
 {
     const BasicType *basic_type = std::get_if<BasicType>(&t);

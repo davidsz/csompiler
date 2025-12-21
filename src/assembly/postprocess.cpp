@@ -48,20 +48,26 @@ static int postprocessPseudoRegisters(
             } else if constexpr (std::is_same_v<T, Movsx>) {
                 resolvePseudo(obj.src);
                 resolvePseudo(obj.dst);
-            } else if constexpr (std::is_same_v<T, Unary>)
+            } else if constexpr (std::is_same_v<T, MovZeroExtend>) {
                 resolvePseudo(obj.src);
-            else if constexpr (std::is_same_v<T, Binary>) {
+                resolvePseudo(obj.dst);
+            } else if constexpr (std::is_same_v<T, Unary>) {
+                resolvePseudo(obj.src);
+            } else if constexpr (std::is_same_v<T, Binary>) {
                 resolvePseudo(obj.src);
                 resolvePseudo(obj.dst);
             } else if constexpr (std::is_same_v<T, Idiv>) {
                 resolvePseudo(obj.src);
+            } else if constexpr (std::is_same_v<T, Div>) {
+                resolvePseudo(obj.src);
             } else if constexpr (std::is_same_v<T, Cmp>) {
                 resolvePseudo(obj.lhs);
                 resolvePseudo(obj.rhs);
-            } else if constexpr (std::is_same_v<T, SetCC>)
+            } else if constexpr (std::is_same_v<T, SetCC>) {
                 resolvePseudo(obj.op);
-            else if constexpr (std::is_same_v<T, Push>)
+            } else if constexpr (std::is_same_v<T, Push>) {
                 resolvePseudo(obj.op);
+            }
         }, inst);
     }
 
@@ -154,6 +160,21 @@ static std::list<Instruction>::iterator postprocessMovsx(std::list<Instruction> 
         it = asmList.emplace(std::next(it), Mov{Reg{R11, 8}, current.dst, WordType::Quadword});
     }
 
+    return std::next(it);
+}
+
+static std::list<Instruction>::iterator postprocessMovZeroExtend(std::list<Instruction> &asmList, std::list<Instruction>::iterator it)
+{
+    // MovZeroExtend doesn't exist in the code emission phase; these are ordinary MOVs.
+    auto &obj = std::get<MovZeroExtend>(*it);
+    if (auto r = std::get_if<Reg>(&obj.dst)) {
+        *it = Mov{obj.src, Reg{r->reg, 8}, WordType::Longword};
+    } else if (isMemoryAddress(obj.dst)) {
+        auto current = obj;
+        it = asmList.erase(it);
+        it = asmList.emplace(it, Mov{current.src, Reg{R11, 4}, WordType::Longword});
+        it = asmList.emplace(std::next(it), Mov{Reg{R11, 8}, current.dst, WordType::Quadword});
+    }
     return std::next(it);
 }
 
@@ -282,6 +303,20 @@ static std::list<Instruction>::iterator postprocessIdiv(std::list<Instruction> &
     return std::next(it);
 }
 
+static std::list<Instruction>::iterator postprocessDiv(std::list<Instruction> &asmList, std::list<Instruction>::iterator it)
+{
+    auto &obj = std::get<Div>(*it);
+    // DIV can't have constant operand
+    if (std::holds_alternative<Imm>(obj.src)) {
+        auto current = obj;
+        uint8_t bytes = getBytesOfWordType(current.type);
+        it = asmList.erase(it);
+        it = asmList.emplace(it, Mov{current.src, Reg{R10, bytes}, current.type});
+        it = asmList.emplace(std::next(it), Div{Reg{R10, bytes}, current.type});
+    }
+    return std::next(it);
+}
+
 static void postprocessInvalidInstructions(std::list<Instruction> &asmList)
 {
     for (auto it = asmList.begin(); it != asmList.end();) {
@@ -291,6 +326,8 @@ static void postprocessInvalidInstructions(std::list<Instruction> &asmList)
                 return postprocessMov(asmList, it);
             else if constexpr (std::is_same_v<T, Movsx>)
                 return postprocessMovsx(asmList, it);
+            else if constexpr (std::is_same_v<T, MovZeroExtend>)
+                return postprocessMovZeroExtend(asmList, it);
             else if constexpr (std::is_same_v<T, Cmp>)
                 return postprocessCmp(asmList, it);
             else if constexpr (std::is_same_v<T, SetCC>)
@@ -299,9 +336,11 @@ static void postprocessInvalidInstructions(std::list<Instruction> &asmList)
                 return postprocessPush(asmList, it);
             else if constexpr (std::is_same_v<T, Binary>)
                 return postprocessBinary(asmList, it);
-            else if constexpr (std::is_same_v<T, Idiv>) {
+            else if constexpr (std::is_same_v<T, Idiv>)
                 return postprocessIdiv(asmList, it);
-            } else if constexpr (std::is_same_v<T, Function>) {
+            else if constexpr (std::is_same_v<T, Div>)
+                return postprocessDiv(asmList, it);
+            else if constexpr (std::is_same_v<T, Function>) {
                 postprocessInvalidInstructions(obj.instructions);
                 return std::next(it);
             } else

@@ -34,6 +34,7 @@ struct ASMBuilder : public tac::ITACVisitor<Operand> {
     std::list<Instruction> ConvertInstructions(const std::vector<tac::Instruction>);
 
     WordType GetWordType(const tac::Value &);
+    bool CheckSignedness(const tac::Value &);
     void Comment(std::list<Instruction> &i, const std::string &text);
 
     bool m_commentsEnabled = true;

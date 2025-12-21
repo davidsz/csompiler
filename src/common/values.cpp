@@ -25,23 +25,46 @@ std::string toLabel(const ConstantValue &v)
 Type getType(const ConstantValue &v)
 {
     Type ret;
-    switch (v.index()) {
-        case 0:  ret.t = BasicType::Int; break;
-        case 1:  ret.t = BasicType::Long; break;
-        case 2:  ret.t = BasicType::UInt; break;
-        case 3:  ret.t = BasicType::ULong; break;
+    if (std::holds_alternative<int>(v)) {
+        ret.t = BasicType::Int;
+    } else if (std::holds_alternative<long>(v)) {
+        ret.t = BasicType::Long;
+    } else if (std::holds_alternative<uint32_t>(v)) {
+        ret.t = BasicType::UInt;
+    } else if (std::holds_alternative<uint64_t>(v)) {
+        ret.t = BasicType::ULong;
     }
     return ret;
 }
 
+bool fitsLongWord(const ConstantValue &v)
+{
+    if (std::holds_alternative<int>(v) ||
+        std::holds_alternative<uint32_t>(v)) {
+        return true;
+    } else if (std::holds_alternative<uint32_t>(v) ||
+        std::holds_alternative<uint64_t>(v)) {
+        return false;
+    }
+    return false;
+}
+
 long forceLong(const ConstantValue &v)
 {
-    long ret = 0;
-    if (auto int_value = std::get_if<int>(&v))
-        ret = *int_value;
-    else if (auto long_value = std::get_if<long>(&v))
-        ret = *long_value;
-    return ret;
+#if 1
+    return std::visit([&](auto value) {
+        return static_cast<long>(value);
+    }, v);
+#else
+    // Keeping all the bits unchanged during conversion
+    return std::visit([&](auto value) {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (sizeof(T) == 8)
+            return static_cast<long>(static_cast<uint64_t>(value));
+        else
+            return static_cast<long>(static_cast<uint32_t>(value));
+    }, v);
+#endif
 }
 
 ConstantValue ConvertValue(const ConstantValue &v, const Type &to_type)

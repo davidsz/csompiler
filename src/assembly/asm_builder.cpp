@@ -25,7 +25,7 @@ static bool isRelationOperator(BinaryOperator op)
     }
 }
 
-static std::string toConditionCode(BinaryOperator op)
+static std::string toConditionCode(BinaryOperator op, bool is_signed)
 {
     switch (op) {
         case BinaryOperator::Equal:
@@ -33,13 +33,13 @@ static std::string toConditionCode(BinaryOperator op)
         case BinaryOperator::NotEqual:
             return "ne";
         case BinaryOperator::LessThan:
-            return "l";
+            return is_signed ? "l" : "b"; // less, below
         case BinaryOperator::LessOrEqual:
-            return "le";
+            return is_signed ? "le" : "be";
         case BinaryOperator::GreaterThan:
-            return "g";
+            return is_signed ? "g" : "a"; // greater, above
         case BinaryOperator::GreaterOrEqual:
-            return "ge";
+            return is_signed ? "ge" : "ae";
         default:
             return "UNKNOWN_COND";
     }
@@ -66,15 +66,25 @@ ASMBuilder::ASMBuilder(std::shared_ptr<SymbolTable> symbolTable)
 WordType ASMBuilder::GetWordType(const tac::Value &value)
 {
     if (auto c = std::get_if<tac::Constant>(&value)) {
-        if (std::holds_alternative<long>(c->value))
-            return WordType::Quadword;
-        else
-            return WordType::Longword;
+        return getType(c->value).size() == 8
+            ? WordType::Quadword : WordType::Longword;
     } else if (auto v = std::get_if<tac::Variant>(&value)) {
-        if (*m_symbolTable->getTypeAs<BasicType>(v->name) == BasicType::Long)
-            return WordType::Quadword;
-        else
-            return WordType::Longword;
+        const SymbolEntry *entry = m_symbolTable->get(v->name);
+        return (entry && entry->type.size() == 8)
+            ? WordType::Quadword : WordType::Longword;
+    } else {
+        assert(false);
+        return Longword;
+    }
+}
+
+bool ASMBuilder::CheckSignedness(const tac::Value &value)
+{
+    if (auto c = std::get_if<tac::Constant>(&value)) {
+        return getType(c->value).isSigned();
+    } else if (auto v = std::get_if<tac::Variant>(&value)) {
+        const SymbolEntry *entry = m_symbolTable->get(v->name);
+        return entry && entry->type.isSigned();
     } else {
         assert(false);
         return Longword;
@@ -135,44 +145,59 @@ Operand ASMBuilder::operator()(const tac::Unary &u)
 
 Operand ASMBuilder::operator()(const tac::Binary &b)
 {
-    ASMBinaryOperator op = toASMBinaryOperator(b.op);
+    bool isSigned = CheckSignedness(b.dst);
+    ASMBinaryOperator op = toASMBinaryOperator(b.op, isSigned);
+    Operand destination = std::visit(*this, b.dst);
+    WordType wordType = GetWordType(b.dst);
+
     // Easier binary operators with common format:
     // Add, Subtract, Multiply...
     if (op != ASMBinaryOperator::Unknown_AB) {
         m_instructions.push_back(Mov{
             std::visit(*this, b.src1),
-            std::visit(*this, b.dst),
-            GetWordType(b.dst)
+            destination,
+            wordType
         });
         m_instructions.push_back(Binary{
             op,
             std::visit(*this, b.src2),
-            std::visit(*this, b.dst),
-            GetWordType(b.dst)
+            destination,
+            wordType
         });
         return std::monostate();
     }
 
     // Division, Remainder
     if (b.op == BinaryOperator::Divide || b.op == BinaryOperator::Remainder) {
-        WordType wordType = GetWordType(b.dst);
         uint8_t bytes = getBytesOfWordType(wordType);
         m_instructions.push_back(Mov{
             std::visit(*this, b.src1),
-            Reg{Register::AX, bytes},
+            Reg{ AX, bytes },
             wordType
         });
-        m_instructions.push_back(Cdq{
-            wordType
-        });
-        m_instructions.push_back(Idiv{
-            std::visit(*this, b.src2),
-            wordType
-        });
+        if (isSigned) {
+            m_instructions.push_back(Cdq{
+                wordType
+            });
+            m_instructions.push_back(Idiv{
+                std::visit(*this, b.src2),
+                wordType
+            });
+        } else {
+            m_instructions.push_back(Mov{
+                Imm{ 0 },
+                Reg{ DX, bytes },
+                wordType
+            });
+            m_instructions.push_back(Div{
+                std::visit(*this, b.src2),
+                wordType
+            });
+        }
         m_instructions.push_back(Mov{
             (b.op == BinaryOperator::Divide
-                ? Reg{Register::AX, bytes} : Reg{Register::DX, bytes}),
-            std::visit(*this, b.dst),
+                ? Reg{ AX, bytes } : Reg{ DX, bytes }),
+            destination,
             wordType
         });
         return std::monostate();
@@ -180,7 +205,6 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
 
     // Equal, NotEqual, LessThan, LessOrEqual, GreaterThan, GreaterOrEqual
     if (isRelationOperator(b.op)) {
-        WordType wordType = GetWordType(b.dst);
         // Comparing arguments; result stored in RFLAGS
         m_instructions.push_back(Cmp{
             std::visit(*this, b.src2),
@@ -190,13 +214,13 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
         // Null out the destination before placing the condition result in
         m_instructions.push_back(Mov{
             Imm{0},
-            std::visit(*this, b.dst),
+            destination,
             wordType
         });
         // Conditionally set the lowest byte of the destination according to RFLAGS
         m_instructions.push_back(SetCC{
-            toConditionCode(b.op),
-            std::visit(*this, b.dst)
+            toConditionCode(b.op, isSigned),
+            destination
         });
         return std::monostate();
     }
@@ -352,19 +376,18 @@ Operand ASMBuilder::operator()(const tac::Truncate &t)
     return std::monostate();
 }
 
-Operand ASMBuilder::operator()(const tac::ZeroExtend &)
+Operand ASMBuilder::operator()(const tac::ZeroExtend &z)
 {
+    m_instructions.push_back(MovZeroExtend{
+        std::visit(*this, z.src),
+        std::visit(*this, z.dst)
+    });
     return std::monostate();
 }
 
 Operand ASMBuilder::operator()(const tac::Constant &c)
 {
-    if (auto int_value = std::get_if<int>(&c.value))
-        return Imm{ *int_value };
-    else if (auto long_value = std::get_if<long>(&c.value))
-        return Imm{ *long_value };
-    assert(false);
-    return Imm{ 0 };
+    return Imm{ forceLong(c.value) };
 }
 
 Operand ASMBuilder::operator()(const tac::Variant &v)
@@ -385,10 +408,8 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
         Comment(func.instructions, "Getting the first six parameters from registers");
     for (size_t i = 0; i < f.params.size() && i < 6; i++) {
         WordType type = WordType::Longword;
-        if (const BasicType *basic_type = m_symbolTable->getTypeAs<BasicType>(f.params[i])) {
-            type = (*basic_type == BasicType::Int)
-                ? WordType::Longword : WordType::Quadword;
-        }
+        if (int byteSize = m_symbolTable->getByteSize(f.params[i]))
+            type = (byteSize == 4) ?  WordType::Longword : WordType::Quadword;
         func.instructions.push_back(Mov{
             Reg{ s_argRegisters[i], getBytesOfWordType(type) },
             Pseudo{ f.params[i] },
@@ -403,10 +424,8 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     for (size_t i = 6; i < f.params.size(); i++) {
         std::string param_name = f.params[(size_t)i];
         WordType type = WordType::Longword;
-        if (const BasicType *basic_type = m_symbolTable->getTypeAs<BasicType>(param_name)) {
-            type = (*basic_type == BasicType::Int)
-                ? WordType::Longword : WordType::Quadword;
-        }
+        if (int byteSize = m_symbolTable->getByteSize(f.params[i]))
+            type = (byteSize == 4) ?  WordType::Longword : WordType::Quadword;
         func.instructions.push_back(Mov{
             Stack{ (int)stack_offset },
             Pseudo{ param_name },

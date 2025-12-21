@@ -165,7 +165,9 @@ Expression ASTBuilder::ParseFactor()
             auto ret = CastExpression{};
             ret.target_type = ParseTypes();
             Consume(TokenType::Punctator, ")");
-            ret.expr = unique_expression(ParseFactor());
+            // Expression will include the next unary expression,
+            // but the precedence is higher than binary expressions.
+            ret.expr = unique_expression(ParseExpression(75));
             return ret;
         }
         LOG("( Expression )");
@@ -186,11 +188,14 @@ Expression ASTBuilder::ParseFactor()
     }
 
     // Prefix unary expressions (right-associative)
+    // TODO: Ideally ParseExpression() should have this
+    // and handle precedence of different unary expressions
     if (next->type() == TokenType::Operator && isUnaryOperator(next->value())) {
         UnaryOperator op = toUnaryOperator(Consume(TokenType::Operator));
         auto expr = ParseExpression(getPrecedence(op) + 1);
         return UnaryExpression{ op, UE(expr), false };
     }
+
     assert(false);
     return std::monostate();
 }

@@ -17,10 +17,12 @@ struct ASMPrinter : public IASMVisitor<void> {
     void operator()(const Comment &) override;
     void operator()(const Mov &) override;
     void operator()(const Movsx &) override;
+    void operator()(const MovZeroExtend &) override;
     void operator()(const Ret &) override;
     void operator()(const Unary &) override;
     void operator()(const Binary &) override;
     void operator()(const Idiv &) override;
+    void operator()(const Div &) override;
     void operator()(const Cdq &) override;
     void operator()(const Cmp &) override;
     void operator()(const Jmp &) override;

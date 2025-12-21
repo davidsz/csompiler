@@ -43,6 +43,9 @@ namespace assembly {
     X(Movsx, \
         Operand src; \
         Operand dst;) \
+    X(MovZeroExtend, \
+        Operand src; \
+        Operand dst;) \
     X(Ret, /* no op */) \
     X(Unary, \
         ASMUnaryOperator op; \
@@ -54,6 +57,9 @@ namespace assembly {
         Operand dst; \
         WordType type;) \
     X(Idiv, \
+        Operand src; \
+        WordType type;) \
+    X(Div, \
         Operand src; \
         WordType type;) \
     X(Cdq, \

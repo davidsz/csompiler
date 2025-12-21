@@ -12,9 +12,9 @@ std::shared_ptr<ASMSymbolTable> CreateASMSymbolTable(std::shared_ptr<SymbolTable
 {
     std::shared_ptr<ASMSymbolTable> asmSymbolTable = std::make_shared<ASMSymbolTable>();
     for (const auto &[name, entry] : symbolTable->m_table) {
-        if (const BasicType *basic_type = entry.type.getAs<BasicType>()) {
+        if (int byte_size = entry.type.size()) {
             asmSymbolTable->insert(name, ObjEntry{
-                .type = *basic_type == BasicType::Int ? Longword : Quadword,
+                .type = byte_size == 4 ? Longword : Quadword,
                 .is_static = entry.attrs.type == IdentifierAttributes::Static
             });
         } else if (entry.type.getAs<FunctionType>()) {

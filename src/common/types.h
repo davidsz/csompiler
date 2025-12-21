@@ -37,7 +37,7 @@ struct Type {
 
     bool isBasic(BasicType type) const;
     bool isSigned() const;
-    bool isInitialized() const { return !std::holds_alternative<std::monostate>(t); }
+    bool isInitialized() const;
     int size() const;
 
     friend bool operator==(const Type &a, const Type &b) {

@@ -112,6 +112,11 @@ void ASMPrinter::operator()(const Movsx &m)
     m_codeStream << std::endl;
 }
 
+void ASMPrinter::operator()(const MovZeroExtend &)
+{
+    // Replaced during instruction fixup
+}
+
 void ASMPrinter::operator()(const Ret &)
 {
     // Epilogue
@@ -138,12 +143,22 @@ void ASMPrinter::operator()(const Binary &b)
     m_codeStream << std::endl;
 }
 
-void ASMPrinter::operator()(const Idiv &d)
+void ASMPrinter::operator()(const Idiv &i)
 {
-    if (d.type == WordType::Longword)
+    if (i.type == WordType::Longword)
         m_codeStream << "    idivl ";
     else
         m_codeStream << "    idivq ";
+    std::visit(*this, i.src);
+    m_codeStream << std::endl;
+}
+
+void ASMPrinter::operator()(const Div &d)
+{
+    if (d.type == WordType::Longword)
+        m_codeStream << "    divl ";
+    else
+        m_codeStream << "    divq ";
     std::visit(*this, d.src);
     m_codeStream << std::endl;
 }
@@ -227,7 +242,7 @@ void ASMPrinter::operator()(const StaticVariable &s)
         m_codeStream << ".globl _" << s.name << std::endl;
 
     long s_init = forceLong(s.init);
-    bool is_long = std::holds_alternative<int>(s.init);
+    bool is_long = fitsLongWord(s.init);
     if (s_init == 0)
         m_codeStream << ".bss" << std::endl;
     else
