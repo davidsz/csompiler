@@ -40,8 +40,22 @@ Value TACBuilder::operator()(const parser::CastExpression &c)
     if (c.target_type == c.inner_type)
         return result;
     Variant dst = CreateTemporaryVariable(c.target_type);
-    // The are preserving type information for assembly generation
-    // by using the seemingly redunant Copy
+    // In case of doubles, we don't differentiate between int and long
+    if (c.target_type.isBasic(BasicType::Double)) {
+        if (c.inner_type.isSigned())
+            m_instructions.push_back(IntToDouble{ result, dst });
+        else
+            m_instructions.push_back(UIntToDouble{ result, dst });
+        return dst;
+    } else if (c.inner_type.isBasic(BasicType::Double)) {
+        if (c.target_type.isSigned())
+            m_instructions.push_back(DoubleToInt{ result, dst });
+        else
+            m_instructions.push_back(DoubleToUInt{ result, dst });
+        return dst;
+    }
+    // We are preserving type information for assembly generation
+    // by using the seemingly redundant Copy
     if (c.target_type.size() == c.inner_type.size())
         m_instructions.push_back(Copy{ result, dst });
     else if (c.target_type.size() < c.inner_type.size())

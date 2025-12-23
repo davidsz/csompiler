@@ -385,6 +385,26 @@ Operand ASMBuilder::operator()(const tac::ZeroExtend &z)
     return std::monostate();
 }
 
+Operand ASMBuilder::operator()(const tac::DoubleToInt &)
+{
+    return std::monostate();
+}
+
+Operand ASMBuilder::operator()(const tac::DoubleToUInt &)
+{
+    return std::monostate();
+}
+
+Operand ASMBuilder::operator()(const tac::IntToDouble &)
+{
+    return std::monostate();
+}
+
+Operand ASMBuilder::operator()(const tac::UIntToDouble &)
+{
+    return std::monostate();
+}
+
 Operand ASMBuilder::operator()(const tac::Constant &c)
 {
     return Imm{ forceLong(c.value) };

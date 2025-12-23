@@ -16,6 +16,8 @@ static Type getCommonType(const Type &first, const Type &second)
     assert(first.isInitialized() && second.isInitialized());
     if (first.t == second.t)
         return first;
+    if (first.isBasic(Double) || second.isBasic(Double))
+        return first;
     if (first.size() == second.size())
         return first.isSigned() ? second : first;
     return first.size() > second.size() ? first : second;
@@ -64,6 +66,10 @@ Type TypeChecker::operator()(CastExpression &c)
 Type TypeChecker::operator()(UnaryExpression &u)
 {
     Type type = std::visit(*this, *u.expr);
+
+    if (type.isBasic(Double) && u.op == UnaryOperator::BitwiseComplement)
+        Abort("The type of a unary bitwise complement operation can't be double.");
+
     if (u.op == UnaryOperator::Not)
         u.type = Type{ BasicType::Int };
     else
@@ -75,11 +81,17 @@ Type TypeChecker::operator()(BinaryExpression &b)
 {
     Type left_type = std::visit(*this, *b.lhs);
     Type right_type = std::visit(*this, *b.rhs);
+
     if (b.op == BinaryOperator::And || b.op == BinaryOperator::Or) {
         // Return value of logical operators can be represented as an integer
         b.type = Type{ BasicType::Int };
         return b.type;
     }
+
+    if (b.op == BinaryOperator::Remainder
+        && (left_type.isBasic(Double) || right_type.isBasic(Double)))
+        Abort("The type of a binary remainder operation can't be double.");
+
     Type common_type = getCommonType(left_type, right_type);
     b.lhs = explicitCast(std::move(b.lhs), left_type, common_type);
     b.rhs = explicitCast(std::move(b.rhs), right_type, common_type);

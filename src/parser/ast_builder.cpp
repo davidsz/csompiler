@@ -3,7 +3,6 @@
 #include <cassert>
 #include <iostream>
 #include <stdexcept>
-#include <unordered_set>
 
 namespace parser {
 
@@ -11,43 +10,6 @@ struct SyntaxError : public std::runtime_error
 {
     explicit SyntaxError(const std::string &message) : std::runtime_error(message) {}
 };
-
-static const std::unordered_set<std::string> s_typeSpecifiers {
-#define ADD_TYPE_TO_SET(stringname) stringname,
-    TYPE_SPECIFIER_LIST(ADD_TYPE_TO_SET)
-#undef ADD_TYPE_TO_SET
-};
-
-static const std::unordered_map<std::string, StorageClass> s_storageClasses {
-#define ADD_CLASS_TO_MAP(enumname, stringname) {stringname, enumname},
-    STORAGE_CLASS_LIST(ADD_CLASS_TO_MAP)
-#undef ADD_CLASS_TO_MAP
-};
-
-static const std::unordered_set<std::string> s_specifiers {
-#define ADD_TYPE_TO_SET(stringname) stringname,
-    TYPE_SPECIFIER_LIST(ADD_TYPE_TO_SET)
-#undef ADD_TYPE_TO_SET
-#define ADD_CLASS_TO_SET(enumname, stringname) stringname,
-    STORAGE_CLASS_LIST(ADD_CLASS_TO_SET)
-#undef ADD_CLASS_TO_SET
-};
-
-static std::optional<Type> determineType(const std::set<std::string> &type_specifiers)
-{
-    if (type_specifiers.empty())
-        return std::nullopt;
-    if (type_specifiers.contains("signed") && type_specifiers.contains("unsigned"))
-        return std::nullopt;
-
-    if (type_specifiers.contains("unsigned") && type_specifiers.contains("long"))
-        return Type { BasicType::ULong };
-    else if (type_specifiers.contains("unsigned"))
-        return Type { BasicType::UInt };
-    else if (type_specifiers.contains("long"))
-        return Type { BasicType::Long };
-    return Type { BasicType::Int };
-}
 
 ASTBuilder::ASTBuilder(const std::list<lexer::Token> &tokens)
     : m_tokens(tokens)
@@ -221,6 +183,8 @@ Expression ASTBuilder::ParseNumericLiteral()
 {
     LOG("ParseNumericLiteral");
     std::string literal = Consume(TokenType::NumericLiteral);
+    // Parse suffixes
+    // TODO: Maybe make different token types for different literals to skip this part here
     bool hasL = false;
     bool hasU = false;
     while (!literal.empty() && std::isalpha(literal.back())) {
@@ -230,11 +194,19 @@ Expression ASTBuilder::ParseNumericLiteral()
         } else if (literal.back() == 'u' || literal.back() == 'U') {
             hasU = true;
             literal.pop_back();
-        } else
+        } else {
+            // If we run into this, try to fix it in the lexer
             Abort(std::format("Unsupported '{}' in numeric literal", literal.back()));
+        }
     }
 
-    if (hasU) {
+    if (literal.contains('E') || literal.contains('e') || literal.contains('.')) {
+        // Floating point
+        // These numbers can have L suffixes, but we don't implement it.
+        // It seems std::stod() can't parse too long (but still representable) doubles,
+        // so we parse it as long double and cast.
+        return ConstantExpression{ static_cast<double>(std::stold(literal)) };
+    } else if (hasU) {
         // Unsigned
         unsigned long value = std::stoul(literal);
         if (hasL)
@@ -435,7 +407,7 @@ BlockItem ASTBuilder::ParseBlockItem()
 {
     LOG("ParseBlockItem");
     auto next = Peek();
-    if (s_specifiers.contains(next->value()))
+    if (IsStorageOrTypeSpecifier(next->value()))
         return to_block_item(ParseDeclaration());
     else
         return to_block_item(ParseStatement());
@@ -557,9 +529,9 @@ std::pair<StorageClass, Type> ASTBuilder::ParseTypeSpecifierList()
     std::vector<StorageClass> storage_classes;
     std::optional<lexer::Token> next;
     for (next = Peek();
-        next->type() == TokenType::Keyword && s_specifiers.contains(next->value());
+        next->type() == TokenType::Keyword && IsStorageOrTypeSpecifier(next->value());
         next = Peek()) {
-        if (s_typeSpecifiers.contains(next->value())) {
+        if (IsTypeSpecifier(next->value())) {
             auto [it, inserted] = type_specifiers.insert(next->value());
             if (!inserted)
                 Abort(std::format("Duplicated type specifier '{}'", next->value()));
@@ -567,15 +539,14 @@ std::pair<StorageClass, Type> ASTBuilder::ParseTypeSpecifierList()
             continue;
         }
 
-        auto storage_it = s_storageClasses.find(next->value());
-        if (storage_it != s_storageClasses.end()) {
-            storage_classes.push_back(storage_it->second);
+        if (auto storage = GetStorageClass(next->value())) {
+            storage_classes.push_back(*storage);
             Consume(TokenType::Keyword);
             continue;
         }
     }
 
-    std::optional<Type> type = determineType(type_specifiers);
+    std::optional<Type> type = DetermineType(type_specifiers);
     if (!type)
         Abort("Invalid type specification");
 
@@ -591,18 +562,16 @@ Type ASTBuilder::ParseTypes()
     LOG("ParseTypes");
     std::set<std::string> type_specifiers;
     for (std::optional<lexer::Token> next = Peek();
-        next->type() == TokenType::Keyword && s_typeSpecifiers.contains(next->value());
+        next->type() == TokenType::Keyword && IsTypeSpecifier(next->value());
         next = Peek()) {
-        if (s_typeSpecifiers.contains(next->value())) {
-            auto [it, inserted] = type_specifiers.insert(next->value());
-            if (!inserted)
-                Abort(std::format("Duplicated type specifier '{}'", next->value()));
-            Consume(TokenType::Keyword);
-            continue;
-        }
+        auto [it, inserted] = type_specifiers.insert(next->value());
+        if (!inserted)
+            Abort(std::format("Duplicated type specifier '{}'", next->value()));
+        Consume(TokenType::Keyword);
+        continue;
     }
 
-    std::optional<Type> type = determineType(type_specifiers);
+    std::optional<Type> type = DetermineType(type_specifiers);
     if (!type)
         Abort("Invalid type specification");
     return *type;

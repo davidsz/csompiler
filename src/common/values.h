@@ -5,7 +5,7 @@
 
 // Holds a value for constant literals or initializers
 using ConstantValue = std::variant<
-    int, long, uint32_t, uint64_t
+    int, long, uint32_t, uint64_t, double
 >;
 std::string toString(const ConstantValue &v);
 std::string toLabel(const ConstantValue &v);

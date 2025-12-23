@@ -1,8 +1,32 @@
 #pragma once
 
+#include <memory>
+#include <set>
 #include <string>
 #include <variant>
 #include <vector>
+
+// Type and storage specifiers
+#define TYPE_SPECIFIER_LIST(X) \
+    X("int") \
+    X("long") \
+    X("signed") \
+    X("unsigned") \
+    X("double")
+
+#define STORAGE_CLASS_LIST(X) \
+    X(StorageStatic, "static") \
+    X(StorageExtern, "extern")
+
+enum StorageClass {
+    StorageDefault,
+    StorageStatic,
+    StorageExtern
+};
+
+bool IsTypeSpecifier(const std::string &type);
+std::optional<StorageClass> GetStorageClass(const std::string &storage);
+bool IsStorageOrTypeSpecifier(const std::string &type);
 
 // Recursive type which represents types
 struct Type;
@@ -12,6 +36,7 @@ enum BasicType {
     Long,
     UInt,
     ULong,
+    Double,
 };
 
 struct FunctionType {
@@ -51,19 +76,4 @@ struct Type {
     friend std::ostream &operator<<(std::ostream &os, const Type &t);
 };
 
-// Type and storage specifiers
-#define TYPE_SPECIFIER_LIST(X) \
-    X("int") \
-    X("long") \
-    X("signed") \
-    X("unsigned")
-
-#define STORAGE_CLASS_LIST(X) \
-    X(StorageStatic, "static") \
-    X(StorageExtern, "extern")
-
-enum StorageClass {
-    StorageDefault,
-    StorageStatic,
-    StorageExtern
-};
+std::optional<Type> DetermineType(const std::set<std::string> &type_specifiers);

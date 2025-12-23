@@ -1,5 +1,67 @@
 #include "types.h"
 #include <iostream>
+#include <unordered_map>
+#include <unordered_set>
+
+static const std::unordered_set<std::string> s_typeSpecifiers {
+#define ADD_TYPE_TO_SET(stringname) stringname,
+    TYPE_SPECIFIER_LIST(ADD_TYPE_TO_SET)
+#undef ADD_TYPE_TO_SET
+};
+
+static const std::unordered_map<std::string, StorageClass> s_storageClasses {
+#define ADD_CLASS_TO_MAP(enumname, stringname) {stringname, enumname},
+    STORAGE_CLASS_LIST(ADD_CLASS_TO_MAP)
+#undef ADD_CLASS_TO_MAP
+};
+
+static const std::unordered_set<std::string> s_specifiers {
+#define ADD_TYPE_TO_SET(stringname) stringname,
+    TYPE_SPECIFIER_LIST(ADD_TYPE_TO_SET)
+#undef ADD_TYPE_TO_SET
+#define ADD_CLASS_TO_SET(enumname, stringname) stringname,
+    STORAGE_CLASS_LIST(ADD_CLASS_TO_SET)
+#undef ADD_CLASS_TO_SET
+};
+
+bool IsTypeSpecifier(const std::string &type)
+{
+    return s_typeSpecifiers.contains(type);
+}
+
+std::optional<StorageClass> GetStorageClass(const std::string &storage)
+{
+    auto it = s_storageClasses.find(storage);
+    if (it != s_storageClasses.end())
+        return it->second;
+    return std::nullopt;
+}
+
+bool IsStorageOrTypeSpecifier(const std::string &type)
+{
+    return s_specifiers.contains(type);
+}
+
+std::optional<Type> DetermineType(const std::set<std::string> &type_specifiers)
+{
+    if (type_specifiers.empty())
+        return std::nullopt;
+    if (type_specifiers.contains("signed") && type_specifiers.contains("unsigned"))
+        return std::nullopt;
+    if (type_specifiers.contains("double") && type_specifiers.size() > 1)
+        return std::nullopt;
+
+    if (type_specifiers.contains("unsigned") && type_specifiers.contains("long"))
+        return Type { BasicType::ULong };
+    else if (type_specifiers.contains("unsigned"))
+        return Type { BasicType::UInt };
+    else if (type_specifiers.contains("long"))
+        return Type { BasicType::Long };
+    else if (type_specifiers.contains("double"))
+        return Type { BasicType::Double };
+    else
+        return Type { BasicType::Int };
+}
 
 bool FunctionType::operator==(const FunctionType &other) const
 {
@@ -27,6 +89,7 @@ bool Type::isSigned() const
     switch (*basic_type) {
     case BasicType::Int:
     case BasicType::Long:
+    case BasicType::Double:
         return true;
     case BasicType::UInt:
     case BasicType::ULong:
@@ -51,6 +114,7 @@ int Type::size() const
         return 4;
     case BasicType::Long:
     case BasicType::ULong:
+    case BasicType::Double:
         return 8;
     default:
         return 0;

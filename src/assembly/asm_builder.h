@@ -23,6 +23,10 @@ struct ASMBuilder : public tac::ITACVisitor<Operand> {
     Operand operator()(const tac::SignExtend &) override;
     Operand operator()(const tac::Truncate &) override;
     Operand operator()(const tac::ZeroExtend &) override;
+    Operand operator()(const tac::DoubleToInt &) override;
+    Operand operator()(const tac::DoubleToUInt &) override;
+    Operand operator()(const tac::IntToDouble &) override;
+    Operand operator()(const tac::UIntToDouble &) override;
     Operand operator()(const tac::FunctionDefinition &) override;
     Operand operator()(const tac::StaticVariable &) override;
     Operand operator()(std::monostate) override {

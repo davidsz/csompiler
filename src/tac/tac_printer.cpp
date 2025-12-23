@@ -115,6 +115,46 @@ void TACPrinter::operator()(const tac::ZeroExtend &z)
     pad(); std::cout << ")" << std::endl;
 }
 
+void TACPrinter::operator()(const tac::DoubleToInt &d)
+{
+    pad(); std::cout << "DoubleToInt(" << std::endl;
+    tab();
+    std::visit(*this, d.src);
+    std::visit(*this, d.dst);
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
+void TACPrinter::operator()(const tac::DoubleToUInt &d)
+{
+    pad(); std::cout << "DoubleToUInt(" << std::endl;
+    tab();
+    std::visit(*this, d.src);
+    std::visit(*this, d.dst);
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
+void TACPrinter::operator()(const tac::IntToDouble &i)
+{
+    pad(); std::cout << "IntToDouble(" << std::endl;
+    tab();
+    std::visit(*this, i.src);
+    std::visit(*this, i.dst);
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
+void TACPrinter::operator()(const tac::UIntToDouble &u)
+{
+    pad(); std::cout << "UIntToDouble(" << std::endl;
+    tab();
+    std::visit(*this, u.src);
+    std::visit(*this, u.dst);
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
 void TACPrinter::operator()(const tac::FunctionDefinition &f)
 {
     pad();

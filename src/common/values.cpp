@@ -33,6 +33,8 @@ Type getType(const ConstantValue &v)
         ret.t = BasicType::UInt;
     } else if (std::holds_alternative<uint64_t>(v)) {
         ret.t = BasicType::ULong;
+    } else if (std::holds_alternative<double>(v)) {
+        ret.t = BasicType::Double;
     }
     return ret;
 }
@@ -42,8 +44,9 @@ bool fitsLongWord(const ConstantValue &v)
     if (std::holds_alternative<int>(v) ||
         std::holds_alternative<uint32_t>(v)) {
         return true;
-    } else if (std::holds_alternative<uint32_t>(v) ||
-        std::holds_alternative<uint64_t>(v)) {
+    } else if (std::holds_alternative<uint32_t>(v)
+        || std::holds_alternative<uint64_t>(v)
+        || std::holds_alternative<double>(v)) {
         return false;
     }
     return false;
@@ -51,20 +54,9 @@ bool fitsLongWord(const ConstantValue &v)
 
 long forceLong(const ConstantValue &v)
 {
-#if 1
     return std::visit([&](auto value) {
         return static_cast<long>(value);
     }, v);
-#else
-    // Keeping all the bits unchanged during conversion
-    return std::visit([&](auto value) {
-        using T = std::decay_t<decltype(value)>;
-        if constexpr (sizeof(T) == 8)
-            return static_cast<long>(static_cast<uint64_t>(value));
-        else
-            return static_cast<long>(static_cast<uint32_t>(value));
-    }, v);
-#endif
 }
 
 ConstantValue ConvertValue(const ConstantValue &v, const Type &to_type)
@@ -82,15 +74,28 @@ ConstantValue ConvertValue(const ConstantValue &v, const Type &to_type)
             return static_cast<unsigned int>(x);
         case BasicType::ULong:
             return static_cast<unsigned long>(x);
+        case BasicType::Double:
+            return static_cast<double>(x);
         }
     }, v);
 }
 
 ConstantValue MakeConstantValue(long value, const Type &type)
 {
-    if (type.isBasic(BasicType::Int))
+    const BasicType *basic_type = type.getAs<BasicType>();
+    if (!basic_type)
         return static_cast<int>(value);
-    else if (type.isBasic(BasicType::Long))
+    switch (*basic_type) {
+    case BasicType::Int:
+        return static_cast<int>(value);
+    case BasicType::Long:
         return static_cast<long>(value);
+    case BasicType::UInt:
+        return static_cast<uint32_t>(value);
+    case BasicType::ULong:
+        return static_cast<uint64_t>(value);
+    case BasicType::Double:
+        return static_cast<double>(value);
+    }
     return static_cast<int>(value);
 }

@@ -53,6 +53,18 @@ namespace tac {
         Value dst;) \
     X(ZeroExtend, \
         Value src; \
+        Value dst;) \
+    X(DoubleToInt, \
+        Value src; \
+        Value dst;) \
+    X(DoubleToUInt, \
+        Value src; \
+        Value dst;) \
+    X(IntToDouble, \
+        Value src; \
+        Value dst;) \
+    X(UIntToDouble, \
+        Value src; \
         Value dst;)
 
 #define TAC_TOP_LEVEL_LIST(X) \
