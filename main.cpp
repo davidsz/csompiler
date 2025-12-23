@@ -30,6 +30,7 @@ int main(int argc, char **argv)
     // Command line arguments
     std::list<std::string> inputs;
     std::list<std::string> flags;
+    std::list<std::string> libraries;
     auto has_flag = [&](const std::string &name) -> bool {
         return std::find(flags.begin(), flags.end(), name) != flags.end();
     };
@@ -38,15 +39,25 @@ int main(int argc, char **argv)
         std::string arg = argv[i];
         if (arg.rfind("--", 0) == 0)
             flags.push_back(arg.substr(2)); // --arg
-        else if (arg.rfind("-", 0) == 0)
+        else if (arg.rfind("-", 0) == 0) {
+            std::string flag = arg.substr(1);
+            if (flag.rfind("l") == 0 && flag.length() > 1) { // -llib
+                libraries.push_back(flag);
+                continue;
+            }
             flags.push_back(arg.substr(1)); // -arg
-        else
+        } else
             inputs.push_back(arg); // input arg
     }
 
     if (inputs.empty()) {
         std::cerr << "Missing input file from arguments. Usage: " << argv[0] << " <filename>" << std::endl;
         return Error::DRIVER_ERROR;
+    }
+
+    std::string lib_flags;
+    for (std::string &lib : libraries) {
+        lib_flags += std::format("-{} ", lib);
     }
 
     // Preprocessor
@@ -178,10 +189,11 @@ int main(int argc, char **argv)
     else
         output_compiled.replace_extension(".o");
     std::string compile_command = std::format(
-        "gcc {} {} -o {}",
+        "gcc {} {} -o {} {}",
         standalone ? "" : "-c",
         output_assembly_path.string(),
-        output_compiled.string());
+        output_compiled.string(),
+        lib_flags);
     if (std::system(compile_command.c_str()) != 0) {
         std::cerr << "Can't compile with gcc." << std::endl;
         return Error::DRIVER_ERROR;

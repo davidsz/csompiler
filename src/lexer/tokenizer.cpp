@@ -46,6 +46,11 @@ static bool is_whitespace(char c)
     return std::isblank(c) || c == '\n';
 }
 
+static bool is_numeric_suffix(char c)
+{
+    return c == 'l' || c == 'L' || c == 'u' || c == 'U';
+}
+
 namespace lexer {
 
 Tokenizer::Tokenizer(std::string_view s)
@@ -118,43 +123,118 @@ Token Tokenizer::CreateToken(Token::Type type, std::string_view content)
 
 Token Tokenizer::MakeNumericLiteral()
 {
-    std::string literal;
-    literal.reserve(10);
-
-    char next = PeekNextChar();
-    assert(std::isdigit(next));
-
     // TODO: Handle different types
     // - Binary: [0b/0B][0-1]
     // - Octal: 0[0-7]
     // - Hexadecimal [0x/0X][0-9a-fA-F]
 
-    size_t l_count = 0;
-    size_t u_count = 0;
-    do {
+    // Parse the integer or fractional part of the number
+    char next = PeekNextChar();
+    assert(std::isdigit(next) || next == '.');
+
+    std::string literal;
+    literal.reserve(20);
+
+    size_t dot_count = next == '.' ? 1 : 0;
+    while (true) {
         Step();
         literal += next;
         next = PeekNextChar();
-        if (l_count == 0 && u_count == 0 && std::isdigit(next))
+        if (std::isdigit(next))
             continue;
-        if (next == 'l' || next == 'L') {
-            if (++l_count > 1)
-                AbortAtPosition("Numeric literals can have only one L suffix.");
+        if (next == '.') {
+            if (++dot_count > 1)
+                AbortAtPosition("Fractional numeric literals can contain only one '.'");
             continue;
         }
-        if (next == 'u' || next == 'U') {
-            if (++u_count > 1)
-                AbortAtPosition("Numeric literals can have only one U suffix.");
-            continue;
+        // Optional exponent part of floating point numbers
+        if (next =='e' || next == 'E') {
+            literal += ParseExponent();
+            next = PeekNextChar();
+            if (is_numeric_suffix(next))
+                literal += ParseNumericSuffixes(/* after_exponent */ true);
+            break;
+        }
+        if (is_numeric_suffix(next)) {
+            literal += ParseNumericSuffixes(/* after_exponent */ false);
+            break;
         }
         break;
-    } while (true);
+    }
 
+    next = PeekNextChar();
     // We started to process an identifier starting with a number, it's invalid.
     if (!is_whitespace(next) && !is_operator(next) && !is_punctator(next))
         AbortAtPosition("Identifiers can't start with numbers.");
 
     return CreateToken(Token::NumericLiteral, literal);
+}
+
+std::string Tokenizer::ParseNumericSuffixes(bool after_exponent)
+{
+    char next = PeekNextChar();
+    assert(is_numeric_suffix(next));
+
+    std::string suffixes;
+    size_t l_count = 0;
+    size_t u_count = 0;
+    while (true) {
+        next = PeekNextChar();
+        if (next == 'l' || next == 'L') {
+            if (++l_count > 1)
+                AbortAtPosition("This implementation supports only one L suffix in numeric literals.");
+            suffixes += next;
+            Step();
+            continue;
+        }
+        if (next == 'u' || next == 'U') {
+            if (++u_count > 1)
+                AbortAtPosition("Numeric literals can have only one U suffix.");
+            if (after_exponent)
+                AbortAtPosition("Floating point numbers are always signed.");
+            suffixes += next;
+            Step();
+            continue;
+        }
+        break;
+    }
+
+    next = PeekNextChar();
+    if ((!is_whitespace(next) && !is_operator(next) && !is_punctator(next))
+        || (after_exponent && (next == 'e' || next == 'E')))
+        AbortAtPosition(std::format("Unsupported '{}' suffix after numeric literal.", next));
+
+    return suffixes;
+}
+
+std::string Tokenizer::ParseExponent()
+{
+    char next = PeekNextChar();
+    assert(next == 'e' || next == 'E');
+    std::string exponent;
+    exponent += next;
+    Step();
+
+    next = PeekNextChar();
+    // + or - is optional
+    if (next == '+' || next == '-') {
+        exponent += next;
+        Step();
+    }
+
+    // The numeric part is mandatory here
+    bool has_numeric_part = false;
+    while (std::isdigit(next = PeekNextChar())) {
+        has_numeric_part = true;
+        exponent += next;
+        Step();
+    }
+    if (!has_numeric_part)
+        AbortAtPosition("Exponential parts of numeric literals must have a numeric part.");
+    if (next == '.')
+        AbortAtPosition("Exponential parts of numeric literals can't contain a '.'.");
+
+    return exponent;
 }
 
 Token Tokenizer::MakeStringLiteral()
@@ -328,7 +408,7 @@ std::optional<Token> Tokenizer::NextToken()
             continue;
         }
 
-        if (std::isdigit(c))
+        if (std::isdigit(c) || c == '.')
             return MakeNumericLiteral();
 
         if (c == '"')

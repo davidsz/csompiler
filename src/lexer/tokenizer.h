@@ -30,6 +30,8 @@ private:
     void SkipWhitespace();
     void SkipComment();
     Token MakeNumericLiteral();
+    std::string ParseNumericSuffixes(bool after_exponent);
+    std::string ParseExponent();
     Token MakeStringLiteral();
     Token MakeCharLiteral();
     Token MakeIdentifierOrKeyword();
