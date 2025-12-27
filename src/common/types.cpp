@@ -1,4 +1,5 @@
 #include "types.h"
+#include <cassert>
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
@@ -121,6 +122,24 @@ int Type::size() const
     }
 }
 
+ WordType Type::wordType() const
+ {
+     const BasicType *basic_type = std::get_if<BasicType>(&t);
+     assert(basic_type);
+     switch (*basic_type) {
+     case BasicType::Int:
+     case BasicType::UInt:
+         return Longword;
+     case BasicType::Long:
+     case BasicType::ULong:
+        return Quadword;
+     case BasicType::Double:
+         return Doubleword;
+     default:
+         return Longword;
+     }
+ }
+
 std::ostream &operator<<(std::ostream &os, const Type &type)
 {
     std::visit([&](auto &obj) {
@@ -133,4 +152,19 @@ std::ostream &operator<<(std::ostream &os, const Type &type)
             os << "typeless";
     }, type.t);
     return os;
+}
+
+// TODO: If we only use this for registers, consider storing
+// WordType in the Reg structure instead of the bytes.
+uint8_t GetBytesOfWordType(WordType type)
+{
+    switch (type) {
+    case WordType::Longword:
+        return 4;
+    case WordType::Quadword:
+    case WordType::Doubleword:
+        return 8;
+    default:
+        return 1;
+    }
 }

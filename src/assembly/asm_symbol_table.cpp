@@ -3,28 +3,39 @@
 
 namespace assembly {
 
-void ASMSymbolTable::insert(const std::string &name, const ASMSymbolEntry &entry)
+ASMSymbolTable::ASMSymbolTable(std::shared_ptr<SymbolTable> symbolTable)
 {
-    m_table[name] = entry;
-}
-
-std::shared_ptr<ASMSymbolTable> CreateASMSymbolTable(std::shared_ptr<SymbolTable> symbolTable)
-{
-    std::shared_ptr<ASMSymbolTable> asmSymbolTable = std::make_shared<ASMSymbolTable>();
     for (const auto &[name, entry] : symbolTable->m_table) {
         if (int byte_size = entry.type.size()) {
-            asmSymbolTable->insert(name, ObjEntry{
+            insert(name, ObjEntry{
                 .type = byte_size == 4 ? Longword : Quadword,
                 .is_static = entry.attrs.type == IdentifierAttributes::Static
             });
         } else if (entry.type.getAs<FunctionType>()) {
-            asmSymbolTable->insert(name, FunEntry{
+            insert(name, FunEntry{
                 .defined = entry.attrs.defined
             });
         } else
             assert(false);
     }
-    return asmSymbolTable;
+}
+
+void ASMSymbolTable::InsertStaticConstants(
+    const std::unordered_map<ConstantValue, std::string> &constants)
+{
+    for (auto const &[value, label] : constants) {
+        assert(std::holds_alternative<double>(value));
+        insert(label, ObjEntry{
+            .type = Doubleword,
+            .is_static = true,
+            .is_constant = true
+        });
+    }
+}
+
+void ASMSymbolTable::insert(const std::string &name, const ASMSymbolEntry &entry)
+{
+    m_table[name] = entry;
 }
 
 }; // assembly

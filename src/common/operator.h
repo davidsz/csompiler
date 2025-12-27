@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/types.h"
 #include "macro.h"
 #include <string_view>
 
@@ -48,7 +49,8 @@
 #define ASM_UNARY_OPERATOR_LIST(X) \
     X(Unknown_AU, "UNKNOWN_OP_L", "UNKNOWN_OP_Q") \
     X(Neg_AU, "negl", "negq") \
-    X(Not_AU, "notl", "notq")
+    X(Not_AU, "notl", "notq") \
+    X(Shr_AU, "TODO", "TODO")
 
 #define ASM_BINARY_OPERATOR_LIST(X) \
     X(Unknown_AB, "UNKNOWN_OP_L",  "UNKNOWN_OP_Q") \
@@ -60,7 +62,8 @@
     X(ShiftRS_AB, "sarl", "sarq") \
     X(BWAnd_AB, "andl", "andq") \
     X(BWXor_AB, "xorl", "xorq") \
-    X(BWOr_AB, "orl", "orq")
+    X(BWOr_AB, "orl", "orq") \
+    X(DivDouble_AB, "TODO", "TODO")
 
 DEFINE_OPERATOR(BinaryOperator, BINARY_OPERATOR_LIST);
 DEFINE_OPERATOR(UnaryOperator, UNARY_OPERATOR_LIST);
@@ -78,7 +81,10 @@ bool isUnaryOperator(std::string_view op);
 BinaryOperator toBinaryOperator(std::string_view s);
 UnaryOperator toUnaryOperator(std::string_view s);
 ASMUnaryOperator toASMUnaryOperator(UnaryOperator op);
-ASMBinaryOperator toASMBinaryOperator(BinaryOperator op, bool isSigned);
+ASMBinaryOperator toASMBinaryOperator(
+    BinaryOperator op,
+    WordType wordType,
+    bool isSigned);
 
 int getPrecedence(BinaryOperator op);
 int getPrecedence(UnaryOperator op);

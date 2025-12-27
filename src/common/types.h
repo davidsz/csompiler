@@ -28,6 +28,15 @@ bool IsTypeSpecifier(const std::string &type);
 std::optional<StorageClass> GetStorageClass(const std::string &storage);
 bool IsStorageOrTypeSpecifier(const std::string &type);
 
+// Assembly word types
+enum WordType {
+    Longword,
+    Quadword,
+    Doubleword
+};
+
+uint8_t GetBytesOfWordType(WordType type);
+
 // Recursive type which represents types
 struct Type;
 
@@ -64,6 +73,7 @@ struct Type {
     bool isSigned() const;
     bool isInitialized() const;
     int size() const;
+    WordType wordType() const;
 
     friend bool operator==(const Type &a, const Type &b) {
         return a.t == b.t;

@@ -13,7 +13,9 @@ std::string from_tac(
     ASMBuilder tacToAsm(symbolTable);
     std::list<TopLevel> asmList = tacToAsm.ConvertTopLevel(tacVector);
 
-    std::shared_ptr<ASMSymbolTable> asmSymbolTable = CreateASMSymbolTable(symbolTable);
+    std::shared_ptr<ASMSymbolTable> asmSymbolTable =
+        std::make_shared<ASMSymbolTable>(symbolTable);
+    asmSymbolTable->InsertStaticConstants(tacToAsm.StaticConstants());
 
     postprocessPseudoRegisters(asmList, asmSymbolTable);
     postprocessInvalidInstructions(asmList);

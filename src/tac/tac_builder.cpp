@@ -1,23 +1,12 @@
 #include "tac_builder.h"
+#include "common/labeling.h"
 #include <format>
 
 namespace tac {
 
-static std::string generateTempVariableName()
-{
-    static size_t counter = 0;
-    return std::format("tmp.{}", counter++);
-}
-
-static std::string generateLabelName(std::string_view label)
-{
-    static size_t counter = 0;
-    return std::format("{}_{}", label, counter++);
-}
-
 Variant TACBuilder::CreateTemporaryVariable(const Type &type)
 {
-    Variant var = Variant{ generateTempVariableName() };
+    Variant var = Variant{ GenerateTempVariableName() };
     m_symbolTable->insert(var.name, type,
         IdentifierAttributes{ .type = IdentifierAttributes::Local }
     );
@@ -103,9 +92,9 @@ Value TACBuilder::operator()(const parser::BinaryExpression &b)
     if (b.op == BinaryOperator::And || b.op == BinaryOperator::Or) {
         Variant result = CreateTemporaryVariable(Type{ BasicType::Int });
         auto lhs_val = std::visit(*this, *b.lhs);
-        auto label_true = generateLabelName("true_label");
-        auto label_false = generateLabelName("false_label");
-        auto label_end = generateLabelName("end_label");
+        auto label_true = MakeNameUnique("true_label");
+        auto label_false = MakeNameUnique("false_label");
+        auto label_end = MakeNameUnique("end_label");
         if (b.op == BinaryOperator::And) {
             m_instructions.push_back(JumpIfZero{lhs_val, label_false});
             auto rhs = std::visit(*this, *b.rhs);
@@ -148,8 +137,8 @@ Value TACBuilder::operator()(const parser::AssignmentExpression &a)
 
 Value TACBuilder::operator()(const parser::ConditionalExpression &c)
 {
-    auto label_end = generateLabelName("end");
-    auto label_false_branch = generateLabelName("false_branch");
+    auto label_end = MakeNameUnique("end");
+    auto label_false_branch = MakeNameUnique("false_branch");
     Value result = CreateTemporaryVariable(c.type);
 
     Value condition = std::visit(*this, *c.condition);
@@ -188,9 +177,9 @@ Value TACBuilder::operator()(const parser::ReturnStatement &r)
 Value TACBuilder::operator()(const parser::IfStatement &i)
 {
     Value condition = std::visit(*this, *i.condition);
-    auto label_end = generateLabelName("end");
+    auto label_end = MakeNameUnique("end");
     if (i.falseBranch) {
-        auto label_else = generateLabelName("else");
+        auto label_else = MakeNameUnique("else");
         m_instructions.push_back(JumpIfZero{ condition, label_else });
         std::visit(*this, *i.trueBranch);
         m_instructions.push_back(Jump{ label_end });

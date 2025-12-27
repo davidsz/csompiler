@@ -7,7 +7,10 @@
 
 namespace tac {
 
-struct TACBuilder : public parser::IASTVisitor<tac::Value> {
+class TACBuilder : public parser::IASTVisitor<tac::Value> {
+public:
+    TACBuilder(std::shared_ptr<SymbolTable> symbolTable);
+
     Value operator()(const parser::ConstantExpression &n) override;
     Value operator()(const parser::VariableExpression &v) override;
     Value operator()(const parser::CastExpression &v) override;
@@ -35,13 +38,12 @@ struct TACBuilder : public parser::IASTVisitor<tac::Value> {
     Value operator()(const parser::VariableDeclaration &v) override;
     Value operator()(std::monostate) override;
 
-    TACBuilder(std::shared_ptr<SymbolTable> symbolTable);
-
     std::vector<TopLevel> ConvertTopLevel(const std::vector<parser::Declaration> &list);
     std::vector<Instruction> ConvertBlock(const std::vector<parser::BlockItem> &list);
-    void ProcessStaticSymbols();
 
+private:
     Variant CreateTemporaryVariable(const Type &type);
+    void ProcessStaticSymbols();
 
     std::vector<TopLevel> m_topLevel;
     std::vector<Instruction> m_instructions;

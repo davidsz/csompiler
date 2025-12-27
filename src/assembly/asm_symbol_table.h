@@ -8,6 +8,7 @@ namespace assembly {
 struct ObjEntry {
     WordType type;
     bool is_static;
+    bool is_constant;
 };
 
 struct FunEntry {
@@ -16,19 +17,21 @@ struct FunEntry {
 
 using ASMSymbolEntry = std::variant<ObjEntry, FunEntry>;
 
-struct ASMSymbolTable {
+class ASMSymbolTable {
+public:
+    ASMSymbolTable(std::shared_ptr<SymbolTable> symbolTable);
+    void InsertStaticConstants(const std::unordered_map<ConstantValue, std::string> &);
     template <typename T> T *getAs(const std::string &name)
     {
         if (m_table.contains(name))
             return std::get_if<T>(&m_table[name]);
         return nullptr;
     }
-    void insert(const std::string &name, const ASMSymbolEntry &entry);
 
 private:
+    void insert(const std::string &name, const ASMSymbolEntry &entry);
+
     std::unordered_map<std::string, ASMSymbolEntry> m_table;
 };
-
-std::shared_ptr<ASMSymbolTable> CreateASMSymbolTable(std::shared_ptr<SymbolTable> symbolTable);
 
 };

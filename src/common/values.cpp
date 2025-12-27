@@ -44,7 +44,7 @@ bool fitsLongWord(const ConstantValue &v)
     if (std::holds_alternative<int>(v) ||
         std::holds_alternative<uint32_t>(v)) {
         return true;
-    } else if (std::holds_alternative<uint32_t>(v)
+    } else if (std::holds_alternative<long>(v)
         || std::holds_alternative<uint64_t>(v)
         || std::holds_alternative<double>(v)) {
         return false;
@@ -52,10 +52,10 @@ bool fitsLongWord(const ConstantValue &v)
     return false;
 }
 
-long forceLong(const ConstantValue &v)
+uint64_t forceLong(const ConstantValue &v)
 {
     return std::visit([&](auto value) {
-        return static_cast<long>(value);
+        return static_cast<uint64_t>(value);
     }, v);
 }
 

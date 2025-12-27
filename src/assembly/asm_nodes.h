@@ -19,13 +19,23 @@ namespace assembly {
     X(R9, "r9", "r9d", "r9b") \
     X(R10, "r10", "r10d", "r10b") \
     X(R11, "r11", "r11d", "r11b") \
-    X(SP, "rsp", "rsp", "rsp")
+    X(SP, "rsp", "rsp", "rsp") \
+    X(XMM0, "xmm0", "xmm0", "xmm0") \
+    X(XMM1, "xmm1", "xmm1", "xmm1") \
+    X(XMM2, "xmm2", "xmm2", "xmm2") \
+    X(XMM3, "xmm3", "xmm3", "xmm3") \
+    X(XMM4, "xmm4", "xmm4", "xmm4") \
+    X(XMM5, "xmm5", "xmm5", "xmm5") \
+    X(XMM6, "xmm6", "xmm6", "xmm6") \
+    X(XMM7, "xmm7", "xmm7", "xmm7") \
+    X(XMM14, "xmm14", "xmm14", "xmm14") \
+    X(XMM15, "xmm15", "xmm15", "xmm15") \
 
 #define ASM_OPERAND_LIST(X) \
     X(Reg, \
         Register reg; uint8_t bytes = 4;) \
     X(Imm, \
-        long value;) \
+        uint64_t value;) \
     X(Pseudo, \
         std::string name;) \
     X(Stack, \
@@ -46,6 +56,14 @@ namespace assembly {
     X(MovZeroExtend, \
         Operand src; \
         Operand dst;) \
+    X(Cvttsd2si, \
+        Operand src; \
+        Operand dst; \
+        WordType type;) \
+    X(Cvtsi2sd, \
+        Operand src; \
+        Operand dst; \
+        WordType type;) \
     X(Ret, /* no op */) \
     X(Unary, \
         ASMUnaryOperator op; \
@@ -93,12 +111,11 @@ namespace assembly {
         std::string name; \
         bool global; \
         ConstantValue init; \
+        int alignment;) \
+    X(StaticConstant, \
+        std::string name; \
+        ConstantValue init; \
         int alignment;)
-
-enum WordType {
-    Longword,
-    Quadword
-};
 
 enum Register {
 #define ADD_REG_TO_ENUM(name, eightbytename, fourbytename, onebytename) name,

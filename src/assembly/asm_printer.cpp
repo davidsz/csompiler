@@ -117,6 +117,16 @@ void ASMPrinter::operator()(const MovZeroExtend &)
     // Replaced during instruction fixup
 }
 
+void ASMPrinter::operator()(const Cvttsd2si &)
+{
+
+}
+
+void ASMPrinter::operator()(const Cvtsi2sd &)
+{
+
+}
+
 void ASMPrinter::operator()(const Ret &)
 {
     // Epilogue
@@ -241,7 +251,7 @@ void ASMPrinter::operator()(const StaticVariable &s)
     if (s.global)
         m_codeStream << ".globl _" << s.name << std::endl;
 
-    long s_init = forceLong(s.init);
+    uint64_t s_init = forceLong(s.init);
     bool is_long = fitsLongWord(s.init);
     if (s_init == 0)
         m_codeStream << ".bss" << std::endl;
@@ -262,6 +272,11 @@ void ASMPrinter::operator()(const StaticVariable &s)
         else
             m_codeStream << ".quad " << s_init << std::endl;
     }
+}
+
+void ASMPrinter::operator()(const StaticConstant &)
+{
+
 }
 
 void ASMPrinter::operator()(std::monostate)

@@ -98,7 +98,7 @@ ASMUnaryOperator toASMUnaryOperator(UnaryOperator op)
     }
 }
 
-ASMBinaryOperator toASMBinaryOperator(BinaryOperator op, bool isSigned)
+ASMBinaryOperator toASMBinaryOperator(BinaryOperator op, WordType wordType, bool isSigned)
 {
     ASMBinaryOperator ret;
     switch (op) {
@@ -108,8 +108,13 @@ ASMBinaryOperator toASMBinaryOperator(BinaryOperator op, bool isSigned)
     BINARY_OPERATOR_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
     }
+
+    if (op == BinaryOperator::Divide && wordType == Doubleword)
+        return DivDouble_AB;
+
     if (ret == ASMBinaryOperator::ShiftRS_AB && !isSigned)
         ret = ASMBinaryOperator::ShiftRU_AB;
+
     return ret;
 }
 

@@ -1,4 +1,5 @@
 #include "semantic_analyzer.h"
+#include "common/labeling.h"
 #include <variant>
 
 namespace parser {
@@ -10,14 +11,6 @@ struct SemanticError : public std::runtime_error
     {
     }
 };
-
-static std::string makeNameUnique(std::string_view name)
-{
-    // Generate a name which is not valid in the C syntax,
-    // this avoids collision with function names, etc.
-    static size_t counter = 0;
-    return std::format("{}.{}", name, counter++);
-}
 
 void SemanticAnalyzer::enterScope()
 {
@@ -167,7 +160,7 @@ void SemanticAnalyzer::operator()(LabeledStatement &l)
 {
     if (m_currentStage == IDENTIFIER_RESOLUTION) {
         // Collect labels for the later stages, catch duplications here
-        std::string unique_name = makeNameUnique(l.label);
+        std::string unique_name = MakeNameUnique(l.label);
         auto &s = m_labels[m_currentFunction];
         if (s.contains(l.label))
             Abort(std::format("Label '{}' declared multiple times inside function '{}'", l.label, m_currentFunction));
@@ -229,7 +222,7 @@ void SemanticAnalyzer::operator()(ContinueStatement &c)
 void SemanticAnalyzer::operator()(WhileStatement &w)
 {
     if (m_currentStage == LOOP_LABELING) {
-        w.label = makeNameUnique("while");
+        w.label = MakeNameUnique("while");
         m_controlFlowLabels.push_back(make_pair(w.label, Loop));
     }
 
@@ -243,7 +236,7 @@ void SemanticAnalyzer::operator()(WhileStatement &w)
 void SemanticAnalyzer::operator()(DoWhileStatement &d)
 {
     if (m_currentStage == LOOP_LABELING) {
-        d.label = makeNameUnique("do");
+        d.label = MakeNameUnique("do");
         m_controlFlowLabels.push_back(make_pair(d.label, Loop));
     }
 
@@ -261,7 +254,7 @@ void SemanticAnalyzer::operator()(ForStatement &f)
         enterScope();
 
     if (m_currentStage == LOOP_LABELING) {
-        f.label = makeNameUnique("for");
+        f.label = MakeNameUnique("for");
         m_controlFlowLabels.push_back(make_pair(f.label, Loop));
     }
 
@@ -284,7 +277,7 @@ void SemanticAnalyzer::operator()(SwitchStatement &s)
 {
     if (m_currentStage == LOOP_LABELING) {
         m_switches.push_back(&s);
-        s.label = makeNameUnique("switch");
+        s.label = MakeNameUnique("switch");
         m_controlFlowLabels.push_back(make_pair(s.label, Switch));
     }
 
@@ -357,7 +350,7 @@ void SemanticAnalyzer::operator()(FunctionDeclaration &f)
         for (auto &p : f.params) {
             if (currentScope().contains(p))
                 Abort(std::format("Duplicate function parameter ({})", p));
-            std::string unique_name = makeNameUnique(p);
+            std::string unique_name = MakeNameUnique(p);
             currentScope()[p] = IdentifierInfo {
                 .uniqueName = unique_name,
                 .hasLinkage = false
@@ -406,7 +399,7 @@ void SemanticAnalyzer::operator()(VariableDeclaration &v)
             } else {
                 // Give variables globally unique names; different variables
                 // can have the same names in different scopes
-                std::string unique_name = makeNameUnique(v.identifier);
+                std::string unique_name = MakeNameUnique(v.identifier);
                 currentScope()[v.identifier] = IdentifierInfo{
                     .uniqueName = unique_name,
                     .hasLinkage = false
