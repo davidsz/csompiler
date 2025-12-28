@@ -3,12 +3,14 @@
 
 namespace assembly {
 
-ASMSymbolTable::ASMSymbolTable(std::shared_ptr<SymbolTable> symbolTable)
+ASMSymbolTable::ASMSymbolTable(
+    std::shared_ptr<SymbolTable> symbolTable,
+    std::shared_ptr<std::unordered_map<ConstantValue, std::string>> constants)
 {
     for (const auto &[name, entry] : symbolTable->m_table) {
-        if (int byte_size = entry.type.size()) {
+        if (entry.type.getAs<BasicType>()) {
             insert(name, ObjEntry{
-                .type = byte_size == 4 ? Longword : Quadword,
+                .type = entry.type.wordType(),
                 .is_static = entry.attrs.type == IdentifierAttributes::Static
             });
         } else if (entry.type.getAs<FunctionType>()) {
@@ -18,12 +20,8 @@ ASMSymbolTable::ASMSymbolTable(std::shared_ptr<SymbolTable> symbolTable)
         } else
             assert(false);
     }
-}
 
-void ASMSymbolTable::InsertStaticConstants(
-    const std::unordered_map<ConstantValue, std::string> &constants)
-{
-    for (auto const &[value, label] : constants) {
+    for (auto const &[value, label] : *constants) {
         assert(std::holds_alternative<double>(value));
         insert(label, ObjEntry{
             .type = Doubleword,

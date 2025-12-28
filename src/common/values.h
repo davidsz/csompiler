@@ -15,3 +15,16 @@ uint64_t forceLong(const ConstantValue &v);
 
 ConstantValue ConvertValue(const ConstantValue &v, const Type &t);
 ConstantValue MakeConstantValue(long value, const Type &type);
+
+/*
+namespace std {
+template<>
+struct hash<ConstantValue> {
+    size_t operator()(const ConstantValue &v) const {
+        return std::visit([](auto &&arg) -> size_t {
+            return std::hash<std::decay_t<decltype(arg)>>{}(arg);
+        }, v);
+    }
+};
+}
+*/

@@ -49,42 +49,41 @@ std::string_view toString(UnaryOperator op)
     return "";
 }
 
-std::string_view toString(ASMUnaryOperator op, bool is_long)
+std::string toString(ASMUnaryOperator op, WordType type)
 {
-    if (is_long) {
-        switch (op) {
-#define CASE_TO_STRING(name, longname, quadname) case ASMUnaryOperator::name: return longname;
-        ASM_UNARY_OPERATOR_LIST(CASE_TO_STRING)
+    switch (op) {
+#define CASE_TO_STRING(enum_name, text_name) case ASMUnaryOperator::enum_name: return AddSuffix(text_name, type);
+    ASM_UNARY_OPERATOR_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
-        }
-    } else {
-        switch (op) {
-#define CASE_TO_STRING(name, longname, quadname) case ASMUnaryOperator::name: return quadname;
-        ASM_UNARY_OPERATOR_LIST(CASE_TO_STRING)
-#undef CASE_TO_STRING
-        }
     }
     assert(false);
     return "";
 }
 
-std::string_view toString(ASMBinaryOperator op, bool is_long)
+std::string toString(ASMBinaryOperator op, WordType type)
 {
-    if (is_long) {
-        switch (op) {
-#define CASE_TO_STRING(name, longname, quadname) case ASMBinaryOperator::name: return longname;
-        ASM_BINARY_OPERATOR_LIST(CASE_TO_STRING)
+    if (type == Doubleword) {
+        if (op == Mult_AB) return "mulsd";
+        if (op == BWXor_AB) return "xorpd";
+    }
+
+    switch (op) {
+#define CASE_TO_STRING(enum_name, text_name) case ASMBinaryOperator::enum_name: return AddSuffix(text_name, type);
+    ASM_BINARY_OPERATOR_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
-        }
-    } else {
-        switch (op) {
-#define CASE_TO_STRING(name, longname, quadname) case ASMBinaryOperator::name: return quadname;
-        ASM_BINARY_OPERATOR_LIST(CASE_TO_STRING)
-#undef CASE_TO_STRING
-        }
     }
     assert(false);
     return "";
+}
+
+std::string AddSuffix(std::string_view instruction, WordType type)
+{
+    switch (type) {
+    case Longword:   return std::format("{}l", instruction);
+    case Quadword:   return std::format("{}q", instruction);
+    case Doubleword: return std::format("{}sd", instruction);
+    default: assert(false); return "";
+    }
 }
 
 ASMUnaryOperator toASMUnaryOperator(UnaryOperator op)
@@ -188,6 +187,21 @@ bool isCompoundAssignment(BinaryOperator op)
         case BinaryOperator::AssignBitwiseAnd:
         case BinaryOperator::AssignBitwiseXor:
         case BinaryOperator::AssignBitwiseOr:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool isRelationOperator(BinaryOperator op)
+{
+    switch (op) {
+        case BinaryOperator::Equal:
+        case BinaryOperator::NotEqual:
+        case BinaryOperator::LessThan:
+        case BinaryOperator::LessOrEqual:
+        case BinaryOperator::GreaterThan:
+        case BinaryOperator::GreaterOrEqual:
             return true;
         default:
             return false;

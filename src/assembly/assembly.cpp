@@ -10,12 +10,15 @@ std::string from_tac(
     std::vector<tac::TopLevel> tacVector,
     std::shared_ptr<SymbolTable> symbolTable)
 {
-    ASMBuilder tacToAsm(symbolTable);
+    // Use one constant dictionary across all ASMBuilders
+    std::shared_ptr<std::unordered_map<ConstantValue, std::string>> constants =
+        std::make_shared<std::unordered_map<ConstantValue, std::string>>();
+
+    ASMBuilder tacToAsm(symbolTable, constants);
     std::list<TopLevel> asmList = tacToAsm.ConvertTopLevel(tacVector);
 
     std::shared_ptr<ASMSymbolTable> asmSymbolTable =
-        std::make_shared<ASMSymbolTable>(symbolTable);
-    asmSymbolTable->InsertStaticConstants(tacToAsm.StaticConstants());
+        std::make_shared<ASMSymbolTable>(symbolTable, constants);
 
     postprocessPseudoRegisters(asmList, asmSymbolTable);
     postprocessInvalidInstructions(asmList);

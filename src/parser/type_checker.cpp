@@ -95,7 +95,14 @@ Type TypeChecker::operator()(BinaryExpression &b)
     Type common_type = getCommonType(left_type, right_type);
     b.lhs = explicitCast(std::move(b.lhs), left_type, common_type);
     b.rhs = explicitCast(std::move(b.rhs), right_type, common_type);
-    b.type = isAssignment(b.op) ? left_type : common_type;
+    if (isRelationOperator(b.op)) {
+        // Represented as integer, but they needed a common type before
+        b.type = Type{ BasicType::Int };
+        return b.type;
+    } else if (isAssignment(b.op))
+        b.type = left_type;
+    else
+        b.type = common_type;
     return b.type;
 }
 

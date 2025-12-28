@@ -15,22 +15,7 @@ static const std::array<Register, 8> s_doubleArgRegisters = {
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wswitch-enum"
-static bool isRelationOperator(BinaryOperator op)
-{
-    switch (op) {
-        case BinaryOperator::Equal:
-        case BinaryOperator::NotEqual:
-        case BinaryOperator::LessThan:
-        case BinaryOperator::LessOrEqual:
-        case BinaryOperator::GreaterThan:
-        case BinaryOperator::GreaterOrEqual:
-            return true;
-        default:
-            return false;
-    }
-}
-
-static std::string toConditionCode(BinaryOperator op, bool isSigned, WordType wordType)
+static std::string toConditionCode(BinaryOperator op, bool unsignedOrDouble)
 {
     switch (op) {
         case BinaryOperator::Equal:
@@ -38,21 +23,24 @@ static std::string toConditionCode(BinaryOperator op, bool isSigned, WordType wo
         case BinaryOperator::NotEqual:
             return "ne";
         case BinaryOperator::LessThan:
-            return !isSigned || wordType == Doubleword ? "b" : "l"; // less, below
+            return unsignedOrDouble ? "b" : "l"; // less, below
         case BinaryOperator::LessOrEqual:
-            return !isSigned || wordType == Doubleword ? "be" : "le";
+            return unsignedOrDouble ? "be" : "le";
         case BinaryOperator::GreaterThan:
-            return !isSigned || wordType == Doubleword ? "a" : "g"; // greater, above
+            return unsignedOrDouble ? "a" : "g"; // greater, above
         case BinaryOperator::GreaterOrEqual:
-            return !isSigned || wordType == Doubleword ? "ae" : "ge";
+            return unsignedOrDouble ? "ae" : "ge";
         default:
             return "UNKNOWN_COND";
     }
 }
 #pragma clang diagnostic pop
 
-ASMBuilder::ASMBuilder(std::shared_ptr<SymbolTable> symbolTable)
+ASMBuilder::ASMBuilder(
+    std::shared_ptr<SymbolTable> symbolTable,
+    std::shared_ptr<std::unordered_map<ConstantValue, std::string>> constants)
     : m_symbolTable(symbolTable)
+    , m_constants(constants)
 {
 }
 
@@ -128,118 +116,131 @@ Operand ASMBuilder::operator()(const tac::Return &r)
 
 Operand ASMBuilder::operator()(const tac::Unary &u)
 {
-    WordType wordType = GetWordType(u.src);
+    WordType srcType = GetWordType(u.src);
     Operand src = std::visit(*this, u.src);
     Operand dst = std::visit(*this, u.dst);
     if (u.op == UnaryOperator::Not) {
         // !x is equivalent to x==0, so we implement it as a binary comparison
-        m_instructions.push_back(Cmp{ Imm{0}, src, wordType });
-        m_instructions.push_back(Mov{ Imm{0}, dst, wordType });
+        if (srcType == Doubleword) {
+            m_instructions.push_back(Binary{ BWXor_AB, Reg{ XMM0 }, Reg{ XMM0 }, srcType });
+            m_instructions.push_back(Cmp{ Reg{ XMM0 }, src, srcType });
+        } else
+            m_instructions.push_back(Cmp{ Imm{ 0 }, src, srcType });
+        m_instructions.push_back(Mov{ Imm{ 0 }, dst, GetWordType(u.dst) });
         m_instructions.push_back(SetCC{ "e", dst });
         return std::monostate();
     }
 
-    if (u.op == Negate && wordType == Doubleword) {
+    if (u.op == Negate && srcType == Doubleword) {
         // Negating in floating point: XOR with -0.0
         std::string minus_zero = AddConstant(
             ConstantValue{ static_cast<double>(-0.0) },
             GenerateTempVariableName()
         );
-        m_instructions.push_back(Mov{ src, dst, wordType });
+        m_instructions.push_back(Mov{ src, dst, Doubleword });
         m_instructions.push_back(Binary{
             BWXor_AB,
             Data{ minus_zero },
             dst,
-            wordType
+            Doubleword
         });
+        return std::monostate();
     }
 
     ASMUnaryOperator op = toASMUnaryOperator(u.op);
     assert(op != Unknown_AU);
-    m_instructions.push_back(Mov{ src, dst, wordType });
-    m_instructions.push_back(Unary{ op, dst, wordType });
+    m_instructions.push_back(Mov{ src, dst, srcType });
+    m_instructions.push_back(Unary{ op, dst, srcType });
     return std::monostate();
 }
 
 Operand ASMBuilder::operator()(const tac::Binary &b)
 {
-    bool isSigned = CheckSignedness(b.dst);
-    WordType wordType = GetWordType(b.dst);
-    ASMBinaryOperator op = toASMBinaryOperator(b.op, wordType, isSigned);
+    // The src1 and src2 have common type, dst is always int (Longword)
+    WordType srcType = GetWordType(b.src1);
+    WordType dstType = GetWordType(b.dst);
+    bool isSigned = CheckSignedness(b.src1);
+    ASMBinaryOperator op = toASMBinaryOperator(b.op, srcType, isSigned);
     Operand destination = std::visit(*this, b.dst);
 
     // Easier binary operators with common format:
     // Add, Subtract, Multiply...
     if (op != ASMBinaryOperator::Unknown_AB) {
+        Comment(m_instructions, std::format("Binary operator {}", toString(b.op)));
         m_instructions.push_back(Mov{
             std::visit(*this, b.src1),
             destination,
-            wordType
+            srcType
         });
         m_instructions.push_back(Binary{
             op,
             std::visit(*this, b.src2),
             destination,
-            wordType
+            srcType
         });
+        Comment(m_instructions, "---");
         return std::monostate();
     }
 
     // Division, Remainder
     if (b.op == BinaryOperator::Divide || b.op == BinaryOperator::Remainder) {
-        uint8_t bytes = GetBytesOfWordType(wordType);
+        Comment(m_instructions, std::format("Binary operator {}", toString(b.op)));
+        uint8_t bytes = GetBytesOfWordType(srcType);
         m_instructions.push_back(Mov{
             std::visit(*this, b.src1),
             Reg{ AX, bytes },
-            wordType
+            srcType
         });
         if (isSigned) {
             m_instructions.push_back(Cdq{
-                wordType
+                srcType
             });
             m_instructions.push_back(Idiv{
                 std::visit(*this, b.src2),
-                wordType
+                srcType
             });
         } else {
             m_instructions.push_back(Mov{
                 Imm{ 0 },
                 Reg{ DX, bytes },
-                wordType
+                srcType
             });
             m_instructions.push_back(Div{
                 std::visit(*this, b.src2),
-                wordType
+                srcType
             });
         }
         m_instructions.push_back(Mov{
             (b.op == BinaryOperator::Divide
                 ? Reg{ AX, bytes } : Reg{ DX, bytes }),
             destination,
-            wordType
+            srcType
         });
+        Comment(m_instructions, "---");
         return std::monostate();
     }
 
     // Equal, NotEqual, LessThan, LessOrEqual, GreaterThan, GreaterOrEqual
     if (isRelationOperator(b.op)) {
+        Comment(m_instructions, std::format("Relational operator {}", toString(b.op)));
         // Comparing arguments; result stored in RFLAGS
         m_instructions.push_back(Cmp{
             std::visit(*this, b.src2),
             std::visit(*this, b.src1),
-            wordType
+            srcType
         });
         // Null out the destination before placing the condition result in
         m_instructions.push_back(Mov{
             Imm{ 0 },
             destination,
-            wordType
+            dstType
         });
         // Conditionally set the lowest byte of the destination according to RFLAGS
         m_instructions.push_back(SetCC{
-            toConditionCode(b.op, isSigned, wordType),
+            toConditionCode(b.op, !isSigned || srcType == Doubleword),
             destination
         });
+        Comment(m_instructions, "---");
         return std::monostate();
     }
 
@@ -265,6 +266,7 @@ Operand ASMBuilder::operator()(const tac::Jump &j)
 
 Operand ASMBuilder::operator()(const tac::JumpIfZero &j)
 {
+    Comment(m_instructions, "Jump if zero");
     WordType wordType = GetWordType(j.condition);
     if (wordType == Doubleword) {
         // Zero out the XMMO register
@@ -272,13 +274,13 @@ Operand ASMBuilder::operator()(const tac::JumpIfZero &j)
              BWXor_AB,
              Reg{ XMM0 },
              Reg{ XMM0 },
-             wordType
+             Doubleword
         });
         // Compare with zero
         m_instructions.push_back(Cmp{
             std::visit(*this, j.condition),
             Reg{ XMM0 },
-            wordType
+            Doubleword
         });
     } else {
         // Compare with zero
@@ -289,11 +291,13 @@ Operand ASMBuilder::operator()(const tac::JumpIfZero &j)
         });
     }
     m_instructions.push_back(JmpCC{ "e", j.target });
+    Comment(m_instructions, "---");
     return std::monostate();
 }
 
 Operand ASMBuilder::operator()(const tac::JumpIfNotZero &j)
 {
+    Comment(m_instructions, "Jump if not zero");
     WordType wordType = GetWordType(j.condition);
     if (wordType == Doubleword) {
         // Zero out the XMMO register
@@ -301,13 +305,13 @@ Operand ASMBuilder::operator()(const tac::JumpIfNotZero &j)
              BWXor_AB,
              Reg{ XMM0 },
              Reg{ XMM0 },
-             wordType
+             Doubleword
         });
         // Compare with zero
         m_instructions.push_back(Cmp{
             std::visit(*this, j.condition),
             Reg{ XMM0 },
-            wordType
+            Doubleword
         });
     } else {
         // Compare with zero
@@ -318,6 +322,7 @@ Operand ASMBuilder::operator()(const tac::JumpIfNotZero &j)
         });
     }
     m_instructions.push_back(JmpCC{ "ne", j.target });
+    Comment(m_instructions, "---");
     return std::monostate();
 }
 
@@ -375,7 +380,7 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
     }
     reg_index = 0;
     if (double_register_args.size() > 0)
-        Comment(m_instructions, "Moving the first eight int double into registers");
+        Comment(m_instructions, "Moving the first eight double arguments into registers");
     for (auto &arg : double_register_args) {
         WordType type = GetWordType(arg);
         m_instructions.push_back(Mov{
@@ -417,16 +422,17 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
         });
     }
 
-    // Retrieve the return value from AX
-    Comment(m_instructions, "The return value is in AX");
+    // Retrieve the return value
     WordType return_type = GetWordType(f.dst);
     if (return_type == Doubleword) {
+        Comment(m_instructions, "The return value is in XMM0");
         m_instructions.push_back(Mov{
             Reg{ XMM0, GetBytesOfWordType(return_type) },
             std::visit(*this, f.dst),
             Doubleword
         });
     } else {
+        Comment(m_instructions, "The return value is in AX");
         m_instructions.push_back(Mov{
             Reg{ AX, GetBytesOfWordType(return_type) },
             std::visit(*this, f.dst),
@@ -467,6 +473,7 @@ Operand ASMBuilder::operator()(const tac::ZeroExtend &z)
 
 Operand ASMBuilder::operator()(const tac::DoubleToInt &d)
 {
+    Comment(m_instructions, "Double to signed integer");
     m_instructions.push_back(Cvttsd2si{
         std::visit(*this, d.src),
         std::visit(*this, d.dst),
@@ -483,7 +490,7 @@ Operand ASMBuilder::operator()(const tac::DoubleToUInt &d)
     if (basicType == UInt) {
         Comment(m_instructions, "Double to UInt");
         m_instructions.push_back(Cvttsd2si{ src, Reg{ AX, 8 }, Quadword });
-        m_instructions.push_back(Mov{ Reg{ AX, 8 }, dst, Longword });
+        m_instructions.push_back(Mov{ Reg{ AX, 4 }, dst, Longword });
     } else if (basicType == ULong) {
         Comment(m_instructions, "Double to ULong");
 
@@ -511,6 +518,7 @@ Operand ASMBuilder::operator()(const tac::DoubleToUInt &d)
 
 Operand ASMBuilder::operator()(const tac::IntToDouble &i)
 {
+    Comment(m_instructions, "Signed integer to double");
     m_instructions.push_back(Cvtsi2sd{
         std::visit(*this, i.src),
         std::visit(*this, i.dst),
@@ -526,8 +534,8 @@ Operand ASMBuilder::operator()(const tac::UIntToDouble &u)
     BasicType basicType = GetBasicType(u.src);
     if (basicType == UInt) {
         Comment(m_instructions, "UInt to Double");
-        m_instructions.push_back(MovZeroExtend{ src, Reg{ AX, 4 } });
-        m_instructions.push_back(Cvtsi2sd{ Reg{ AX, 4 }, dst, Quadword });
+        m_instructions.push_back(MovZeroExtend{ src, Reg{ AX, 8 } });
+        m_instructions.push_back(Cvtsi2sd{ Reg{ AX, 8 }, dst, Quadword });
     } else if (basicType == ULong) {
         Comment(m_instructions, "ULong to Double");
         std::string oor_label = MakeNameUnique("out_of_range");
@@ -539,7 +547,7 @@ Operand ASMBuilder::operator()(const tac::UIntToDouble &u)
         m_instructions.push_back(Label{ oor_label });
         m_instructions.push_back(Mov{ src, Reg{ AX, 8 }, Quadword });
         m_instructions.push_back(Mov{ Reg{ AX, 8 }, Reg{ DX, 8 }, Quadword });
-        m_instructions.push_back(Binary{ ShiftRU_AB, Reg{ DX, 8 }, Imm{ 1 }, Quadword });
+        m_instructions.push_back(Binary{ ShiftRU_AB, Imm{ 1 }, Reg{ DX, 8 }, Quadword });
         m_instructions.push_back(Binary{ BWAnd_AB, Imm{ 1 }, Reg{ AX, 8 }, Quadword });
         m_instructions.push_back(Binary{ BWOr_AB, Reg{ AX, 8 }, Reg{ DX, 8 }, Quadword });
         m_instructions.push_back(Cvtsi2sd{ Reg{ DX, 8 }, dst, Quadword });
@@ -603,6 +611,8 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
                 stack_params.push_back(std::make_pair(param, type));
         }
     }
+    if (f.params.size() > 0)
+        Comment(func.instructions, "---");
     // The others are on the stack
     // The 8 byte RBP are already on the stack (prologue)
     if (f.params.size() > 6)
@@ -616,9 +626,11 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
         });
         stack_offset += 8;
     }
+    if (f.params.size() > 6)
+        Comment(func.instructions, "---");
 
     // Body
-    ASMBuilder builder(m_symbolTable);
+    ASMBuilder builder(m_symbolTable, m_constants);
     auto body_instructions = builder.ConvertInstructions(f.inst);
     std::copy(body_instructions.begin(),
                 body_instructions.end(),
@@ -641,12 +653,12 @@ Operand ASMBuilder::operator()(const tac::StaticVariable &s)
 std::list<TopLevel> ASMBuilder::ConvertTopLevel(const std::vector<tac::TopLevel> instructions)
 {
     m_topLevel.clear();
-    m_constants.clear();
+    m_constants->clear();
 
     for (auto &inst : instructions)
         std::visit(*this, inst);
 
-    for (auto const &[value, label] : m_constants) {
+    for (auto const &[value, label] : *m_constants) {
         m_topLevel.push_back(StaticConstant{
             .name = label,
             .init = value,
@@ -667,18 +679,13 @@ std::list<Instruction> ASMBuilder::ConvertInstructions(const std::vector<tac::In
 
 std::string ASMBuilder::AddConstant(const ConstantValue &c, const std::string &name)
 {
-    auto it = m_constants.find(c);
-    if (it != m_constants.end())
+    auto it = m_constants->find(c);
+    if (it != m_constants->end())
         return it->second;
     else {
-        m_constants.insert({ c, name });
+        m_constants->insert({ c, name });
         return name;
     }
-}
-
-const std::unordered_map<ConstantValue, std::string> &ASMBuilder::StaticConstants()
-{
-    return m_constants;
 }
 
 }; // assembly

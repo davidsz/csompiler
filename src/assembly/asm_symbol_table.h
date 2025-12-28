@@ -19,8 +19,9 @@ using ASMSymbolEntry = std::variant<ObjEntry, FunEntry>;
 
 class ASMSymbolTable {
 public:
-    ASMSymbolTable(std::shared_ptr<SymbolTable> symbolTable);
-    void InsertStaticConstants(const std::unordered_map<ConstantValue, std::string> &);
+    ASMSymbolTable(
+        std::shared_ptr<SymbolTable> symbolTable,
+        std::shared_ptr<std::unordered_map<ConstantValue, std::string>> constants);
     template <typename T> T *getAs(const std::string &name)
     {
         if (m_table.contains(name))

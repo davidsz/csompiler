@@ -8,7 +8,9 @@ namespace assembly {
 
 class ASMBuilder : public tac::ITACVisitor<Operand> {
 public:
-    ASMBuilder(std::shared_ptr<SymbolTable> symbolTable);
+    ASMBuilder(
+        std::shared_ptr<SymbolTable> symbolTable,
+        std::shared_ptr<std::unordered_map<ConstantValue, std::string>> constants);
 
     Operand operator()(const tac::Return &) override;
     Operand operator()(const tac::Unary &) override;
@@ -38,21 +40,19 @@ public:
     std::list<TopLevel> ConvertTopLevel(const std::vector<tac::TopLevel>);
     std::list<Instruction> ConvertInstructions(const std::vector<tac::Instruction>);
 
-    std::string AddConstant(const ConstantValue &c, const std::string &name);
-    const std::unordered_map<ConstantValue, std::string> &StaticConstants();
-
 private:
     BasicType GetBasicType(const tac::Value &);
     WordType GetWordType(const tac::Value &);
     bool CheckSignedness(const tac::Value &);
     void Comment(std::list<Instruction> &i, const std::string &text);
+    std::string AddConstant(const ConstantValue &c, const std::string &name);
 
     bool m_commentsEnabled = true;
     std::list<TopLevel> m_topLevel;
     std::list<Instruction> m_instructions;
     std::shared_ptr<SymbolTable> m_symbolTable;
     // Keep track of static constants and their IDs to avoid duplications
-    std::unordered_map<ConstantValue, std::string> m_constants;
+    std::shared_ptr<std::unordered_map<ConstantValue, std::string>> m_constants;
 };
 
 }; // assembly

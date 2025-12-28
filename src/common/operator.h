@@ -47,23 +47,24 @@
     X(Not, "!", 75, Unknown_AU)
 
 #define ASM_UNARY_OPERATOR_LIST(X) \
-    X(Unknown_AU, "UNKNOWN_OP_L", "UNKNOWN_OP_Q") \
-    X(Neg_AU, "negl", "negq") \
-    X(Not_AU, "notl", "notq") \
-    X(Shr_AU, "TODO", "TODO")
+    X(Unknown_AU, "UNKNOWN_OP") \
+    X(Neg_AU, "neg") \
+    X(Not_AU, "not")
+    // TODO: Support this "unary" shr?
+    // X(Shr_AU, "shrl", "shrq")
 
 #define ASM_BINARY_OPERATOR_LIST(X) \
-    X(Unknown_AB, "UNKNOWN_OP_L",  "UNKNOWN_OP_Q") \
-    X(Add_AB, "addl", "addq") \
-    X(Sub_AB, "subl", "subq") \
-    X(Mult_AB, "imull", "imulq") \
-    X(ShiftL_AB, "shll", "shlq") \
-    X(ShiftRU_AB, "shrl", "shrq") \
-    X(ShiftRS_AB, "sarl", "sarq") \
-    X(BWAnd_AB, "andl", "andq") \
-    X(BWXor_AB, "xorl", "xorq") \
-    X(BWOr_AB, "orl", "orq") \
-    X(DivDouble_AB, "TODO", "TODO")
+    X(Unknown_AB, "UNKNOWN_OP") \
+    X(Add_AB, "add") \
+    X(Sub_AB, "sub") \
+    X(Mult_AB, "imul") \
+    X(ShiftL_AB, "shl") \
+    X(ShiftRU_AB, "shr") \
+    X(ShiftRS_AB, "sar") \
+    X(BWAnd_AB, "and") \
+    X(BWXor_AB, "xor") \
+    X(BWOr_AB, "or") \
+    X(DivDouble_AB, "div")
 
 DEFINE_OPERATOR(BinaryOperator, BINARY_OPERATOR_LIST);
 DEFINE_OPERATOR(UnaryOperator, UNARY_OPERATOR_LIST);
@@ -72,8 +73,10 @@ DEFINE_ASM_OPERATOR(ASMBinaryOperator, ASM_BINARY_OPERATOR_LIST);
 
 std::string_view toString(BinaryOperator op);
 std::string_view toString(UnaryOperator op);
-std::string_view toString(ASMUnaryOperator op, bool is_long);
-std::string_view toString(ASMBinaryOperator op, bool is_long);
+
+std::string toString(ASMUnaryOperator op, WordType type);
+std::string toString(ASMBinaryOperator op, WordType type);
+std::string AddSuffix(std::string_view instruction, WordType type);
 
 bool isBinaryOperator(std::string_view op);
 bool isUnaryOperator(std::string_view op);
@@ -91,6 +94,7 @@ int getPrecedence(UnaryOperator op);
 
 bool isAssignment(BinaryOperator op);
 bool isCompoundAssignment(BinaryOperator op);
+bool isRelationOperator(BinaryOperator op);
 BinaryOperator compoundToBinary(BinaryOperator op);
 
 BinaryOperator unaryToBinary(UnaryOperator op);

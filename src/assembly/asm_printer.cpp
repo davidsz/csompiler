@@ -3,6 +3,16 @@
 
 namespace assembly {
 
+static std::string getInitializer(WordType type)
+{
+    switch (type) {
+    case Longword:   return ".long";
+    case Quadword:   return ".quad";
+    case Doubleword: return ".double";
+    default: assert(false); return ".zero";
+    }
+}
+
 static std::string getEightByteName(Register reg)
 {
     switch (reg) {
@@ -80,6 +90,9 @@ void ASMPrinter::operator()(const Stack &s)
 
 void ASMPrinter::operator()(const Data &d)
 {
+    ObjEntry *entry = m_symbolTable->getAs<ObjEntry>(d.name);
+    assert(entry);
+    // TODO: Append L
     // TODO: No "_" on Linux
     m_codeStream << "_" << d.name << "(%rip)";
 }
@@ -91,10 +104,7 @@ void ASMPrinter::operator()(const Comment &c)
 
 void ASMPrinter::operator()(const Mov &m)
 {
-    if (m.type == WordType::Longword)
-        m_codeStream << "    movl ";
-    else
-        m_codeStream << "    movq ";
+    m_codeStream << "    " << AddSuffix("mov", m.type) << " ";
     std::visit(*this, m.src);
     m_codeStream << ", ";
     std::visit(*this, m.dst);
@@ -117,14 +127,22 @@ void ASMPrinter::operator()(const MovZeroExtend &)
     // Replaced during instruction fixup
 }
 
-void ASMPrinter::operator()(const Cvttsd2si &)
+void ASMPrinter::operator()(const Cvttsd2si &c)
 {
-
+    m_codeStream << "    " << AddSuffix("cvttsd2si", c.type) << " ";
+    std::visit(*this, c.src);
+    m_codeStream << ", ";
+    std::visit(*this, c.dst);
+    m_codeStream << std::endl;
 }
 
-void ASMPrinter::operator()(const Cvtsi2sd &)
+void ASMPrinter::operator()(const Cvtsi2sd &c)
 {
-
+    m_codeStream << "    " << AddSuffix("cvtsi2sd", c.type) << " ";
+    std::visit(*this, c.src);
+    m_codeStream << ", ";
+    std::visit(*this, c.dst);
+    m_codeStream << std::endl;
 }
 
 void ASMPrinter::operator()(const Ret &)
@@ -139,14 +157,14 @@ void ASMPrinter::operator()(const Ret &)
 
 void ASMPrinter::operator()(const Unary &u)
 {
-    m_codeStream << "    " << toString(u.op, u.type == Longword) << " ";
+    m_codeStream << "    " << toString(u.op, u.type) << " ";
     std::visit(*this, u.src);
     m_codeStream << std::endl;
 }
 
 void ASMPrinter::operator()(const Binary &b)
 {
-    m_codeStream << "    " << toString(b.op, b.type == Longword) << " ";
+    m_codeStream << "    " << toString(b.op, b.type) << " ";
     std::visit(*this, b.src);
     m_codeStream << ", ";
     std::visit(*this, b.dst);
@@ -155,20 +173,14 @@ void ASMPrinter::operator()(const Binary &b)
 
 void ASMPrinter::operator()(const Idiv &i)
 {
-    if (i.type == WordType::Longword)
-        m_codeStream << "    idivl ";
-    else
-        m_codeStream << "    idivq ";
+    m_codeStream << "    " << AddSuffix("idiv", i.type) << " ";
     std::visit(*this, i.src);
     m_codeStream << std::endl;
 }
 
 void ASMPrinter::operator()(const Div &d)
 {
-    if (d.type == WordType::Longword)
-        m_codeStream << "    divl ";
-    else
-        m_codeStream << "    divq ";
+    m_codeStream << "    " << AddSuffix("div", d.type) << " ";
     std::visit(*this, d.src);
     m_codeStream << std::endl;
 }
@@ -177,16 +189,20 @@ void ASMPrinter::operator()(const Cdq &c)
 {
     if (c.type == WordType::Longword)
         m_codeStream << "    cdq" << std::endl;
-    else
+    else if (c.type == Quadword || c.type == Doubleword)
         m_codeStream << "    cqo" << std::endl;
+    else
+        assert(false);
 }
 
 void ASMPrinter::operator()(const Cmp &c)
 {
-    if (c.type == WordType::Longword)
-        m_codeStream << "    cmpl ";
+    if (c.type == Doubleword)
+        m_codeStream << "    comisd ";
+    else if (c.type == Longword || c.type == Quadword)
+        m_codeStream << "    " << AddSuffix("cmp", c.type) << " ";
     else
-        m_codeStream << "    cmpq ";
+        assert(false);
     std::visit(*this, c.lhs);
     m_codeStream << ", ";
     std::visit(*this, c.rhs);
@@ -251,32 +267,38 @@ void ASMPrinter::operator()(const StaticVariable &s)
     if (s.global)
         m_codeStream << ".globl _" << s.name << std::endl;
 
+    Type type = getType(s.init);
+    WordType wordType = type.wordType();
     uint64_t s_init = forceLong(s.init);
-    bool is_long = fitsLongWord(s.init);
-    if (s_init == 0)
-        m_codeStream << ".bss" << std::endl;
-    else
+    if (s_init != 0 || wordType == Doubleword)
         m_codeStream << ".data" << std::endl;
+    else
+        m_codeStream << ".bss" << std::endl;
 
     m_codeStream << ".balign " << s.alignment << std::endl;
     m_codeStream << "_" << s.name << ":" << std::endl;
 
-    if (s_init == 0) {
-        if (is_long)
-            m_codeStream << ".zero 4" << std::endl;
-        else
-            m_codeStream << ".zero 8" << std::endl;
-    } else {
-        if (is_long)
-            m_codeStream << ".long " << s_init << std::endl;
-        else
-            m_codeStream << ".quad " << s_init << std::endl;
-    }
+    if (s_init == 0)
+        m_codeStream << ".zero " << type.size() << std::endl;
+    else
+        m_codeStream << getInitializer(wordType) << " " << s_init << std::endl;
+    m_codeStream << std::endl;
 }
 
-void ASMPrinter::operator()(const StaticConstant &)
+void ASMPrinter::operator()(const StaticConstant &s)
 {
-
+    Type type = getType(s.init);
+    uint64_t s_init = forceLong(s.init);
+    m_codeStream << ".literal" << s.alignment << std::endl;
+    m_codeStream << ".balign " << s.alignment << std::endl;
+    m_codeStream << "_" << s.name << ":" << std::endl;
+    if (s_init == 0)
+        m_codeStream << ".zero " << type.size() << std::endl;
+    else
+        m_codeStream << getInitializer(type.wordType()) << " " << s_init << std::endl;
+    if (s.alignment == 16)
+        m_codeStream << ".quad 0" << std::endl;
+    m_codeStream << std::endl;
 }
 
 void ASMPrinter::operator()(std::monostate)
