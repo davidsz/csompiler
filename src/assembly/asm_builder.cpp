@@ -38,7 +38,7 @@ static std::string toConditionCode(BinaryOperator op, bool unsignedOrDouble)
 
 ASMBuilder::ASMBuilder(
     std::shared_ptr<SymbolTable> symbolTable,
-    std::shared_ptr<std::unordered_map<ConstantValue, std::string>> constants)
+    std::shared_ptr<ConstantMap> constants)
     : m_symbolTable(symbolTable)
     , m_constants(constants)
 {
@@ -100,7 +100,7 @@ Operand ASMBuilder::operator()(const tac::Return &r)
     if (type == Doubleword) {
         m_instructions.push_back(Mov{
             std::visit(*this, r.val),
-            Reg{ XMM0, GetBytesOfWordType(type) },
+            Reg{ XMM0, 8 },
             Doubleword
         });
     } else {
@@ -342,12 +342,12 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
     std::vector<tac::Value> stack_args = {};
     for (size_t i = 0; i < f.args.size(); i++) {
         if (GetWordType(f.args[i]) == Doubleword) {
-            if (i < 8)
+            if (double_register_args.size() < 8)
                 double_register_args.push_back(f.args[i]);
             else
                 stack_args.push_back(f.args[i]);
         } else {
-            if (i < 6)
+            if (integer_register_args.size() < 6)
                 integer_register_args.push_back(f.args[i]);
             else
                 stack_args.push_back(f.args[i]);
@@ -592,7 +592,7 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
         if (type == Doubleword) {
             if (double_c < 8) {
                 func.instructions.push_back(Mov{
-                    Reg{ s_doubleArgRegisters[double_c], GetBytesOfWordType(type) },
+                    Reg{ s_doubleArgRegisters[double_c], 8 },
                     Pseudo{ param },
                     Doubleword
                 });

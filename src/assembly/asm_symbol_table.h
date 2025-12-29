@@ -1,6 +1,7 @@
 #pragma once
 
 #include "asm_nodes.h"
+#include "constant_map.h"
 #include "common/symbol_table.h"
 
 namespace assembly {
@@ -21,7 +22,7 @@ class ASMSymbolTable {
 public:
     ASMSymbolTable(
         std::shared_ptr<SymbolTable> symbolTable,
-        std::shared_ptr<std::unordered_map<ConstantValue, std::string>> constants);
+        std::shared_ptr<ConstantMap> constants);
     template <typename T> T *getAs(const std::string &name)
     {
         if (m_table.contains(name))

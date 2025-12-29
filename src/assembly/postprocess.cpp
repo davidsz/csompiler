@@ -286,7 +286,7 @@ static std::list<Instruction>::iterator postprocessBinary(std::list<Instruction>
             || obj.op == DivDouble_AB
             || obj.op == BWXor_AB)
         && !std::holds_alternative<Reg>(obj.dst)) {
-        // The destination of these can't be a register
+        // The destination of these has to be a register
         auto current = obj;
         it = asmList.erase(it);
         it = asmList.emplace(it, Mov{current.dst, Reg{XMM15, 8}, Doubleword});

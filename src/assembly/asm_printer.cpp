@@ -247,8 +247,8 @@ void ASMPrinter::operator()(const Function &f)
 {
     // TODO: Annotating with _ is specific to MacOS
     if (f.global)
-        m_codeStream << ".globl _" << f.name << std::endl;
-    m_codeStream << ".text" << std::endl;
+        m_codeStream << "    .globl _" << f.name << std::endl;
+    m_codeStream << "    .text" << std::endl;
     m_codeStream << "_" << f.name << ":" << std::endl;
 
     // Prologue
@@ -265,39 +265,38 @@ void ASMPrinter::operator()(const StaticVariable &s)
 {
     // TODO: Annotating with _ is specific to MacOS
     if (s.global)
-        m_codeStream << ".globl _" << s.name << std::endl;
+        m_codeStream << "    .globl _" << s.name << std::endl;
 
     Type type = getType(s.init);
     WordType wordType = type.wordType();
-    uint64_t s_init = forceLong(s.init);
-    if (s_init != 0 || wordType == Doubleword)
-        m_codeStream << ".data" << std::endl;
+    bool isZero = isPositiveZero(s.init);
+    if (!isZero || wordType == Doubleword)
+        m_codeStream << "    .data" << std::endl;
     else
-        m_codeStream << ".bss" << std::endl;
+        m_codeStream << "    .bss" << std::endl;
 
-    m_codeStream << ".balign " << s.alignment << std::endl;
+    m_codeStream << "    .balign " << s.alignment << std::endl;
     m_codeStream << "_" << s.name << ":" << std::endl;
 
-    if (s_init == 0)
-        m_codeStream << ".zero " << type.size() << std::endl;
+    if (isZero)
+        m_codeStream << "    .zero " << type.size() << std::endl;
     else
-        m_codeStream << getInitializer(wordType) << " " << s_init << std::endl;
+        m_codeStream << getInitializer(wordType) << " " << toString(s.init) << std::endl;
     m_codeStream << std::endl;
 }
 
 void ASMPrinter::operator()(const StaticConstant &s)
 {
     Type type = getType(s.init);
-    uint64_t s_init = forceLong(s.init);
-    m_codeStream << ".literal" << s.alignment << std::endl;
-    m_codeStream << ".balign " << s.alignment << std::endl;
+    m_codeStream << "    .literal" << s.alignment << std::endl;
+    m_codeStream << "    .balign " << s.alignment << std::endl;
     m_codeStream << "_" << s.name << ":" << std::endl;
-    if (s_init == 0)
-        m_codeStream << ".zero " << type.size() << std::endl;
+    if (isPositiveZero(s.init))
+        m_codeStream << "    .zero " << type.size() << std::endl;
     else
-        m_codeStream << getInitializer(type.wordType()) << " " << s_init << std::endl;
+        m_codeStream << "    " << getInitializer(type.wordType()) << " " << toString(s.init) << std::endl;
     if (s.alignment == 16)
-        m_codeStream << ".quad 0" << std::endl;
+        m_codeStream << "    .quad 0" << std::endl;
     m_codeStream << std::endl;
 }
 

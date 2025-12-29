@@ -2,6 +2,7 @@
 
 #include "asm_nodes.h"
 #include "asm_symbol_table.h"
+#include "constant_map.h"
 #include "tac/tac_visitor.h"
 
 namespace assembly {
@@ -10,7 +11,7 @@ class ASMBuilder : public tac::ITACVisitor<Operand> {
 public:
     ASMBuilder(
         std::shared_ptr<SymbolTable> symbolTable,
-        std::shared_ptr<std::unordered_map<ConstantValue, std::string>> constants);
+        std::shared_ptr<ConstantMap> constants);
 
     Operand operator()(const tac::Return &) override;
     Operand operator()(const tac::Unary &) override;
@@ -52,7 +53,7 @@ private:
     std::list<Instruction> m_instructions;
     std::shared_ptr<SymbolTable> m_symbolTable;
     // Keep track of static constants and their IDs to avoid duplications
-    std::shared_ptr<std::unordered_map<ConstantValue, std::string>> m_constants;
+    std::shared_ptr<ConstantMap> m_constants;
 };
 
 }; // assembly

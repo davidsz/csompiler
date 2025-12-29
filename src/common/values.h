@@ -12,6 +12,7 @@ std::string toLabel(const ConstantValue &v);
 Type getType(const ConstantValue &v);
 bool fitsLongWord(const ConstantValue &v);
 uint64_t forceLong(const ConstantValue &v);
+bool isPositiveZero(const ConstantValue &v);
 
 ConstantValue ConvertValue(const ConstantValue &v, const Type &t);
 ConstantValue MakeConstantValue(long value, const Type &type);

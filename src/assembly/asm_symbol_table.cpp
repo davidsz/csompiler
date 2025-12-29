@@ -5,7 +5,7 @@ namespace assembly {
 
 ASMSymbolTable::ASMSymbolTable(
     std::shared_ptr<SymbolTable> symbolTable,
-    std::shared_ptr<std::unordered_map<ConstantValue, std::string>> constants)
+    std::shared_ptr<ConstantMap> constants)
 {
     for (const auto &[name, entry] : symbolTable->m_table) {
         if (entry.type.getAs<BasicType>()) {

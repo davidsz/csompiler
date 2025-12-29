@@ -17,7 +17,7 @@ static Type getCommonType(const Type &first, const Type &second)
     if (first.t == second.t)
         return first;
     if (first.isBasic(Double) || second.isBasic(Double))
-        return first;
+        return Type{ BasicType::Double };
     if (first.size() == second.size())
         return first.isSigned() ? second : first;
     return first.size() > second.size() ? first : second;
@@ -91,6 +91,13 @@ Type TypeChecker::operator()(BinaryExpression &b)
     if (b.op == BinaryOperator::Remainder
         && (left_type.isBasic(Double) || right_type.isBasic(Double)))
         Abort("The type of a binary remainder operation can't be double.");
+
+    if (b.op == LeftShift || b.op == RightShift) {
+        // The right operand of shift operators need an integer promotion
+        b.rhs = explicitCast(std::move(b.rhs), right_type, Type{ BasicType::Int });
+        b.type = left_type;
+        return b.type;
+    }
 
     Type common_type = getCommonType(left_type, right_type);
     b.lhs = explicitCast(std::move(b.lhs), left_type, common_type);

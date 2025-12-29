@@ -2,6 +2,7 @@
 #include "asm_builder.h"
 #include "asm_printer.h"
 #include "asm_symbol_table.h"
+#include "constant_map.h"
 #include "postprocess.h"
 
 namespace assembly {
@@ -11,8 +12,7 @@ std::string from_tac(
     std::shared_ptr<SymbolTable> symbolTable)
 {
     // Use one constant dictionary across all ASMBuilders
-    std::shared_ptr<std::unordered_map<ConstantValue, std::string>> constants =
-        std::make_shared<std::unordered_map<ConstantValue, std::string>>();
+    std::shared_ptr<ConstantMap> constants = std::make_shared<ConstantMap>();
 
     ASMBuilder tacToAsm(symbolTable, constants);
     std::list<TopLevel> asmList = tacToAsm.ConvertTopLevel(tacVector);

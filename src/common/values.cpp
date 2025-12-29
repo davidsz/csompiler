@@ -3,8 +3,19 @@
 
 std::string toString(const ConstantValue &v)
 {
-    return std::visit([](auto x) {
-        return std::to_string(x);
+    return std::visit([](auto x) -> std::string {
+        using T = std::decay_t<decltype(x)>;
+        if constexpr (std::is_same_v<T, double>) {
+            // Round-trip safe double formatting
+            std::array<char, 64> buf;
+            auto [ptr, ec] =
+                std::to_chars(buf.data(),
+                              buf.data() + buf.size(),
+                              x,
+                              std::chars_format::general);
+            return std::string(buf.data(), ptr);
+        } else
+            return std::to_string(x);
     }, v);
 }
 
@@ -56,6 +67,20 @@ uint64_t forceLong(const ConstantValue &v)
 {
     return std::visit([&](auto value) {
         return static_cast<uint64_t>(value);
+    }, v);
+}
+
+bool isPositiveZero(const ConstantValue &v) {
+    return std::visit([](const auto &x) -> bool {
+        using T = std::decay_t<decltype(x)>;
+        if constexpr (std::is_floating_point_v<T>) {
+            uint64_t bits;
+            std::memcpy(&bits, &x, sizeof(x));
+            return bits == 0; // true for +0.0, false for -0.0
+        } else if constexpr (std::is_integral_v<T>)
+            return x == 0;
+        else
+            return false;
     }, v);
 }
 

@@ -1,7 +1,9 @@
 #include "ast_builder.h"
 #include "ast_nodes.h"
 #include <cassert>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 
 namespace parser {
@@ -203,9 +205,11 @@ Expression ASTBuilder::ParseNumericLiteral()
     if (literal.contains('E') || literal.contains('e') || literal.contains('.')) {
         // Floating point
         // These numbers can have L suffixes, but we don't implement it.
-        // It seems std::stod() can't parse too long (but still representable) doubles,
-        // so we parse it as long double and cast.
-        return ConstantExpression{ static_cast<double>(std::stold(literal)) };
+        std::istringstream iss(literal);
+        iss >> std::setprecision(std::numeric_limits<double>::max_digits10);
+        double value;
+        iss >> value;
+        return ConstantExpression{ value };
     } else if (hasU) {
         // Unsigned
         unsigned long value = std::stoul(literal);
@@ -343,7 +347,7 @@ Statement ASTBuilder::ParseFor()
 
     // Condition
     next = Peek();
-    if (next->type() != TokenType::Punctator)
+    if (next->value() != ";")
         ret.condition = unique_expression(ParseExpression(0));
     Consume(TokenType::Punctator, ";");
 
