@@ -39,6 +39,25 @@ static std::unique_ptr<Expression> explicitCast(
     return ret;
 }
 
+// This is a terrible hack. When a double value stands as a conditional
+// expression, we double-negate it just to wrap it into an expression, which
+// can be processed during the assembly generation. There are logics implemented
+// in ASM to handle that case where the double is a NaN value.
+// TODO: Maybe wrap it into a "pseudo-expression" to optimize it out in assembly?
+static std::unique_ptr<Expression> notNot(std::unique_ptr<Expression> expr)
+{
+    auto ret = std::make_unique<Expression>(UnaryExpression{
+        .op = UnaryOperator::Not,
+        .expr = std::make_unique<Expression>(UnaryExpression{
+            .op = UnaryOperator::Not,
+            .expr = std::move(expr),
+            .type = Type{ BasicType::Int }
+        }),
+        .type = Type{ BasicType::Int }
+    });
+    return ret;
+}
+
 Type TypeChecker::operator()(ConstantExpression &c)
 {
     c.type = getType(c.value);
@@ -88,9 +107,15 @@ Type TypeChecker::operator()(BinaryExpression &b)
         return b.type;
     }
 
-    if (b.op == BinaryOperator::Remainder
-        && (left_type.isBasic(Double) || right_type.isBasic(Double)))
-        Abort("The type of a binary remainder operation can't be double.");
+    if (left_type.isBasic(Double) || right_type.isBasic(Double)) {
+        if (b.op == BinaryOperator::Remainder
+            || b.op == BinaryOperator::LeftShift
+            || b.op == BinaryOperator::RightShift
+            || b.op == BinaryOperator::BitwiseAnd
+            || b.op == BinaryOperator::BitwiseXor
+            || b.op == BinaryOperator::BitwiseOr)
+            Abort("The type of the binary operation can't be double.");
+    }
 
     if (b.op == LeftShift || b.op == RightShift) {
         // The right operand of shift operators need an integer promotion
@@ -124,7 +149,9 @@ Type TypeChecker::operator()(AssignmentExpression &a)
 
 Type TypeChecker::operator()(ConditionalExpression &c)
 {
-    std::visit(*this, *c.condition);
+    Type condition_type = std::visit(*this, *c.condition);
+    if (condition_type.isBasic(Double))
+        c.condition = notNot(std::move(c.condition));
     Type true_type = std::visit(*this, *c.trueBranch);
     Type false_type = std::visit(*this, *c.falseBranch);
     Type common_type = getCommonType(true_type, false_type);
@@ -165,7 +192,9 @@ Type TypeChecker::operator()(ReturnStatement &r)
 
 Type TypeChecker::operator()(IfStatement &i)
 {
-    std::visit(*this, *i.condition);
+    Type condition_type = std::visit(*this, *i.condition);
+    if (condition_type.isBasic(Double))
+        i.condition = notNot(std::move(i.condition));
     std::visit(*this, *i.trueBranch);
     if (i.falseBranch)
         std::visit(*this, *i.falseBranch);
@@ -213,7 +242,9 @@ Type TypeChecker::operator()(ContinueStatement &)
 
 Type TypeChecker::operator()(WhileStatement &w)
 {
-    std::visit(*this, *w.condition);
+    Type condition_type = std::visit(*this, *w.condition);
+    if (condition_type.isBasic(Double))
+        w.condition = notNot(std::move(w.condition));
     std::visit(*this, *w.body);
     return Type{ std::monostate() };
 }
@@ -221,7 +252,9 @@ Type TypeChecker::operator()(WhileStatement &w)
 Type TypeChecker::operator()(DoWhileStatement &d)
 {
     std::visit(*this, *d.body);
-    std::visit(*this, *d.condition);
+    Type condition_type = std::visit(*this, *d.condition);
+    if (condition_type.isBasic(Double))
+        d.condition = notNot(std::move(d.condition));
     return Type{ std::monostate() };
 }
 
@@ -232,8 +265,11 @@ Type TypeChecker::operator()(ForStatement &f)
         std::visit(*this, *f.init);
         m_forLoopInitializer = false;
     }
-    if (f.condition)
-        std::visit(*this, *f.condition);
+    if (f.condition) {
+        Type condition_type = std::visit(*this, *f.condition);
+        if (condition_type.isBasic(Double))
+            f.condition = notNot(std::move(f.condition));
+    }
     if (f.update)
         std::visit(*this, *f.update);
     std::visit(*this, *f.body);
@@ -244,6 +280,10 @@ Type TypeChecker::operator()(SwitchStatement &s)
 {
     m_switches.push_back(&s);
     s.type = std::visit(*this, *s.condition);
+
+    if (s.type.isBasic(Double))
+        Abort("The type of a switch statement can't be double.");
+
     std::visit(*this, *s.body);
     m_switches.pop_back();
     return Type{ std::monostate() };
@@ -251,7 +291,11 @@ Type TypeChecker::operator()(SwitchStatement &s)
 
 Type TypeChecker::operator()(CaseStatement &c)
 {
-    std::visit(*this, *c.condition);
+    Type type = std::visit(*this, *c.condition);
+
+    if (type.isBasic(Double))
+        Abort("The type of a case statement can't be double.");
+
     if (auto expr = std::get_if<ConstantExpression>(c.condition.get())) {
         SwitchStatement *s = m_switches.back();
         // We use the converted value to create the label

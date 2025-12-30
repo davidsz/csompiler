@@ -64,7 +64,7 @@ Value TACBuilder::operator()(const parser::UnaryExpression &u)
         Binary mutation = Binary{
             unaryToBinary(u.op),
             target,
-            Constant{ 1 },
+            Constant{ MakeConstantValue(1, u.type) },
             target
         };
         if (u.postfix) {
@@ -343,7 +343,9 @@ Value TACBuilder::operator()(const parser::FunctionDeclaration &f)
         // Avoid undefined behavior in functions where there is no return.
         // If it already had a return, this extra one won't be executed
         // and will be optimised out in later stages.
-        func.inst.push_back(Return{ Constant{ 0 } });
+        const FunctionType *type = f.type.getAs<FunctionType>();
+        assert(type);
+        func.inst.push_back(Return{ Constant{ MakeConstantValue(0, *(type->ret)) } });
     }
 
     if (const SymbolEntry *entry = m_symbolTable->get(f.name))

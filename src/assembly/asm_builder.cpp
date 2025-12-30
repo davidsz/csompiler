@@ -117,17 +117,29 @@ Operand ASMBuilder::operator()(const tac::Return &r)
 Operand ASMBuilder::operator()(const tac::Unary &u)
 {
     WordType srcType = GetWordType(u.src);
+    WordType dstType = GetWordType(u.dst);
     Operand src = std::visit(*this, u.src);
     Operand dst = std::visit(*this, u.dst);
+
+    // !x is equivalent to x==0, so we implement it as a binary comparison
     if (u.op == UnaryOperator::Not) {
-        // !x is equivalent to x==0, so we implement it as a binary comparison
         if (srcType == Doubleword) {
-            m_instructions.push_back(Binary{ BWXor_AB, Reg{ XMM0 }, Reg{ XMM0 }, srcType });
-            m_instructions.push_back(Cmp{ Reg{ XMM0 }, src, srcType });
-        } else
+            // Label for handling a potentional unordered (NaN) case
+            std::string end_label = MakeNameUnique("end_not");
+            m_instructions.push_back(Binary{ BWXor_AB, Reg{ XMM0, 8 }, Reg{ XMM0, 8 }, srcType });
+            m_instructions.push_back(Cmp{ Reg{ XMM0, 8 }, src, srcType });
+            // NaN evaluates to non-zero, !NaN is zero,
+            // so we always zero the destination out
+            m_instructions.push_back(Mov{ Imm{ 0 }, dst, dstType });
+            // Perform the SetCC instruction only for ordered operations
+            m_instructions.push_back(JmpCC{ "p", end_label });
+            m_instructions.push_back(SetCC{ "e", dst });
+            m_instructions.push_back(Label{ end_label });
+        } else {
             m_instructions.push_back(Cmp{ Imm{ 0 }, src, srcType });
-        m_instructions.push_back(Mov{ Imm{ 0 }, dst, GetWordType(u.dst) });
-        m_instructions.push_back(SetCC{ "e", dst });
+            m_instructions.push_back(Mov{ Imm{ 0 }, dst, dstType });
+            m_instructions.push_back(SetCC{ "e", dst });
+        }
         return std::monostate();
     }
 
@@ -161,23 +173,16 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
     WordType dstType = GetWordType(b.dst);
     bool isSigned = CheckSignedness(b.src1);
     ASMBinaryOperator op = toASMBinaryOperator(b.op, srcType, isSigned);
-    Operand destination = std::visit(*this, b.dst);
+    Operand src1 = std::visit(*this, b.src1);
+    Operand src2 = std::visit(*this, b.src2);
+    Operand dst = std::visit(*this, b.dst);
 
     // Easier binary operators with common format:
     // Add, Subtract, Multiply...
     if (op != ASMBinaryOperator::Unknown_AB) {
         Comment(m_instructions, std::format("Binary operator {}", toString(b.op)));
-        m_instructions.push_back(Mov{
-            std::visit(*this, b.src1),
-            destination,
-            srcType
-        });
-        m_instructions.push_back(Binary{
-            op,
-            std::visit(*this, b.src2),
-            destination,
-            srcType
-        });
+        m_instructions.push_back(Mov{ src1, dst, srcType });
+        m_instructions.push_back(Binary{ op, src2, dst, srcType });
         Comment(m_instructions, "---");
         return std::monostate();
     }
@@ -186,34 +191,18 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
     if (b.op == BinaryOperator::Divide || b.op == BinaryOperator::Remainder) {
         Comment(m_instructions, std::format("Binary operator {}", toString(b.op)));
         uint8_t bytes = GetBytesOfWordType(srcType);
-        m_instructions.push_back(Mov{
-            std::visit(*this, b.src1),
-            Reg{ AX, bytes },
-            srcType
-        });
+        m_instructions.push_back(Mov{ src1, Reg{ AX, bytes }, srcType });
         if (isSigned) {
-            m_instructions.push_back(Cdq{
-                srcType
-            });
-            m_instructions.push_back(Idiv{
-                std::visit(*this, b.src2),
-                srcType
-            });
+            m_instructions.push_back(Cdq{ srcType });
+            m_instructions.push_back(Idiv{ src2, srcType });
         } else {
-            m_instructions.push_back(Mov{
-                Imm{ 0 },
-                Reg{ DX, bytes },
-                srcType
-            });
-            m_instructions.push_back(Div{
-                std::visit(*this, b.src2),
-                srcType
-            });
+            m_instructions.push_back(Mov{ Imm{ 0 }, Reg{ DX, bytes }, srcType });
+            m_instructions.push_back(Div{ src2, srcType });
         }
         m_instructions.push_back(Mov{
             (b.op == BinaryOperator::Divide
                 ? Reg{ AX, bytes } : Reg{ DX, bytes }),
-            destination,
+            dst,
             srcType
         });
         Comment(m_instructions, "---");
@@ -223,23 +212,35 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
     // Equal, NotEqual, LessThan, LessOrEqual, GreaterThan, GreaterOrEqual
     if (isRelationOperator(b.op)) {
         Comment(m_instructions, std::format("Relational operator {}", toString(b.op)));
-        // Comparing arguments; result stored in RFLAGS
-        m_instructions.push_back(Cmp{
-            std::visit(*this, b.src2),
-            std::visit(*this, b.src1),
-            srcType
-        });
-        // Null out the destination before placing the condition result in
-        m_instructions.push_back(Mov{
-            Imm{ 0 },
-            destination,
-            dstType
-        });
-        // Conditionally set the lowest byte of the destination according to RFLAGS
-        m_instructions.push_back(SetCC{
-            toConditionCode(b.op, !isSigned || srcType == Doubleword),
-            destination
-        });
+        if (srcType == Doubleword) {
+            // Labels for handling a potentional unordered (NaN) case
+            std::string unordered_label = MakeNameUnique("unordered_comparison");
+            std::string end_label = MakeNameUnique("end_comparison");
+            // Comparing arguments; result stored in RFLAGS
+            m_instructions.push_back(Cmp{ src2, src1, srcType });
+            // The jp instruction jumps only in case of NaN comparison
+            m_instructions.push_back(JmpCC{ "p", unordered_label });
+            // Null out the destination before placing the condition result in
+            m_instructions.push_back(Mov{ Imm{ 0 }, dst, dstType });
+            // Conditionally set the lowest byte of the destination according to RFLAGS
+            m_instructions.push_back(SetCC{ toConditionCode(b.op, true), dst });
+            m_instructions.push_back(Jmp{ end_label });
+            m_instructions.push_back(Label{ unordered_label });
+            // NaN != x is always true, other comparisons are always false
+            m_instructions.push_back(Mov{
+                Imm{ static_cast<uint64_t>(b.op == BinaryOperator::NotEqual ? 1 : 0) },
+                dst,
+                dstType
+            });
+            m_instructions.push_back(Label{ end_label });
+        } else {
+            // Comparing arguments; result stored in RFLAGS
+            m_instructions.push_back(Cmp{ src2, src1, srcType });
+            // Null out the destination before placing the condition result in
+            m_instructions.push_back(Mov{ Imm{ 0 }, dst, dstType });
+            // Conditionally set the lowest byte of the destination according to RFLAGS
+            m_instructions.push_back(SetCC{ toConditionCode(b.op, !isSigned), dst });
+        }
         Comment(m_instructions, "---");
         return std::monostate();
     }

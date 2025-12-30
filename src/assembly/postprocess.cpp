@@ -122,17 +122,6 @@ static bool isEightBytesImm(const Operand &op)
 static std::list<Instruction>::iterator postprocessMov(std::list<Instruction> &asmList, std::list<Instruction>::iterator it)
 {
     auto &obj = std::get<Mov>(*it);
-    if (obj.type == WordType::Doubleword) {
-        // MOVSD instruction can't use an immediate value as a source
-        if (std::holds_alternative<Imm>(obj.src) || isMemoryAddress(obj.dst)) {
-            auto current = obj;
-            it = asmList.erase(it);
-            it = asmList.emplace(it, Mov{ current.src, Reg{ XMM14, 8 }, Doubleword });
-            it = asmList.emplace(std::next(it), Mov{ Reg{ XMM14, 8 }, Reg{ XMM15, 8 }, Doubleword });
-            it = asmList.emplace(std::next(it), Mov{ Reg{ XMM15, 8}, current.dst, Doubleword });
-        }
-    }
-
     // MOV instruction can't have memory addresses both in source and destination
     if ((isMemoryAddress(obj.src) && isMemoryAddress(obj.dst))
         || obj.type == WordType::Quadword) {
@@ -285,12 +274,13 @@ static std::list<Instruction>::iterator postprocessBinary(std::list<Instruction>
             || obj.op == Mult_AB
             || obj.op == DivDouble_AB
             || obj.op == BWXor_AB)
-        && !std::holds_alternative<Reg>(obj.dst)) {
+        && (!isMemoryAddress(obj.src) || !std::holds_alternative<Reg>(obj.dst))) {
         // The destination of these has to be a register
         auto current = obj;
         it = asmList.erase(it);
-        it = asmList.emplace(it, Mov{current.dst, Reg{XMM15, 8}, Doubleword});
-        it = asmList.emplace(std::next(it), Binary{current.op, current.src, Reg{XMM15, 8}, Doubleword});
+        it = asmList.emplace(it, Mov{current.src, Reg{XMM14, 8}, Doubleword});
+        it = asmList.emplace(std::next(it), Mov{current.dst, Reg{XMM15, 8}, Doubleword});
+        it = asmList.emplace(std::next(it), Binary{current.op, Reg{XMM14, 8}, Reg{XMM15, 8}, Doubleword});
         it = asmList.emplace(std::next(it), Mov{Reg{XMM15, 8}, current.dst, Doubleword});
     } else if (obj.type == Doubleword && (obj.op == BWAnd_AB || obj.op == BWOr_AB)) {
         // These instructions can't have memory addresses both in source and destination
