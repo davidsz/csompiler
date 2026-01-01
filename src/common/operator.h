@@ -44,7 +44,9 @@
     X(Decrement, "--", 75, Unknown_AU) \
     X(Increment, "++", 75, Unknown_AU) \
     X(BitwiseComplement, "~", 75, Not_AU) \
-    X(Not, "!", 75, Unknown_AU)
+    X(Not, "!", 75, Unknown_AU) \
+    X(Dereference, "*", 75, Unknown_AU) \
+    X(AddressOf, "&", 75, Unknown_AU)
 
 #define ASM_UNARY_OPERATOR_LIST(X) \
     X(Unknown_AU, "UNKNOWN_OP") \

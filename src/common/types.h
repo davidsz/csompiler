@@ -54,10 +54,16 @@ struct FunctionType {
     bool operator==(const FunctionType &other) const;
 };
 
+struct PointerType {
+    std::shared_ptr<Type> referenced;
+    bool operator==(const PointerType &other) const;
+};
+
 using TypeInfo = std::variant<
     std::monostate,
     BasicType,
-    FunctionType
+    FunctionType,
+    PointerType
 >;
 
 struct Type {

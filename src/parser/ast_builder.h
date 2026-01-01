@@ -46,7 +46,24 @@ private:
     BlockItem ParseBlockItem();
     Statement ParseStatement();
 
+    struct IdentifierDeclarator;
+    struct PointerDeclarator;
+    struct FunctionDeclarator;
+    struct DeclaratorParam;
+    using Declarator = std::variant<
+        IdentifierDeclarator, PointerDeclarator, FunctionDeclarator>;
+
+    struct AbstractBaseDeclarator;
+    struct AbstractPointerDeclarator;
+    using AbstractDeclarator = std::variant<
+        AbstractBaseDeclarator, AbstractPointerDeclarator>;
+
     Declaration ParseDeclaration(bool allow_function = true);
+    Declarator ParseDeclarator();
+    std::tuple<std::string, Type, std::vector<std::string>>
+        ProcessDeclarator(const Declarator &, const Type &);
+    AbstractDeclarator ParseAbstractDeclarator();
+    Type ProcessAbstractDeclarator(const AbstractDeclarator &, const Type &);
 
     // Parse type names and storage classes
     std::pair<StorageClass, Type> ParseTypeSpecifierList();

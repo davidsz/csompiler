@@ -180,6 +180,16 @@ Type TypeChecker::operator()(FunctionCallExpression &f)
     return Type{ std::monostate() };
 }
 
+Type TypeChecker::operator()(DereferenceExpression &)
+{
+    return Type{ std::monostate() };
+}
+
+Type TypeChecker::operator()(AddressOfExpression &)
+{
+    return Type{ std::monostate() };
+}
+
 Type TypeChecker::operator()(ReturnStatement &r)
 {
     Type ret_type = std::visit(*this, *r.expr);

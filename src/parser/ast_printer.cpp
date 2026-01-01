@@ -82,6 +82,20 @@ void ASTPrinter::operator()(const FunctionCallExpression &f)
         std::cout << "typeless" << std::endl;
 }
 
+void ASTPrinter::operator()(const DereferenceExpression &d)
+{
+    pad(); std::cout << "DereferenceExpression( " << d.type << std::endl;;
+    tab(); std::visit(*this, *d.expr); shift_tab();
+    pad(); std::cout << ") " << std::endl;
+}
+
+void ASTPrinter::operator()(const AddressOfExpression &a)
+{
+    pad(); std::cout << "AddressOfExpression( " << a.type << std::endl;;
+    tab(); std::visit(*this, *a.expr); shift_tab();
+    pad(); std::cout << ") " << std::endl;
+}
+
 void ASTPrinter::operator()(const ReturnStatement &r)
 {
     pad(); std::cout << "Return" << std::endl;

@@ -13,6 +13,26 @@ struct SyntaxError : public std::runtime_error
     explicit SyntaxError(const std::string &message) : std::runtime_error(message) {}
 };
 
+struct ASTBuilder::DeclaratorParam {
+    Type type;
+    std::unique_ptr<Declarator> declarator;
+};
+struct ASTBuilder::IdentifierDeclarator {
+    std::string identifier;
+};
+struct ASTBuilder::PointerDeclarator {
+    std::unique_ptr<Declarator> inner_declarator;
+};
+struct ASTBuilder::FunctionDeclarator {
+    std::vector<DeclaratorParam> params;
+    std::unique_ptr<Declarator> inner_declarator;
+};
+
+struct ASTBuilder::AbstractBaseDeclarator {};
+struct ASTBuilder::AbstractPointerDeclarator {
+    std::unique_ptr<AbstractDeclarator> inner_declarator;
+};
+
 ASTBuilder::ASTBuilder(const std::list<lexer::Token> &tokens)
     : m_tokens(tokens)
     , m_pos(tokens.begin())
@@ -127,7 +147,9 @@ Expression ASTBuilder::ParseFactor()
         if (Peek()->type() == TokenType::Keyword) {
             LOG("CastExpression");
             auto ret = CastExpression{};
-            ret.target_type = ParseTypes();
+            Type base_type = ParseTypes();
+            AbstractDeclarator declarator = ParseAbstractDeclarator();
+            ret.target_type = ProcessAbstractDeclarator(declarator, base_type);
             Consume(TokenType::Punctator, ")");
             // Expression will include the next unary expression,
             // but the precedence is higher than binary expressions.
@@ -157,7 +179,14 @@ Expression ASTBuilder::ParseFactor()
     if (next->type() == TokenType::Operator && isUnaryOperator(next->value())) {
         UnaryOperator op = toUnaryOperator(Consume(TokenType::Operator));
         auto expr = ParseExpression(getPrecedence(op) + 1);
-        return UnaryExpression{ op, UE(expr), false };
+        // AddressOf and Dereference are unary expressions, but we create different node
+        // types for them; we will handle them much differently later
+        if (op == UnaryOperator::AddressOf)
+            return AddressOfExpression{ UE(expr) };
+        else if (op == UnaryOperator::Dereference)
+            return DereferenceExpression{ UE(expr) };
+        else
+            return UnaryExpression{ op, UE(expr), false };
     }
 
     assert(false);
@@ -471,36 +500,20 @@ Declaration ASTBuilder::ParseDeclaration(bool allow_function)
 {
     LOG("ParseDeclaration");
     auto [storage, type] = ParseTypeSpecifierList();
-    std::string identifier = Consume(TokenType::Identifier);
+
+    Declarator declarator = ParseDeclarator();
+    LOG("ParseDeclarator END");
+    const auto &[identifier, derived_type, param_names] = ProcessDeclarator(declarator, type);
 
     auto next = Peek();
-    if (allow_function && next->type() == TokenType::Punctator && next->value() == "(") {
+    if (derived_type.getAs<FunctionType>()) {
+        if (!allow_function)
+            Abort("Function declaration is not allowed");
         // Function declaration
         auto func = FunctionDeclaration{};
         func.storage = storage;
-        func.type = Type{ .t = FunctionType{
-            .ret = std::make_shared<Type>(type)
-        }};
+        func.type = derived_type;
         func.name = std::move(identifier);
-        Consume(TokenType::Punctator, "(");
-        next = Peek();
-        // 'void' must be there in empty parameter lists
-        if (next->type() == TokenType::Keyword && next->value() == "void")
-            Consume(TokenType::Keyword);
-        else {
-            FunctionType *func_type = func.type.getAs<FunctionType>();
-            while (next->value() != ")") {
-                if (next->value() == ",")
-                    Consume(TokenType::Operator, ",");
-                // Type names
-                func_type->params.push_back(std::make_shared<Type>(ParseTypes()));
-                // Parameter identifier
-                func.params.push_back(Consume(TokenType::Identifier));
-                next = Peek();
-            }
-        }
-        Consume(TokenType::Punctator, ")");
-
         next = Peek();
         if (next->type() == TokenType::Punctator && next->value() == "{")
             func.body = unique_statement(ParseBlock());
@@ -524,6 +537,133 @@ Declaration ASTBuilder::ParseDeclaration(bool allow_function)
     }
     assert(false);
     return VariableDeclaration{};
+}
+
+ASTBuilder::Declarator ASTBuilder::ParseDeclarator()
+{
+    // <declarator> ::= "*" <declarator> | <direct-declarator>
+    // <direct-declarator> ::= <simple-declarator> [ <param-list> ]
+    // <simple-declarator> ::= <identifier> | "(" <declarator> ")"
+    // <param-list> ::= "(" "void" ")" | "(" <param> { "," <param> } ")"
+    // <param> ::= { <type-specifier> }+ <declarator>
+
+    LOG("ParseDeclarator (recursive)");
+    auto next = Peek();
+    // <declarator> ::= "*" <declarator> | <direct-declarator>
+    if (next->type() == TokenType::Operator && next->value() == "*") {
+        // "*" <declarator>
+        Consume(TokenType::Operator, "*");
+        return PointerDeclarator{
+            std::make_unique<Declarator>(ParseDeclarator())
+        };
+    } else {
+        // <direct-declarator> ::= <simple-declarator> [ <param-list> ]
+        Declarator direct_declarator;
+        // <simple-declarator> ::= <identifier> | "(" <declarator> ")"
+        Declarator simple_declarator;
+        if (next->type() == TokenType::Punctator && next->value() == "(") {
+            Consume(TokenType::Punctator, "(");
+            simple_declarator = ParseDeclarator();
+            Consume(TokenType::Punctator, ")");
+        } else {
+            std::string identifier = Consume(TokenType::Identifier);
+            simple_declarator = IdentifierDeclarator{ identifier };
+        }
+        next = Peek();
+        // <param-list> ::= "(" "void" ")" | "(" <param> { "," <param> } ")"
+        if (next->type() == TokenType::Punctator && next->value() == "(") {
+            FunctionDeclarator func_declarator = FunctionDeclarator{};
+            Consume(TokenType::Punctator, "(");
+            if (Peek()->value() == "void" && Peek(1)->value() == ")")
+                Consume(TokenType::Keyword, "void");
+            else {
+                while (next->value() != ")") {
+                    if (next->value() == ",")
+                        Consume(TokenType::Operator, ",");
+                    // <param> ::= { <type-specifier> }+ <declarator>
+                    func_declarator.params.emplace_back(DeclaratorParam{
+                        ParseTypes(),
+                        std::make_unique<Declarator>(ParseDeclarator())
+                    });
+                    next = Peek();
+                }
+            }
+            Consume(TokenType::Punctator, ")");
+            func_declarator.inner_declarator = std::make_unique<Declarator>(std::move(simple_declarator));
+            direct_declarator.emplace<FunctionDeclarator>(std::move(func_declarator));
+        } else {
+            direct_declarator = std::move(simple_declarator);
+        }
+        return direct_declarator;
+    }
+}
+
+std::tuple<std::string, Type, std::vector<std::string>>
+ASTBuilder::ProcessDeclarator(const Declarator &declarator, const Type &base_type)
+{
+    LOG("ProcessDeclarator (recursive)");
+    if (auto id = std::get_if<IdentifierDeclarator>(&declarator))
+        return std::make_tuple(id->identifier, base_type, std::vector<std::string>{});
+    else if (auto ptr = std::get_if<PointerDeclarator>(&declarator)) {
+        Type derived_type = Type{ PointerType{ std::make_shared<Type>(base_type) } };
+        return ProcessDeclarator(*ptr->inner_declarator, derived_type);
+    } else if (auto func = std::get_if<FunctionDeclarator>(&declarator)) {
+        if (auto func_id = std::get_if<IdentifierDeclarator>(func->inner_declarator.get())) {
+            FunctionType func_type = FunctionType{
+                .ret = std::make_shared<Type>(base_type)
+            };
+            std::vector<std::string> param_names;
+            for (auto &param : func->params) {
+                const auto &[param_name, param_type, _] = ProcessDeclarator(*param.declarator, param.type);
+                if (std::holds_alternative<FunctionType>(param_type.t))
+                    Abort("Function pointers are not supported yet.");
+                param_names.push_back(param_name);
+                func_type.params.push_back(std::make_shared<Type>(param_type));
+            }
+            return std::make_tuple(func_id->identifier, Type{ func_type }, param_names);
+        } else
+            Abort("Can't apply additional type derivations to a function type");
+    } else
+        assert(false);
+    return std::make_tuple("", Type{}, std::vector<std::string>{});
+}
+
+ASTBuilder::AbstractDeclarator ASTBuilder::ParseAbstractDeclarator()
+{
+    // <abstract-declarator> ::= "*" [ <abstract-declarator> ]
+    // | <direct-abstract-declarator>
+    // <direct-abstract-declarator> ::= "(" <abstract-declarator> ")"
+
+    LOG("ParseAbstractDeclarator (recursive)");
+    AbstractDeclarator abstract_declarator;
+    auto next = Peek();
+    if (next->type() == TokenType::Operator && next->value() == "*") {
+        // "*" [ <abstract-declarator> ]
+        Consume(TokenType::Operator, "*");
+        AbstractPointerDeclarator ptr = AbstractPointerDeclarator{};
+        ptr.inner_declarator = std::make_unique<AbstractDeclarator>(ParseAbstractDeclarator());
+        abstract_declarator.emplace<AbstractPointerDeclarator>(std::move(ptr));
+    } else if (next->type() == TokenType::Punctator && next->value() == "(") {
+        // <direct-abstract-declarator> ::= "(" <abstract-declarator> ")"
+        Consume(TokenType::Punctator, "(");
+        abstract_declarator = ParseAbstractDeclarator();
+        Consume(TokenType::Punctator, ")");
+    } else
+        abstract_declarator.emplace<AbstractBaseDeclarator>();
+    return abstract_declarator;
+}
+
+Type ASTBuilder::ProcessAbstractDeclarator(const AbstractDeclarator &decl, const Type &base_type)
+{
+    LOG("ProcessAbstractDeclarator (recursive)");
+    if (std::get_if<AbstractBaseDeclarator>(&decl)) {
+        return base_type;
+    } else if (const AbstractPointerDeclarator *ptr = std::get_if<AbstractPointerDeclarator>(&decl)) {
+        Type derived_type = Type{ PointerType{ std::make_shared<Type>(base_type) } };
+        return ProcessAbstractDeclarator(*ptr->inner_declarator, derived_type);
+    } else
+        assert(false);
+    return Type{};
 }
 
 std::pair<StorageClass, Type> ASTBuilder::ParseTypeSpecifierList()

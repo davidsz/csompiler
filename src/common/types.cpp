@@ -75,6 +75,11 @@ bool FunctionType::operator==(const FunctionType &other) const
     return *ret == *other.ret;
 }
 
+bool PointerType::operator==(const PointerType &other) const
+{
+    return *referenced == *other.referenced;
+}
+
 bool Type::isBasic(BasicType type) const
 {
     if (auto p = std::get_if<BasicType>(&t))

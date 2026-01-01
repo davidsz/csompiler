@@ -19,6 +19,8 @@ public:
     Value operator()(const parser::AssignmentExpression &a) override;
     Value operator()(const parser::ConditionalExpression &c) override;
     Value operator()(const parser::FunctionCallExpression &f) override;
+    Value operator()(const parser::DereferenceExpression &d) override;
+    Value operator()(const parser::AddressOfExpression &a) override;
     Value operator()(const parser::ReturnStatement &r) override;
     Value operator()(const parser::IfStatement &i) override;
     Value operator()(const parser::GotoStatement &g) override;

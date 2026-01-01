@@ -109,6 +109,12 @@ namespace parser {
         std::string identifier; \
         std::vector<std::unique_ptr<Expression>> args; \
         std::shared_ptr<Type> type;) \
+    X(DereferenceExpression, \
+        std::unique_ptr<Expression> expr; \
+        Type type = Type{};) \
+    X(AddressOfExpression, \
+        std::unique_ptr<Expression> expr; \
+        Type type = Type{};)
 
 AST_DECLARATION_LIST(FORWARD_DECL_NODE)
 AST_STATEMENT_LIST(FORWARD_DECL_NODE)

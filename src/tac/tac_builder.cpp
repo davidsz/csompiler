@@ -166,6 +166,16 @@ Value TACBuilder::operator()(const parser::FunctionCallExpression &f)
     return ret.dst;
 }
 
+Value TACBuilder::operator()(const parser::DereferenceExpression &)
+{
+    return Constant{ 0 };
+}
+
+Value TACBuilder::operator()(const parser::AddressOfExpression &)
+{
+    return Constant{ 0 };
+}
+
 Value TACBuilder::operator()(const parser::ReturnStatement &r)
 {
     auto ret = Return{};

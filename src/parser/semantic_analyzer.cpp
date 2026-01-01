@@ -131,6 +131,16 @@ void SemanticAnalyzer::operator()(FunctionCallExpression &f)
         std::visit(*this, *a);
 }
 
+void SemanticAnalyzer::operator()(DereferenceExpression &d)
+{
+    std::visit(*this, *d.expr);
+}
+
+void SemanticAnalyzer::operator()(AddressOfExpression &a)
+{
+    std::visit(*this, *a.expr);
+}
+
 void SemanticAnalyzer::operator()(ReturnStatement &r)
 {
     std::visit(*this, *r.expr);
