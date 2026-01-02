@@ -13,6 +13,49 @@ Variant TACBuilder::CreateTemporaryVariable(const Type &type)
     return var;
 }
 
+Variant TACBuilder::CastValue(
+    std::vector<Instruction> &i,
+    const Value &value,
+    const Type &from_type,
+    const Type &to_type)
+{
+    Variant dst = CreateTemporaryVariable(to_type);
+    // In case of doubles, we don't differentiate between int and long
+    if (to_type.isBasic(BasicType::Double)) {
+        if (from_type.isSigned())
+            i.push_back(IntToDouble{ value, dst });
+        else
+            i.push_back(UIntToDouble{ value, dst });
+        return dst;
+    } else if (from_type.isBasic(BasicType::Double)) {
+        if (to_type.isSigned())
+            i.push_back(DoubleToInt{ value, dst });
+        else
+            i.push_back(DoubleToUInt{ value, dst });
+        return dst;
+    }
+    // We are preserving type information for assembly generation
+    // by using the seemingly redundant Copy
+    if (to_type.size() == from_type.size())
+        i.push_back(Copy{ value, dst });
+    else if (to_type.size() < from_type.size())
+        i.push_back(Truncate{ value, dst });
+    else if (from_type.isSigned())
+        i.push_back(SignExtend{ value, dst });
+    else
+        i.push_back(ZeroExtend{ value, dst });
+    return dst;
+}
+
+std::optional<Variant> TACBuilder::GetTargetLvalue(const parser::Expression &expr)
+{
+    if (const auto *var_expr = std::get_if<parser::VariableExpression>(&expr))
+        return Variant{ var_expr->identifier };
+    else if (const auto *cast_expr = std::get_if<parser::CastExpression>(&expr))
+        return GetTargetLvalue(*cast_expr->expr);
+    return std::nullopt;
+}
+
 Value TACBuilder::operator()(const parser::ConstantExpression &n)
 {
     return Constant{ n.value };
@@ -28,32 +71,7 @@ Value TACBuilder::operator()(const parser::CastExpression &c)
     Value result = std::visit(*this, *c.expr);
     if (c.target_type == c.inner_type)
         return result;
-    Variant dst = CreateTemporaryVariable(c.target_type);
-    // In case of doubles, we don't differentiate between int and long
-    if (c.target_type.isBasic(BasicType::Double)) {
-        if (c.inner_type.isSigned())
-            m_instructions.push_back(IntToDouble{ result, dst });
-        else
-            m_instructions.push_back(UIntToDouble{ result, dst });
-        return dst;
-    } else if (c.inner_type.isBasic(BasicType::Double)) {
-        if (c.target_type.isSigned())
-            m_instructions.push_back(DoubleToInt{ result, dst });
-        else
-            m_instructions.push_back(DoubleToUInt{ result, dst });
-        return dst;
-    }
-    // We are preserving type information for assembly generation
-    // by using the seemingly redundant Copy
-    if (c.target_type.size() == c.inner_type.size())
-        m_instructions.push_back(Copy{ result, dst });
-    else if (c.target_type.size() < c.inner_type.size())
-        m_instructions.push_back(Truncate{ result, dst });
-    else if (c.inner_type.isSigned())
-        m_instructions.push_back(SignExtend{ result, dst });
-    else
-        m_instructions.push_back(ZeroExtend{ result, dst });
-    return dst;
+    return CastValue(m_instructions, result, c.inner_type, c.target_type);
 }
 
 Value TACBuilder::operator()(const parser::UnaryExpression &u)
@@ -129,10 +147,28 @@ Value TACBuilder::operator()(const parser::BinaryExpression &b)
 Value TACBuilder::operator()(const parser::AssignmentExpression &a)
 {
     Value result = std::visit(*this, *a.rhs);
-    // After semantic analysis, a.lhs is guaranteed to be a variable
-    Value var = std::visit(*this, *a.lhs);
-    m_instructions.push_back(Copy{ result, var });
-    return var;
+    Value dst = std::visit(*this, *a.lhs);
+    m_instructions.push_back(Copy{ result, dst });
+    return dst;
+}
+
+Value TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
+{
+    std::optional<Variant> target = GetTargetLvalue(*c.lhs);
+    if (!target)
+        assert(false);
+
+    Value lhs = std::visit(*this, *c.lhs);
+    Value rhs = std::visit(*this, *c.rhs);
+    Variant tmp = CreateTemporaryVariable(c.inner_type);
+    m_instructions.push_back(Binary{ compoundToBinary(c.op), lhs, rhs, tmp });
+
+    if (c.inner_type != c.result_type) {
+        Value casted = CastValue(m_instructions, tmp, c.inner_type, c.result_type);
+        m_instructions.push_back(Copy{ casted, *target });
+    } else
+        m_instructions.push_back(Copy{ tmp, *target });
+    return *target;
 }
 
 Value TACBuilder::operator()(const parser::ConditionalExpression &c)

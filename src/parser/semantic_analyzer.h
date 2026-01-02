@@ -25,6 +25,7 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
     void operator()(UnaryExpression &u) override;
     void operator()(BinaryExpression &b) override;
     void operator()(AssignmentExpression &a) override;
+    void operator()(CompoundAssignmentExpression &c) override;
     void operator()(ConditionalExpression &c) override;
     void operator()(FunctionCallExpression &f) override;
     void operator()(DereferenceExpression &d) override;

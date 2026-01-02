@@ -52,6 +52,17 @@ void ASTPrinter::operator()(const AssignmentExpression &a)
     pad(); std::cout << ") " << a.type << std::endl;
 }
 
+void ASTPrinter::operator()(const CompoundAssignmentExpression &c)
+{
+    pad(); std::cout << "CompoundAssignmentExpression(" << toString(c.op) << " ";
+    std::cout << c.inner_type << " -> " << c.result_type << std::endl;
+    tab();
+    std::visit(*this, *c.lhs);
+    std::visit(*this, *c.rhs);
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
 void ASTPrinter::operator()(const ConditionalExpression &c)
 {
     pad(); std::cout << "ConditionalExpression(" << std::endl;

@@ -105,22 +105,8 @@ Expression ASTBuilder::ParseExpression(int min_precedence)
             auto right = ParseExpression(precedence);
             left = AssignmentExpression{ UE(left), UE(right) };
         } else if (isCompoundAssignment(op)) {
-            // Compound assignments are right-associative
-            // This wouldn't be the responsibility of the parser, but we disassemble it
-            // here to an assignment and a binary operation. This would be much difficult
-            // in the later stages when cast expressions wrap and hide eachother.
-            if (const VariableExpression *var = std::get_if<VariableExpression>(&left)) {
-                auto left_copy = *var;
-                auto right = BinaryExpression{
-                    compoundToBinary(op),
-                    UE(left_copy),
-                    unique_expression(ParseExpression(precedence)),
-                };
-                left = AssignmentExpression{ UE(left), UE(right) };
-            } else if (std::get_if<DereferenceExpression>(&left))
-                Abort("TODO: Getting complicated. Try to implement compunds as unary operators.");
-            else
-                Abort("Left side of a compound expression must be a variable");
+            auto right = ParseExpression(precedence); // Right-associative
+            left = CompoundAssignmentExpression{ op, UE(left), UE(right) };
         } else if (op == BinaryOperator::Conditional) {
             // The middle part ("? expression :")
             // behaves like the operator of a binary expression

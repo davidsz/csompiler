@@ -99,6 +99,12 @@ void SemanticAnalyzer::operator()(AssignmentExpression &a)
     std::visit(*this, *a.rhs);
 }
 
+void SemanticAnalyzer::operator()(CompoundAssignmentExpression &c)
+{
+    std::visit(*this, *c.lhs);
+    std::visit(*this, *c.rhs);
+}
+
 void SemanticAnalyzer::operator()(ConditionalExpression &c)
 {
     std::visit(*this, *c.condition);

@@ -17,6 +17,7 @@ public:
     Value operator()(const parser::UnaryExpression &u) override;
     Value operator()(const parser::BinaryExpression &b) override;
     Value operator()(const parser::AssignmentExpression &a) override;
+    Value operator()(const parser::CompoundAssignmentExpression &c) override;
     Value operator()(const parser::ConditionalExpression &c) override;
     Value operator()(const parser::FunctionCallExpression &f) override;
     Value operator()(const parser::DereferenceExpression &d) override;
@@ -45,6 +46,12 @@ public:
 
 private:
     Variant CreateTemporaryVariable(const Type &type);
+    Variant CastValue(
+        std::vector<Instruction> &i,
+        const Value &result,
+        const Type &from_type,
+        const Type &to_type);
+    std::optional<Variant> GetTargetLvalue(const parser::Expression &expr);
     void ProcessStaticSymbols();
 
     std::vector<TopLevel> m_topLevel;

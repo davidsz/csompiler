@@ -139,11 +139,6 @@ int main(int argc, char **argv)
     typePrinter.print(parser_result.root);
 #endif
 
-#if 1
-    std::cout << std::endl << "Symbol table:" << std::endl;
-    typeChecker.symbolTable()->print();
-#endif
-
     if (has_flag("validate"))
         return Error::ALL_OK;
 
@@ -155,6 +150,11 @@ int main(int argc, char **argv)
     std::cout << std::endl << "TAC:" << std::endl;
     tac::TACPrinter tacPrinter;
     tacPrinter.print(tacVector);
+#endif
+
+#if 1
+    std::cout << std::endl << "Symbol table:" << std::endl;
+    typeChecker.symbolTable()->print();
 #endif
 
     if (has_flag("tacky"))

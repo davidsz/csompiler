@@ -13,6 +13,7 @@ struct TypeChecker : public IASTMutatingVisitor<Type> {
     Type operator()(UnaryExpression &u) override;
     Type operator()(BinaryExpression &b) override;
     Type operator()(AssignmentExpression &a) override;
+    Type operator()(CompoundAssignmentExpression &c) override;
     Type operator()(ConditionalExpression &c) override;
     Type operator()(FunctionCallExpression &f) override;
     Type operator()(DereferenceExpression &d) override;

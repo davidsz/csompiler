@@ -164,9 +164,6 @@ Type TypeChecker::operator()(UnaryExpression &u)
 
 Type TypeChecker::operator()(BinaryExpression &b)
 {
-    if (isCompoundAssignment(b.op) && !isLvalue(*b.lhs))
-        Abort("Invalid lvalue in compound assignment");
-
     Type left_type = std::visit(*this, *b.lhs);
     Type right_type = std::visit(*this, *b.rhs);
 
@@ -182,7 +179,13 @@ Type TypeChecker::operator()(BinaryExpression &b)
             || b.op == BinaryOperator::RightShift
             || b.op == BinaryOperator::BitwiseAnd
             || b.op == BinaryOperator::BitwiseXor
-            || b.op == BinaryOperator::BitwiseOr)
+            || b.op == BinaryOperator::BitwiseOr
+            || b.op == BinaryOperator::AssignLShift
+            || b.op == BinaryOperator::AssignMod
+            || b.op == BinaryOperator::AssignRShift
+            || b.op == BinaryOperator::AssignBitwiseAnd
+            || b.op == BinaryOperator::AssignBitwiseXor
+            || b.op == BinaryOperator::AssignBitwiseOr)
             Abort("The type of the binary operation can't be double.");
     }
 
@@ -193,7 +196,7 @@ Type TypeChecker::operator()(BinaryExpression &b)
             || b.op == BinaryOperator::BitwiseAnd
             || b.op == BinaryOperator::BitwiseXor
             || b.op == BinaryOperator::BitwiseOr)
-            Abort("The type of the binary operation can't be a pointer.");
+        Abort("The type of the binary operation can't be a pointer.");
     }
 
     if (b.op == LeftShift || b.op == RightShift) {
@@ -240,6 +243,49 @@ Type TypeChecker::operator()(AssignmentExpression &a)
         Abort("Can't convert type for assignment");
     a.type = left_type;
     return a.type;
+}
+
+Type TypeChecker::operator()(CompoundAssignmentExpression &c)
+{
+    if (!isLvalue(*c.lhs))
+        Abort("The left side of a compound assignment should be an lvalue.");
+    Type left_type = std::visit(*this, *c.lhs);
+    Type right_type = std::visit(*this, *c.rhs);
+
+    if (left_type.isBasic(Double) || right_type.isBasic(Double)) {
+        if (c.op == BinaryOperator::AssignLShift
+            || c.op == BinaryOperator::AssignMod
+            || c.op == BinaryOperator::AssignRShift
+            || c.op == BinaryOperator::AssignBitwiseAnd
+            || c.op == BinaryOperator::AssignBitwiseXor
+            || c.op == BinaryOperator::AssignBitwiseOr)
+            Abort("The type of the compound operation can't be double.");
+    }
+
+    if (left_type.isPointer() || right_type.isPointer()) {
+        if (c.op == BinaryOperator::AssignMult
+            || c.op == BinaryOperator::AssignDiv
+            || c.op == BinaryOperator::AssignMod
+            || c.op == BinaryOperator::AssignBitwiseAnd
+            || c.op == BinaryOperator::AssignBitwiseXor
+            || c.op == BinaryOperator::AssignBitwiseOr)
+            Abort("The type of the binary operation can't be a pointer.");
+    }
+
+    if (c.op == BinaryOperator::AssignLShift || c.op == BinaryOperator::AssignRShift) {
+        // The right operand of shift operators need an integer promotion
+        c.rhs = explicitCast(std::move(c.rhs), right_type, Type{ BasicType::Int });
+        c.inner_type = left_type;
+        c.result_type = left_type;
+        return c.result_type;
+    }
+
+    Type common_type = getCommonType(left_type, right_type);
+    c.lhs = explicitCast(std::move(c.lhs), left_type, common_type);
+    c.rhs = explicitCast(std::move(c.rhs), right_type, common_type);
+    c.inner_type = common_type;
+    c.result_type = left_type;
+    return c.result_type;
 }
 
 Type TypeChecker::operator()(ConditionalExpression &c)

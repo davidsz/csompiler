@@ -100,6 +100,12 @@ namespace parser {
         std::unique_ptr<Expression> lhs; \
         std::unique_ptr<Expression> rhs; \
         Type type = Type{};) \
+    X(CompoundAssignmentExpression, \
+        BinaryOperator op; \
+        std::unique_ptr<Expression> lhs; \
+        std::unique_ptr<Expression> rhs; \
+        Type inner_type = Type{}; \
+        Type result_type = Type{};) \
     X(ConditionalExpression, \
         std::unique_ptr<Expression> condition; \
         std::unique_ptr<Expression> trueBranch; \
