@@ -117,7 +117,9 @@ Expression ASTBuilder::ParseExpression(int min_precedence)
                     unique_expression(ParseExpression(precedence)),
                 };
                 left = AssignmentExpression{ UE(left), UE(right) };
-            } else
+            } else if (std::get_if<DereferenceExpression>(&left))
+                Abort("TODO: Getting complicated. Try to implement compunds as unary operators.");
+            else
                 Abort("Left side of a compound expression must be a variable");
         } else if (op == BinaryOperator::Conditional) {
             // The middle part ("? expression :")
@@ -506,7 +508,7 @@ Declaration ASTBuilder::ParseDeclaration(bool allow_function)
     const auto &[identifier, derived_type, param_names] = ProcessDeclarator(declarator, type);
 
     auto next = Peek();
-    if (derived_type.getAs<FunctionType>()) {
+    if (derived_type.isFunction()) {
         if (!allow_function)
             Abort("Function declaration is not allowed");
         // Function declaration
@@ -514,6 +516,7 @@ Declaration ASTBuilder::ParseDeclaration(bool allow_function)
         func.storage = storage;
         func.type = derived_type;
         func.name = std::move(identifier);
+        func.params = param_names;
         next = Peek();
         if (next->type() == TokenType::Punctator && next->value() == "{")
             func.body = unique_statement(ParseBlock());
@@ -524,7 +527,7 @@ Declaration ASTBuilder::ParseDeclaration(bool allow_function)
         // Variable declaration
         auto decl = VariableDeclaration{};
         decl.storage = storage;
-        decl.type = type;
+        decl.type = derived_type;
         decl.identifier = std::move(identifier);
         if (next->type() == TokenType::Punctator && next->value() == ";") {
             Consume(TokenType::Punctator, ";");
@@ -615,7 +618,7 @@ ASTBuilder::ProcessDeclarator(const Declarator &declarator, const Type &base_typ
             std::vector<std::string> param_names;
             for (auto &param : func->params) {
                 const auto &[param_name, param_type, _] = ProcessDeclarator(*param.declarator, param.type);
-                if (std::holds_alternative<FunctionType>(param_type.t))
+                if (param_type.isFunction())
                     Abort("Function pointers are not supported yet.");
                 param_names.push_back(param_name);
                 func_type.params.push_back(std::make_shared<Type>(param_type));

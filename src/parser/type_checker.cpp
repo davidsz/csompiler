@@ -14,13 +14,31 @@ struct TypeError : public std::runtime_error
 static Type getCommonType(const Type &first, const Type &second)
 {
     assert(first.isInitialized() && second.isInitialized());
-    if (first.t == second.t)
+    if (first == second)
         return first;
     if (first.isBasic(Double) || second.isBasic(Double))
         return Type{ BasicType::Double };
     if (first.size() == second.size())
         return first.isSigned() ? second : first;
     return first.size() > second.size() ? first : second;
+}
+
+// It must be a constant literal, it must be
+// an integer, and its value must be 0.
+static bool isNullPointerConstant(const Expression &expr)
+{
+    if (const ConstantExpression *c = std::get_if<ConstantExpression>(&expr)) {
+        return std::visit([](const auto &x) -> bool {
+            using T = std::decay_t<decltype(x)>;
+            if constexpr(std::is_floating_point_v<T>)
+                return false;
+            if constexpr (std::is_integral_v<T>)
+                return x == 0;
+            else
+                return false;
+        }, c->value);
+    }
+    return false;
 }
 
 static std::unique_ptr<Expression> explicitCast(
@@ -37,6 +55,21 @@ static std::unique_ptr<Expression> explicitCast(
         .inner_type = from_type,
     });
     return ret;
+}
+
+static std::unique_ptr<Expression> convertByAssignment(
+    std::unique_ptr<Expression> expr,
+    const Type &from_type,
+    const Type &to_type)
+{
+    assert(from_type.isInitialized() && to_type.isInitialized());
+    if (from_type == to_type)
+        return expr;
+    if (from_type.isArithmetic() && to_type.isArithmetic())
+        return explicitCast(std::move(expr), from_type, to_type);
+    if (isNullPointerConstant(*expr) && to_type.isPointer())
+        return explicitCast(std::move(expr), from_type, to_type);
+    return nullptr;
 }
 
 // This is a terrible hack. When a double value stands as a conditional
@@ -56,6 +89,28 @@ static std::unique_ptr<Expression> notNot(std::unique_ptr<Expression> expr)
         .type = Type{ BasicType::Int }
     });
     return ret;
+}
+
+static bool isLvalue(const Expression &expr)
+{
+    return std::holds_alternative<VariableExpression>(expr)
+        || std::holds_alternative<DereferenceExpression>(expr);
+}
+
+static std::optional<Type> getCommonPointerType(
+    const Expression &first_expr,
+    const Type &first_type,
+    const Expression &second_expr,
+    const Type &second_type)
+{
+    assert(first_type.isInitialized() && second_type.isInitialized());
+    if (first_type == second_type)
+        return first_type;
+    if (isNullPointerConstant(first_expr))
+        return second_type;
+    if (isNullPointerConstant(second_expr))
+        return first_type;
+    return std::nullopt;
 }
 
 Type TypeChecker::operator()(ConstantExpression &c)
@@ -79,15 +134,26 @@ Type TypeChecker::operator()(CastExpression &c)
 {
     c.inner_type = Type{ std::visit(*this, *c.expr) };
     // target_type is already determined in the AST builder
+    if ((c.inner_type.isPointer() && c.target_type.isBasic(Double))
+        || (c.inner_type.isBasic(Double) && c.target_type.isPointer()))
+        Abort("Not allowed to cast pointer from/to a floating point type.");
     return c.target_type;
 }
 
 Type TypeChecker::operator()(UnaryExpression &u)
 {
+    // canBePostfix also covers the prefix versions of ++ and --
+    if (canBePostfix(u.op) && !isLvalue(*u.expr))
+        Abort("Invalid lvalue in unary expression");
+
     Type type = std::visit(*this, *u.expr);
 
     if (type.isBasic(Double) && u.op == UnaryOperator::BitwiseComplement)
         Abort("The type of a unary bitwise complement operation can't be double.");
+    if (type.isPointer() && u.op == UnaryOperator::BitwiseComplement)
+        Abort("Can't apply complement on a pointer type.");
+    if (type.isPointer() && u.op == UnaryOperator::Negate)
+        Abort("Can't negate a pointer type.");
 
     if (u.op == UnaryOperator::Not)
         u.type = Type{ BasicType::Int };
@@ -98,6 +164,9 @@ Type TypeChecker::operator()(UnaryExpression &u)
 
 Type TypeChecker::operator()(BinaryExpression &b)
 {
+    if (isCompoundAssignment(b.op) && !isLvalue(*b.lhs))
+        Abort("Invalid lvalue in compound assignment");
+
     Type left_type = std::visit(*this, *b.lhs);
     Type right_type = std::visit(*this, *b.rhs);
 
@@ -117,14 +186,37 @@ Type TypeChecker::operator()(BinaryExpression &b)
             Abort("The type of the binary operation can't be double.");
     }
 
+    if (left_type.isPointer() || right_type.isPointer()) {
+        if (b.op == BinaryOperator::Multiply
+            || b.op == BinaryOperator::Divide
+            || b.op == BinaryOperator::Remainder
+            || b.op == BinaryOperator::BitwiseAnd
+            || b.op == BinaryOperator::BitwiseXor
+            || b.op == BinaryOperator::BitwiseOr)
+            Abort("The type of the binary operation can't be a pointer.");
+    }
+
     if (b.op == LeftShift || b.op == RightShift) {
+        if (left_type.isPointer() || right_type.isPointer())
+            Abort("Right operand of bitshifts can't be a pointer.");
         // The right operand of shift operators need an integer promotion
         b.rhs = explicitCast(std::move(b.rhs), right_type, Type{ BasicType::Int });
         b.type = left_type;
         return b.type;
     }
 
-    Type common_type = getCommonType(left_type, right_type);
+    Type common_type;
+    if (b.op == BinaryOperator::Equal || b.op == BinaryOperator::NotEqual) {
+        if (left_type.isPointer() || right_type.isPointer()) {
+            if (auto cpt = getCommonPointerType(*b.lhs, left_type, *b.rhs, right_type))
+                common_type = *cpt;
+            else
+                Abort("Expressions have incompatible pointer types");
+        } else
+            common_type = getCommonType(left_type, right_type);
+    } else
+        common_type = getCommonType(left_type, right_type);
+
     b.lhs = explicitCast(std::move(b.lhs), left_type, common_type);
     b.rhs = explicitCast(std::move(b.rhs), right_type, common_type);
     if (isRelationOperator(b.op)) {
@@ -140,9 +232,12 @@ Type TypeChecker::operator()(BinaryExpression &b)
 
 Type TypeChecker::operator()(AssignmentExpression &a)
 {
+    if (!isLvalue(*a.lhs))
+        Abort("The left side of an assignment should be an lvalue.");
     Type left_type = std::visit(*this, *a.lhs);
     Type right_type = std::visit(*this, *a.rhs);
-    a.rhs = explicitCast(std::move(a.rhs), right_type, left_type);
+    if (!(a.rhs = convertByAssignment(std::move(a.rhs), right_type, left_type)))
+        Abort("Can't convert type for assignment");
     a.type = left_type;
     return a.type;
 }
@@ -154,7 +249,16 @@ Type TypeChecker::operator()(ConditionalExpression &c)
         c.condition = notNot(std::move(c.condition));
     Type true_type = std::visit(*this, *c.trueBranch);
     Type false_type = std::visit(*this, *c.falseBranch);
-    Type common_type = getCommonType(true_type, false_type);
+
+    Type common_type;
+    if (true_type.isPointer() || false_type.isPointer()) {
+        if (auto cpt = getCommonPointerType(*c.trueBranch, true_type, *c.falseBranch, false_type))
+            common_type = *cpt;
+        else
+            Abort("Expressions have incompatible pointer types");
+    } else
+        common_type = getCommonType(true_type, false_type);
+
     c.trueBranch = explicitCast(std::move(c.trueBranch), true_type, common_type);
     c.falseBranch = explicitCast(std::move(c.falseBranch), false_type, common_type);
     c.type = common_type;
@@ -169,7 +273,8 @@ Type TypeChecker::operator()(FunctionCallExpression &f)
 
         for (size_t i = 0; i < f.args.size(); i++) {
             Type arg_type = std::visit(*this, *f.args[i]);
-            f.args[i] = explicitCast(std::move(f.args[i]), arg_type, *type->params[i]);
+            if (!(f.args[i] = convertByAssignment(std::move(f.args[i]), arg_type, *type->params[i])))
+                Abort("Can't convert argument type for function call");
         }
         f.type = type->ret;
         return *f.type;
@@ -180,23 +285,34 @@ Type TypeChecker::operator()(FunctionCallExpression &f)
     return Type{ std::monostate() };
 }
 
-Type TypeChecker::operator()(DereferenceExpression &)
+Type TypeChecker::operator()(DereferenceExpression &d)
 {
-    return Type{ std::monostate() };
+    Type type = std::visit(*this, *d.expr);
+    if (PointerType *pointer_type = type.getAs<PointerType>())
+        d.type = *pointer_type->referenced;
+    else
+        Abort("Can't dereference a non-pointer");
+    return d.type;
 }
 
-Type TypeChecker::operator()(AddressOfExpression &)
+Type TypeChecker::operator()(AddressOfExpression &a)
 {
-    return Type{ std::monostate() };
+    if (!isLvalue(*a.expr))
+        Abort("Can't take the address of a non-lvalue");
+    Type type = std::visit(*this, *a.expr);
+    a.type = Type{ PointerType{ .referenced = std::make_shared<Type>(type) } };
+    return a.type;
 }
 
 Type TypeChecker::operator()(ReturnStatement &r)
 {
     Type ret_type = std::visit(*this, *r.expr);
-    r.expr = explicitCast(
+    r.expr = convertByAssignment(
         std::move(r.expr),
         ret_type,
         *std::get<FunctionType>(m_functionTypeStack.back().t).ret);
+    if (!r.expr)
+        Abort("Can't convert return type");
     return Type{ std::monostate() };
 }
 
@@ -291,8 +407,8 @@ Type TypeChecker::operator()(SwitchStatement &s)
     m_switches.push_back(&s);
     s.type = std::visit(*this, *s.condition);
 
-    if (s.type.isBasic(Double))
-        Abort("The type of a switch statement can't be double.");
+    if (s.type.isBasic(Double) || s.type.isPointer())
+        Abort("The type of a switch statement has to be az integer.");
 
     std::visit(*this, *s.body);
     m_switches.pop_back();
@@ -380,6 +496,10 @@ Type TypeChecker::operator()(VariableDeclaration &v)
                 init = NoInitializer{};
             else
                 init = Tentative{};
+        } else if (v.type.isPointer()) {
+            if (!isNullPointerConstant(*v.init))
+                Abort(std::format("Trying to initialize pointer '{}' with a non-null constant", v.identifier));
+            init = Initial{ .i = MakeConstantValue(0, ULong) };
         } else if (auto n = std::get_if<ConstantExpression>(v.init.get()))
             init = Initial{ .i = ConvertValue(n->value, v.type) };
         else
@@ -430,7 +550,11 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             InitialValue init = NoInitializer{};
             if (!v.init)
                 init = Initial{ .i = 0 };
-            else if (auto n = std::get_if<ConstantExpression>(v.init.get()))
+            else if (v.type.isPointer()) {
+                if (!isNullPointerConstant(*v.init))
+                    Abort(std::format("Trying to initialize pointer '{}' with a non-null constant", v.identifier));
+                init = Initial{ .i = MakeConstantValue(0, ULong) };
+            } else if (auto n = std::get_if<ConstantExpression>(v.init.get()))
                 init = Initial{ .i = ConvertValue(n->value, v.type) };
             else
                 Abort(std::format("Non-constant initializer on local static variable '{}'", v.identifier));
@@ -446,9 +570,14 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             });
 
             if (v.init) {
+                if (v.type.isPointer()) {
+                    if (std::holds_alternative<ConstantExpression>(*v.init) && !isNullPointerConstant(*v.init))
+                        Abort("A non-null constant can't initialize a pointer type.");
+                }
                 m_fileScope = false;
                 Type init_type = std::visit(*this, *v.init);
-                v.init = explicitCast(std::move(v.init), init_type, v.type);
+                if (!(v.init = convertByAssignment(std::move(v.init), init_type, v.type)))
+                    Abort("Can't convert initializer type.");
             }
         }
     }

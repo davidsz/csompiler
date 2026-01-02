@@ -84,26 +84,17 @@ void SemanticAnalyzer::operator()(CastExpression &c)
 
 void SemanticAnalyzer::operator()(UnaryExpression &u)
 {
-    // canBePostfix also covers the prefix versions of ++ and --
-    if (canBePostfix(u.op) && !std::holds_alternative<VariableExpression>(*u.expr))
-        Abort("Invalid lvalue in unary expression");
     std::visit(*this, *u.expr);
 }
 
 void SemanticAnalyzer::operator()(BinaryExpression &b)
 {
-    // TODO: Figure out how to report error messages with line numbers
-    if (isCompoundAssignment(b.op) && !std::holds_alternative<VariableExpression>(*b.lhs))
-        Abort("Invalid lvalue in compound assignment");
     std::visit(*this, *b.lhs);
     std::visit(*this, *b.rhs);
 }
 
 void SemanticAnalyzer::operator()(AssignmentExpression &a)
 {
-    // TODO: Figure out how to report error messages with line numbers
-    if (!std::holds_alternative<VariableExpression>(*a.lhs))
-        Abort("Invalid lvalue in assignment");
     std::visit(*this, *a.lhs);
     std::visit(*this, *a.rhs);
 }

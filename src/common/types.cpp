@@ -87,6 +87,16 @@ bool Type::isBasic(BasicType type) const
     return false;
 }
 
+bool Type::isFunction() const
+{
+    return std::holds_alternative<FunctionType>(t);
+}
+
+bool Type::isPointer() const
+{
+    return std::holds_alternative<PointerType>(t);
+}
+
 bool Type::isSigned() const
 {
     const BasicType *basic_type = std::get_if<BasicType>(&t);
@@ -99,6 +109,23 @@ bool Type::isSigned() const
         return true;
     case BasicType::UInt:
     case BasicType::ULong:
+    default:
+        return false;
+    }
+}
+
+bool Type::isArithmetic() const
+{
+    const BasicType *basic_type = std::get_if<BasicType>(&t);
+    if (!basic_type)
+        return false;
+    switch (*basic_type) {
+    case BasicType::Int:
+    case BasicType::Long:
+    case BasicType::UInt:
+    case BasicType::ULong:
+    case BasicType::Double:
+        return true;
     default:
         return false;
     }
@@ -153,6 +180,8 @@ std::ostream &operator<<(std::ostream &os, const Type &type)
             os << "BasicType " << (int)obj;
         else if constexpr (std::is_same_v<T, FunctionType>)
             os << "FunctionType";
+        else if constexpr (std::is_same_v<T, PointerType>)
+            os << "PointerType";
         else
             os << "typeless";
     }, type.t);

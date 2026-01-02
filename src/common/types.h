@@ -76,7 +76,10 @@ struct Type {
     const T *getAs() const { return std::get_if<T>(&t); }
 
     bool isBasic(BasicType type) const;
+    bool isFunction() const;
+    bool isPointer() const;
     bool isSigned() const;
+    bool isArithmetic() const;
     bool isInitialized() const;
     int size() const;
     WordType wordType() const;

@@ -110,7 +110,12 @@ ConstantValue MakeConstantValue(long value, const Type &type)
     const BasicType *basic_type = type.getAs<BasicType>();
     if (!basic_type)
         return static_cast<int>(value);
-    switch (*basic_type) {
+    return MakeConstantValue(value, *basic_type);
+}
+
+ConstantValue MakeConstantValue(long value, BasicType type)
+{
+    switch (type) {
     case BasicType::Int:
         return static_cast<int>(value);
     case BasicType::Long:
