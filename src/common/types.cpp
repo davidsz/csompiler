@@ -138,6 +138,8 @@ bool Type::isInitialized() const
 
 int Type::size() const
 {
+    if (std::get_if<PointerType>(&t))
+        return 8;
     const BasicType *basic_type = std::get_if<BasicType>(&t);
     if (!basic_type)
         return 0;
@@ -156,6 +158,8 @@ int Type::size() const
 
  WordType Type::wordType() const
  {
+     if (std::get_if<PointerType>(&t))
+         return Quadword;
      const BasicType *basic_type = std::get_if<BasicType>(&t);
      assert(basic_type);
      switch (*basic_type) {

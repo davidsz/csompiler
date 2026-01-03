@@ -7,39 +7,43 @@
 
 namespace tac {
 
-class TACBuilder : public parser::IASTVisitor<tac::Value> {
+struct PlainOperand { Value val; };
+struct DereferencedPointer { Value ptr; };
+using ExpResult = std::variant<PlainOperand, DereferencedPointer, std::monostate>;
+
+class TACBuilder : public parser::IASTVisitor<tac::ExpResult> {
 public:
     TACBuilder(std::shared_ptr<SymbolTable> symbolTable);
 
-    Value operator()(const parser::ConstantExpression &n) override;
-    Value operator()(const parser::VariableExpression &v) override;
-    Value operator()(const parser::CastExpression &v) override;
-    Value operator()(const parser::UnaryExpression &u) override;
-    Value operator()(const parser::BinaryExpression &b) override;
-    Value operator()(const parser::AssignmentExpression &a) override;
-    Value operator()(const parser::CompoundAssignmentExpression &c) override;
-    Value operator()(const parser::ConditionalExpression &c) override;
-    Value operator()(const parser::FunctionCallExpression &f) override;
-    Value operator()(const parser::DereferenceExpression &d) override;
-    Value operator()(const parser::AddressOfExpression &a) override;
-    Value operator()(const parser::ReturnStatement &r) override;
-    Value operator()(const parser::IfStatement &i) override;
-    Value operator()(const parser::GotoStatement &g) override;
-    Value operator()(const parser::LabeledStatement &l) override;
-    Value operator()(const parser::BlockStatement &b) override;
-    Value operator()(const parser::ExpressionStatement &e) override;
-    Value operator()(const parser::NullStatement &e) override;
-    Value operator()(const parser::BreakStatement &b) override;
-    Value operator()(const parser::ContinueStatement &c) override;
-    Value operator()(const parser::WhileStatement &w) override;
-    Value operator()(const parser::DoWhileStatement &d) override;
-    Value operator()(const parser::ForStatement &f) override;
-    Value operator()(const parser::SwitchStatement &s) override;
-    Value operator()(const parser::CaseStatement &c) override;
-    Value operator()(const parser::DefaultStatement &d) override;
-    Value operator()(const parser::FunctionDeclaration &f) override;
-    Value operator()(const parser::VariableDeclaration &v) override;
-    Value operator()(std::monostate) override;
+    ExpResult operator()(const parser::ConstantExpression &n) override;
+    ExpResult operator()(const parser::VariableExpression &v) override;
+    ExpResult operator()(const parser::CastExpression &v) override;
+    ExpResult operator()(const parser::UnaryExpression &u) override;
+    ExpResult operator()(const parser::BinaryExpression &b) override;
+    ExpResult operator()(const parser::AssignmentExpression &a) override;
+    ExpResult operator()(const parser::CompoundAssignmentExpression &c) override;
+    ExpResult operator()(const parser::ConditionalExpression &c) override;
+    ExpResult operator()(const parser::FunctionCallExpression &f) override;
+    ExpResult operator()(const parser::DereferenceExpression &d) override;
+    ExpResult operator()(const parser::AddressOfExpression &a) override;
+    ExpResult operator()(const parser::ReturnStatement &r) override;
+    ExpResult operator()(const parser::IfStatement &i) override;
+    ExpResult operator()(const parser::GotoStatement &g) override;
+    ExpResult operator()(const parser::LabeledStatement &l) override;
+    ExpResult operator()(const parser::BlockStatement &b) override;
+    ExpResult operator()(const parser::ExpressionStatement &e) override;
+    ExpResult operator()(const parser::NullStatement &e) override;
+    ExpResult operator()(const parser::BreakStatement &b) override;
+    ExpResult operator()(const parser::ContinueStatement &c) override;
+    ExpResult operator()(const parser::WhileStatement &w) override;
+    ExpResult operator()(const parser::DoWhileStatement &d) override;
+    ExpResult operator()(const parser::ForStatement &f) override;
+    ExpResult operator()(const parser::SwitchStatement &s) override;
+    ExpResult operator()(const parser::CaseStatement &c) override;
+    ExpResult operator()(const parser::DefaultStatement &d) override;
+    ExpResult operator()(const parser::FunctionDeclaration &f) override;
+    ExpResult operator()(const parser::VariableDeclaration &v) override;
+    ExpResult operator()(std::monostate) override;
 
     std::vector<TopLevel> ConvertTopLevel(const std::vector<parser::Declaration> &list);
     std::vector<Instruction> ConvertBlock(const std::vector<parser::BlockItem> &list);
@@ -52,7 +56,22 @@ private:
         const Type &from_type,
         const Type &to_type);
     std::optional<Variant> GetTargetLvalue(const parser::Expression &expr);
+    Type GetType(const Value &value);
     void ProcessStaticSymbols();
+
+    template <typename... Variants>
+    Value VisitAndConvert(Variants&&... variants) {
+        ExpResult result = std::visit(*this, std::forward<Variants>(variants)...);
+        if (PlainOperand *plain = std::get_if<PlainOperand>(&result))
+            return plain->val;
+        else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&result)) {
+            Variant dst = CreateTemporaryVariable(GetType(deref->ptr));
+            m_instructions.push_back(Load{ deref->ptr, dst });
+            return dst;
+        }
+        assert(false);
+        return std::monostate();
+    }
 
     std::vector<TopLevel> m_topLevel;
     std::vector<Instruction> m_instructions;

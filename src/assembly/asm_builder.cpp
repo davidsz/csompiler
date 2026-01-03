@@ -259,6 +259,21 @@ Operand ASMBuilder::operator()(const tac::Copy &c)
     return std::monostate();
 }
 
+Operand ASMBuilder::operator()(const tac::GetAddress &)
+{
+    return std::monostate();
+}
+
+Operand ASMBuilder::operator()(const tac::Load &)
+{
+    return std::monostate();
+}
+
+Operand ASMBuilder::operator()(const tac::Store &)
+{
+    return std::monostate();
+}
+
 Operand ASMBuilder::operator()(const tac::Jump &j)
 {
     m_instructions.push_back(Jmp{ j.target });

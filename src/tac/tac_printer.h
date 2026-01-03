@@ -16,6 +16,9 @@ struct TACPrinter : public ITACVisitor<void> {
     void operator()(const tac::Unary &u) override;
     void operator()(const tac::Binary &b) override;
     void operator()(const tac::Copy &c) override;
+    void operator()(const tac::GetAddress &g) override;
+    void operator()(const tac::Load &l) override;
+    void operator()(const tac::Store &s) override;
     void operator()(const tac::Jump &j) override;
     void operator()(const tac::JumpIfZero &j) override;
     void operator()(const tac::JumpIfNotZero &j) override;

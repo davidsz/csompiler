@@ -17,6 +17,9 @@ public:
     Operand operator()(const tac::Unary &) override;
     Operand operator()(const tac::Binary &) override;
     Operand operator()(const tac::Copy &) override;
+    Operand operator()(const tac::GetAddress &) override;
+    Operand operator()(const tac::Load &) override;
+    Operand operator()(const tac::Store &) override;
     Operand operator()(const tac::Jump &) override;
     Operand operator()(const tac::JumpIfZero &) override;
     Operand operator()(const tac::JumpIfNotZero &) override;

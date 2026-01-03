@@ -51,6 +51,36 @@ void TACPrinter::operator()(const tac::Copy &c)
     pad(); std::cout << ")" << std::endl;
 }
 
+void TACPrinter::operator()(const tac::GetAddress &g)
+{
+    pad(); std::cout << "GetAddress(" << std::endl;
+    tab();
+    std::visit(*this, g.src);
+    std::visit(*this, g.dst);
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
+void TACPrinter::operator()(const tac::Load &l)
+{
+    pad(); std::cout << "Load(" << std::endl;
+    tab();
+    std::visit(*this, l.src_ptr);
+    std::visit(*this, l.dst);
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
+void TACPrinter::operator()(const tac::Store &s)
+{
+    pad(); std::cout << "Store(" << std::endl;
+    tab();
+    std::visit(*this, s.src);
+    std::visit(*this, s.dst_ptr);
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
 void TACPrinter::operator()(const tac::Jump &j)
 {
     pad(); std::cout << "Jump(" << j.target << ")" << std::endl;

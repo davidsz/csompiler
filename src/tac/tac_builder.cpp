@@ -56,29 +56,48 @@ std::optional<Variant> TACBuilder::GetTargetLvalue(const parser::Expression &exp
     return std::nullopt;
 }
 
-Value TACBuilder::operator()(const parser::ConstantExpression &n)
+Type TACBuilder::GetType(const Value &value)
 {
-    return Constant{ n.value };
+    if (auto c = std::get_if<Constant>(&value))
+        return getType(c->value);
+    else if (auto v = std::get_if<Variant>(&value)) {
+        const SymbolEntry *entry = m_symbolTable->get(v->name);
+        assert(entry);
+        return entry->type;
+    } else {
+        assert(false);
+        return Type{ BasicType::Int };
+    }
 }
 
-Value TACBuilder::operator()(const parser::VariableExpression &v)
+ExpResult TACBuilder::operator()(const parser::ConstantExpression &n)
 {
-    return Variant{ v.identifier };
+    return PlainOperand{ Constant{ n.value } };
 }
 
-Value TACBuilder::operator()(const parser::CastExpression &c)
+ExpResult TACBuilder::operator()(const parser::VariableExpression &v)
 {
-    Value result = std::visit(*this, *c.expr);
+    return PlainOperand{ Variant{ v.identifier } };
+}
+
+ExpResult TACBuilder::operator()(const parser::CastExpression &c)
+{
+    Value result = VisitAndConvert(*c.expr);
     if (c.target_type == c.inner_type)
-        return result;
-    return CastValue(m_instructions, result, c.inner_type, c.target_type);
+        return PlainOperand{ result };
+    if (c.target_type.isPointer() || c.inner_type.isPointer()) {
+
+    }
+    return PlainOperand{
+        CastValue(m_instructions, result, c.inner_type, c.target_type)
+    };
 }
 
-Value TACBuilder::operator()(const parser::UnaryExpression &u)
+ExpResult TACBuilder::operator()(const parser::UnaryExpression &u)
 {
     // Implement mutating unary operators as binaries ( a++ -> a = a + 1 )
     if (u.op == UnaryOperator::Increment || u.op == UnaryOperator::Decrement) {
-        Value target = std::visit(*this, *u.expr);
+        Value target = VisitAndConvert(*u.expr);
         Binary mutation = Binary{
             unaryToBinary(u.op),
             target,
@@ -89,33 +108,33 @@ Value TACBuilder::operator()(const parser::UnaryExpression &u)
             Variant temp = CreateTemporaryVariable(u.type);
             m_instructions.push_back(Copy{ target, temp });
             m_instructions.push_back(mutation);
-            return temp;
+            return PlainOperand{ temp };
         } else {
             m_instructions.push_back(mutation);
-            return target;
+            return PlainOperand{ target };
         }
     }
 
     auto unary = Unary{};
     unary.op = u.op;
-    unary.src = std::visit(*this, *u.expr);
+    unary.src = VisitAndConvert(*u.expr);
     unary.dst = CreateTemporaryVariable(u.type);
     m_instructions.push_back(unary);
-    return unary.dst;
+    return PlainOperand{ unary.dst };
 }
 
-Value TACBuilder::operator()(const parser::BinaryExpression &b)
+ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
 {
     // Short-circuiting operators
     if (b.op == BinaryOperator::And || b.op == BinaryOperator::Or) {
         Variant result = CreateTemporaryVariable(Type{ BasicType::Int });
-        auto lhs_val = std::visit(*this, *b.lhs);
+        auto lhs_val = VisitAndConvert(*b.lhs);
         auto label_true = MakeNameUnique("true_label");
         auto label_false = MakeNameUnique("false_label");
         auto label_end = MakeNameUnique("end_label");
         if (b.op == BinaryOperator::And) {
             m_instructions.push_back(JumpIfZero{lhs_val, label_false});
-            auto rhs = std::visit(*this, *b.rhs);
+            auto rhs = VisitAndConvert(*b.rhs);
             m_instructions.push_back(JumpIfZero{rhs, label_false});
             m_instructions.push_back(Copy{Constant(1), result});
             m_instructions.push_back(Jump{label_end});
@@ -124,7 +143,7 @@ Value TACBuilder::operator()(const parser::BinaryExpression &b)
             m_instructions.push_back(Label{label_end});
         } else {
             m_instructions.push_back(JumpIfNotZero{lhs_val, label_true});
-            auto rhs = std::visit(*this, *b.rhs);
+            auto rhs = VisitAndConvert(*b.rhs);
             m_instructions.push_back(JumpIfNotZero{rhs, label_true});
             m_instructions.push_back(Copy{Constant(0), result});
             m_instructions.push_back(Jump{label_end});
@@ -132,34 +151,42 @@ Value TACBuilder::operator()(const parser::BinaryExpression &b)
             m_instructions.push_back(Copy{Constant(1), result});
             m_instructions.push_back(Label{label_end});
         }
-        return result;
+        return PlainOperand{ result };
     }
 
     auto binary = Binary{};
     binary.op = b.op;
-    binary.src1 = std::visit(*this, *b.lhs);
-    binary.src2 = std::visit(*this, *b.rhs);
+    binary.src1 = VisitAndConvert(*b.lhs);
+    binary.src2 = VisitAndConvert(*b.rhs);
     binary.dst = CreateTemporaryVariable(b.type);
     m_instructions.push_back(binary);
-    return binary.dst;
+    return PlainOperand{ binary.dst };
 }
 
-Value TACBuilder::operator()(const parser::AssignmentExpression &a)
+ExpResult TACBuilder::operator()(const parser::AssignmentExpression &a)
 {
-    Value result = std::visit(*this, *a.rhs);
-    Value dst = std::visit(*this, *a.lhs);
-    m_instructions.push_back(Copy{ result, dst });
-    return dst;
+    ExpResult left = std::visit(*this, *a.lhs);
+    Value right = VisitAndConvert(*a.rhs);
+    if (PlainOperand *plain = std::get_if<PlainOperand>(&left)) {
+        m_instructions.push_back(Copy{ right, plain->val });
+        return left;
+    } else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&left)) {
+        m_instructions.push_back(Store{ right, deref->ptr });
+        return PlainOperand{ right };
+    }
+    assert(false);
+    return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
+ExpResult TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
 {
+    // TODO: Should be part of VisitAndConvert?
     std::optional<Variant> target = GetTargetLvalue(*c.lhs);
     if (!target)
         assert(false);
 
-    Value lhs = std::visit(*this, *c.lhs);
-    Value rhs = std::visit(*this, *c.rhs);
+    Value lhs = VisitAndConvert(*c.lhs);
+    Value rhs = VisitAndConvert(*c.rhs);
     Variant tmp = CreateTemporaryVariable(c.inner_type);
     m_instructions.push_back(Binary{ compoundToBinary(c.op), lhs, rhs, tmp });
 
@@ -168,61 +195,70 @@ Value TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
         m_instructions.push_back(Copy{ casted, *target });
     } else
         m_instructions.push_back(Copy{ tmp, *target });
-    return *target;
+    return PlainOperand{ *target };
 }
 
-Value TACBuilder::operator()(const parser::ConditionalExpression &c)
+ExpResult TACBuilder::operator()(const parser::ConditionalExpression &c)
 {
     auto label_end = MakeNameUnique("end");
     auto label_false_branch = MakeNameUnique("false_branch");
     Value result = CreateTemporaryVariable(c.type);
 
-    Value condition = std::visit(*this, *c.condition);
+    Value condition = VisitAndConvert(*c.condition);
     m_instructions.push_back(JumpIfZero{ condition, label_false_branch });
-    Value true_branch_value = std::visit(*this, *c.trueBranch);
+    Value true_branch_value = VisitAndConvert(*c.trueBranch);
     m_instructions.push_back(Copy{ true_branch_value, result });
     m_instructions.push_back(Jump{ label_end });
 
     m_instructions.push_back(Label{ label_false_branch });
-    Value false_branch_value = std::visit(*this, *c.falseBranch);
+    Value false_branch_value = VisitAndConvert(*c.falseBranch);
     m_instructions.push_back(Copy{ false_branch_value, result });
     m_instructions.push_back(Label{ label_end });
 
-    return result;
+    return PlainOperand{ result };
 }
 
-Value TACBuilder::operator()(const parser::FunctionCallExpression &f)
+ExpResult TACBuilder::operator()(const parser::FunctionCallExpression &f)
 {
     auto ret = FunctionCall{};
     ret.identifier = f.identifier;
     for (auto &a : f.args)
-        ret.args.push_back(std::visit(*this, *a));
+        ret.args.push_back(VisitAndConvert(*a));
     ret.dst = CreateTemporaryVariable(*f.type);
     m_instructions.push_back(ret);
-    return ret.dst;
+    return PlainOperand{ ret.dst };
 }
 
-Value TACBuilder::operator()(const parser::DereferenceExpression &)
+ExpResult TACBuilder::operator()(const parser::DereferenceExpression &d)
 {
-    return Constant{ 0 };
+    Value result = VisitAndConvert(*d.expr);
+    return DereferencedPointer{ result };
 }
 
-Value TACBuilder::operator()(const parser::AddressOfExpression &)
+ExpResult TACBuilder::operator()(const parser::AddressOfExpression &a)
 {
-    return Constant{ 0 };
+    ExpResult inner = std::visit(*this, *a.expr);
+    if (PlainOperand *plain = std::get_if<PlainOperand>(&inner)) {
+        Variant dst = CreateTemporaryVariable(GetType(plain->val));
+        m_instructions.push_back(GetAddress{ plain->val, dst });
+        return PlainOperand{ dst };
+    } else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&inner))
+        return PlainOperand{ deref->ptr };
+    assert(false);
+    return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::ReturnStatement &r)
+ExpResult TACBuilder::operator()(const parser::ReturnStatement &r)
 {
     auto ret = Return{};
-    ret.val = std::visit(*this, *r.expr);
+    ret.val = VisitAndConvert(*r.expr);
     m_instructions.push_back(ret);
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::IfStatement &i)
+ExpResult TACBuilder::operator()(const parser::IfStatement &i)
 {
-    Value condition = std::visit(*this, *i.condition);
+    Value condition = VisitAndConvert(*i.condition);
     auto label_end = MakeNameUnique("end");
     if (i.falseBranch) {
         auto label_else = MakeNameUnique("else");
@@ -239,56 +275,56 @@ Value TACBuilder::operator()(const parser::IfStatement &i)
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::GotoStatement &g)
+ExpResult TACBuilder::operator()(const parser::GotoStatement &g)
 {
     m_instructions.push_back(Jump{ g.label });
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::LabeledStatement &l)
+ExpResult TACBuilder::operator()(const parser::LabeledStatement &l)
 {
     m_instructions.push_back(Label{ l.label });
     std::visit(*this, *l.statement);
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::BlockStatement &b)
+ExpResult TACBuilder::operator()(const parser::BlockStatement &b)
 {
     for (auto &s : b.items)
         std::visit(*this, s);
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::ExpressionStatement &e)
+ExpResult TACBuilder::operator()(const parser::ExpressionStatement &e)
 {
     std::visit(*this, *e.expr);
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::NullStatement &)
+ExpResult TACBuilder::operator()(const parser::NullStatement &)
 {
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::BreakStatement &b)
+ExpResult TACBuilder::operator()(const parser::BreakStatement &b)
 {
     m_instructions.push_back(Jump{ std::format("break_{}", b.label) });
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::ContinueStatement &c)
+ExpResult TACBuilder::operator()(const parser::ContinueStatement &c)
 {
     m_instructions.push_back(Jump{ std::format("continue_{}", c.label) });
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::WhileStatement &w)
+ExpResult TACBuilder::operator()(const parser::WhileStatement &w)
 {
     auto label_continue = std::format("continue_{}", w.label);
     auto label_break = std::format("break_{}", w.label);
 
     m_instructions.push_back(Label{ label_continue });
-    Value condition = std::visit(*this, *w.condition);
+    Value condition = VisitAndConvert(*w.condition);
     m_instructions.push_back(JumpIfZero{ condition, label_break });
     std::visit(*this, *w.body);
     m_instructions.push_back(Jump{ label_continue });
@@ -296,20 +332,20 @@ Value TACBuilder::operator()(const parser::WhileStatement &w)
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::DoWhileStatement &d)
+ExpResult TACBuilder::operator()(const parser::DoWhileStatement &d)
 {
     auto label_start = std::format("start_{}", d.label);
 
     m_instructions.push_back(Label{ label_start });
     std::visit(*this, *d.body);
     m_instructions.push_back(Label{ std::format("continue_{}", d.label) });
-    Value condition = std::visit(*this, *d.condition);
+    Value condition = VisitAndConvert(*d.condition);
     m_instructions.push_back(JumpIfNotZero{ condition, label_start });
     m_instructions.push_back(Label{ std::format("break_{}", d.label) });
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::ForStatement &f)
+ExpResult TACBuilder::operator()(const parser::ForStatement &f)
 {
     auto label_start = std::format("start_{}", f.label);
     auto label_break = std::format("break_{}", f.label);
@@ -319,7 +355,7 @@ Value TACBuilder::operator()(const parser::ForStatement &f)
     m_instructions.push_back(Label{ label_start });
     Value condition;
     if (f.condition)
-        condition = std::visit(*this, *f.condition);
+        condition = VisitAndConvert(*f.condition);
     else
         condition = Constant { 1 };
     m_instructions.push_back(JumpIfZero{ condition, label_break });
@@ -332,11 +368,11 @@ Value TACBuilder::operator()(const parser::ForStatement &f)
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::SwitchStatement &s)
+ExpResult TACBuilder::operator()(const parser::SwitchStatement &s)
 {
     auto label_break = std::format("break_{}", s.label);
 
-    Value condition = std::visit(*this, *s.condition);
+    Value condition = VisitAndConvert(*s.condition);
     for (auto &c : s.cases) {
         auto binary = Binary{};
         binary.op = BinaryOperator::Subtract;
@@ -358,21 +394,21 @@ Value TACBuilder::operator()(const parser::SwitchStatement &s)
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::CaseStatement &c)
+ExpResult TACBuilder::operator()(const parser::CaseStatement &c)
 {
     m_instructions.push_back(Label{ c.label });
     std::visit(*this, *c.statement);
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::DefaultStatement &d)
+ExpResult TACBuilder::operator()(const parser::DefaultStatement &d)
 {
     m_instructions.push_back(Label{ d.label });
     std::visit(*this, *d.statement);
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::FunctionDeclaration &f)
+ExpResult TACBuilder::operator()(const parser::FunctionDeclaration &f)
 {
     // We only handle definitions, not declarations
     if (!f.body)
@@ -401,7 +437,7 @@ Value TACBuilder::operator()(const parser::FunctionDeclaration &f)
     return std::monostate();
 }
 
-Value TACBuilder::operator()(const parser::VariableDeclaration &v)
+ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
 {
     // We will move static variable declarations to the top level in a later step
     if (const SymbolEntry *entry = m_symbolTable->get(v.identifier)) {
@@ -410,13 +446,13 @@ Value TACBuilder::operator()(const parser::VariableDeclaration &v)
     }
     // We discard declarations, but we handle their init expressions
     if (v.init) {
-        Value result = std::visit(*this, *v.init);
+        Value result = VisitAndConvert(*v.init);
         m_instructions.push_back(Copy{ result, Variant{ v.identifier } });
     }
     return std::monostate();
 }
 
-Value TACBuilder::operator()(std::monostate)
+ExpResult TACBuilder::operator()(std::monostate)
 {
     assert(false);
     return std::monostate();

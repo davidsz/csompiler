@@ -31,6 +31,15 @@ namespace tac {
     X(Copy, \
         Value src; \
         Value dst;) \
+    X(GetAddress, \
+        Value src; \
+        Value dst;) \
+    X(Load, \
+        Value src_ptr; \
+        Value dst;) \
+    X(Store, \
+        Value src; \
+        Value dst_ptr;) \
     X(Jump, \
         std::string target;) \
     X(JumpIfZero, \
