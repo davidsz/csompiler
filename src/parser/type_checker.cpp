@@ -595,7 +595,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
         } else if (v.storage == StorageStatic) {
             InitialValue init = NoInitializer{};
             if (!v.init)
-                init = Initial{ .i = 0 };
+                init = Initial{ .i = MakeConstantValue(0, v.type) };
             else if (v.type.isPointer()) {
                 if (!isNullPointerConstant(*v.init))
                     Abort(std::format("Trying to initialize pointer '{}' with a non-null constant", v.identifier));

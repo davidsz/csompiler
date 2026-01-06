@@ -47,13 +47,32 @@ Variant TACBuilder::CastValue(
     return dst;
 }
 
-std::optional<Variant> TACBuilder::GetTargetLvalue(const parser::Expression &expr)
+TACBuilder::LHSInfo TACBuilder::AnalyzeLHS(const parser::Expression &expr)
 {
-    if (const auto *var_expr = std::get_if<parser::VariableExpression>(&expr))
-        return Variant{ var_expr->identifier };
-    else if (const auto *cast_expr = std::get_if<parser::CastExpression>(&expr))
-        return GetTargetLvalue(*cast_expr->expr);
-    return std::nullopt;
+    if (const auto *var = std::get_if<parser::VariableExpression>(&expr)) {
+        Type t = GetType(Variant{ var->identifier });
+        return {
+            .kind = LHSInfo::Kind::Plain,
+            .address = Variant{ var->identifier },
+            .original_type = t
+        };
+    }
+
+    if (const auto *cast = std::get_if<parser::CastExpression>(&expr))
+        return AnalyzeLHS(*cast->expr);
+
+    if (const auto *deref = std::get_if<parser::DereferenceExpression>(&expr)) {
+        Value ptr = VisitAndConvert(*deref->expr);
+        PointerType *pt = GetType(ptr).getAs<PointerType>();
+        assert(pt);
+        return {
+            .kind = LHSInfo::Kind::Deref,
+            .address = ptr,
+            .original_type = *pt->referenced
+        };
+    }
+
+    assert(false);
 }
 
 Type TACBuilder::GetType(const Value &value)
@@ -85,9 +104,6 @@ ExpResult TACBuilder::operator()(const parser::CastExpression &c)
     Value result = VisitAndConvert(*c.expr);
     if (c.target_type == c.inner_type)
         return PlainOperand{ result };
-    if (c.target_type.isPointer() || c.inner_type.isPointer()) {
-
-    }
     return PlainOperand{
         CastValue(m_instructions, result, c.inner_type, c.target_type)
     };
@@ -97,22 +113,43 @@ ExpResult TACBuilder::operator()(const parser::UnaryExpression &u)
 {
     // Implement mutating unary operators as binaries ( a++ -> a = a + 1 )
     if (u.op == UnaryOperator::Increment || u.op == UnaryOperator::Decrement) {
-        Value target = VisitAndConvert(*u.expr);
-        Binary mutation = Binary{
+        // We visit the lhs only once
+        LHSInfo lhs = AnalyzeLHS(*u.expr);
+
+        // Load current value if it's a pointer dereference
+        Variant old_val = CreateTemporaryVariable(lhs.original_type);
+        if (lhs.kind == LHSInfo::Kind::Plain)
+            m_instructions.push_back(Copy{ lhs.address, old_val });
+        else
+            m_instructions.push_back(Load{ lhs.address, old_val });
+
+        // Cast if needed
+        Value typed_val = old_val;
+        if (lhs.original_type != u.type)
+            typed_val = CastValue(m_instructions, old_val, lhs.original_type, u.type);
+
+        // Increment/Decrement
+        Variant new_value = CreateTemporaryVariable(u.type);
+        m_instructions.push_back(Binary{
             unaryToBinary(u.op),
-            target,
+            typed_val,
             Constant{ MakeConstantValue(1, u.type) },
-            target
-        };
-        if (u.postfix) {
-            Variant temp = CreateTemporaryVariable(u.type);
-            m_instructions.push_back(Copy{ target, temp });
-            m_instructions.push_back(mutation);
-            return PlainOperand{ temp };
-        } else {
-            m_instructions.push_back(mutation);
-            return PlainOperand{ target };
-        }
+            new_value
+        });
+
+        // Cast back if needed
+        Value result_to_store = new_value;
+        if (u.type != lhs.original_type)
+            result_to_store = CastValue(m_instructions, new_value, u.type, lhs.original_type);
+
+        // Store the result back
+        if (lhs.kind == LHSInfo::Kind::Plain)
+            m_instructions.push_back(Copy{ result_to_store, lhs.address });
+        else
+            m_instructions.push_back(Store{ result_to_store, lhs.address });
+
+        // The return value depends on the operator type
+        return PlainOperand{ u.postfix ? typed_val : new_value };
     }
 
     auto unary = Unary{};
@@ -180,22 +217,44 @@ ExpResult TACBuilder::operator()(const parser::AssignmentExpression &a)
 
 ExpResult TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
 {
-    // TODO: Should be part of VisitAndConvert?
-    std::optional<Variant> target = GetTargetLvalue(*c.lhs);
-    if (!target)
-        assert(false);
+    // Handling compound assignments becomes a complex task when their lvalue
+    // is nested in cast expressions and/or pointer dereferences. To avoid multiplied
+    // side effects and get the correct assignment address we visit it only in case of
+    // pointer dereference, otherwise we do all the cast operations manually.
 
-    Value lhs = VisitAndConvert(*c.lhs);
+    // We visit the lhs only once
+    LHSInfo lhs = AnalyzeLHS(*c.lhs);
+
+    // Load the value if lhs is a pointer dereference
+    Variant old_val = CreateTemporaryVariable(lhs.original_type);
+    if (lhs.kind == LHSInfo::Kind::Plain)
+        m_instructions.push_back(Copy{ lhs.address, old_val });
+    else
+        m_instructions.push_back(Load{ lhs.address, old_val });
+
+    // Cast the left side if needed
+    Value typed_left = old_val;
+    if (lhs.original_type != c.inner_type)
+        typed_left = CastValue(m_instructions, typed_left, lhs.original_type, c.inner_type);
+
     Value rhs = VisitAndConvert(*c.rhs);
-    Variant tmp = CreateTemporaryVariable(c.inner_type);
-    m_instructions.push_back(Binary{ compoundToBinary(c.op), lhs, rhs, tmp });
 
-    if (c.inner_type != c.result_type) {
-        Value casted = CastValue(m_instructions, tmp, c.inner_type, c.result_type);
-        m_instructions.push_back(Copy{ casted, *target });
-    } else
-        m_instructions.push_back(Copy{ tmp, *target });
-    return PlainOperand{ *target };
+    // Perform the actual operation as a Binary in Assembly
+    Variant tmp = CreateTemporaryVariable(c.inner_type);
+    m_instructions.push_back(Binary{ compoundToBinary(c.op), typed_left, rhs, tmp });
+
+    // Cast back if needed
+    Value result = tmp;
+    if (c.inner_type != c.result_type)
+        result = CastValue(m_instructions, tmp, c.inner_type, c.result_type);
+
+    // Store the result if it was modified through a pointer
+    if (lhs.kind == LHSInfo::Kind::Plain)
+        m_instructions.push_back(Copy{ result, lhs.address });
+    else
+        m_instructions.push_back(Store{ result, lhs.address });
+
+    return PlainOperand{ result };
 }
 
 ExpResult TACBuilder::operator()(const parser::ConditionalExpression &c)
@@ -239,7 +298,9 @@ ExpResult TACBuilder::operator()(const parser::AddressOfExpression &a)
 {
     ExpResult inner = std::visit(*this, *a.expr);
     if (PlainOperand *plain = std::get_if<PlainOperand>(&inner)) {
-        Variant dst = CreateTemporaryVariable(GetType(plain->val));
+        Variant dst = CreateTemporaryVariable(Type{
+            PointerType{ .referenced = std::make_shared<Type>(GetType(plain->val)) }
+        });
         m_instructions.push_back(GetAddress{ plain->val, dst });
         return PlainOperand{ dst };
     } else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&inner))

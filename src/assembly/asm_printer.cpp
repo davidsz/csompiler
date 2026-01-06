@@ -83,9 +83,9 @@ void ASMPrinter::operator()(const Pseudo &)
     m_codeStream << "!!!PSEUDO!!!";
 }
 
-void ASMPrinter::operator()(const Stack &s)
+void ASMPrinter::operator()(const Memory &m)
 {
-    m_codeStream << s.offset << "(%rbp)";
+    m_codeStream << m.offset << "(%" << getEightByteName(m.reg) << ")";
 }
 
 void ASMPrinter::operator()(const Data &d)
@@ -125,6 +125,16 @@ void ASMPrinter::operator()(const Movsx &m)
 void ASMPrinter::operator()(const MovZeroExtend &)
 {
     // Replaced during instruction fixup
+    assert(false);
+}
+
+void ASMPrinter::operator()(const Lea &l)
+{
+    m_codeStream << "    leaq ";
+    std::visit(*this, l.src);
+    m_codeStream << ", ";
+    std::visit(*this, l.dst);
+    m_codeStream << std::endl;
 }
 
 void ASMPrinter::operator()(const Cvttsd2si &c)

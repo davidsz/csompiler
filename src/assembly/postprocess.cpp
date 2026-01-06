@@ -1,4 +1,5 @@
 #include "postprocess.h"
+#include <cassert>
 #include <map>
 
 namespace assembly {
@@ -15,6 +16,7 @@ static int postprocessPseudoRegisters(
     auto resolvePseudo = [&](Operand &op) {
         if (auto pseudo = std::get_if<Pseudo>(&op)) {
             ObjEntry *entry = asmSymbolTable->getAs<ObjEntry>(pseudo->name);
+            assert(entry);
             if (!pseudoOffset.contains(pseudo->name)) {
                 if (entry && entry->is_static) {
                     // Replace static variables with Data operands
@@ -23,20 +25,15 @@ static int postprocessPseudoRegisters(
                 }
             }
             // All other variable types are stack offsets
-            int &offset = pseudoOffset[pseudo->name];
-            if (offset == 0) {
-                // The given pseudoregister has no offset yet
-                if (entry && entry->type == WordType::Longword)
-                    currentOffset -= 4;
-                else {
-                    currentOffset -= 8;
-                    // Quadwords and doubles should be 8-byte aligned
-                    if (currentOffset % 8 != 0)
-                        currentOffset -= 4;
-                }
-                offset = currentOffset;
+            // If a variable has no stack offset yet, determine it
+            if (auto it = pseudoOffset.find(pseudo->name); it == pseudoOffset.end()) {
+                int size = GetBytesOfWordType(entry->type);
+                currentOffset -= size;
+                // Correct alignment: currentOffset = (currentOffset / size) * size)
+                currentOffset &= ~(size - 1);
+                pseudoOffset[pseudo->name] = currentOffset;
             }
-            op.emplace<Stack>(offset);
+            op.emplace<Memory>(BP, pseudoOffset[pseudo->name]);
         }
     };
 
@@ -50,6 +47,9 @@ static int postprocessPseudoRegisters(
                 resolvePseudo(obj.src);
                 resolvePseudo(obj.dst);
             } else if constexpr (std::is_same_v<T, MovZeroExtend>) {
+                resolvePseudo(obj.src);
+                resolvePseudo(obj.dst);
+            } else if constexpr (std::is_same_v<T, Lea>) {
                 resolvePseudo(obj.src);
                 resolvePseudo(obj.dst);
             } else if constexpr (std::is_same_v<T, Cvttsd2si>) {
@@ -101,7 +101,7 @@ void postprocessPseudoRegisters(
 
 static bool isMemoryAddress(const Operand &op)
 {
-    return std::holds_alternative<Stack>(op)
+    return std::holds_alternative<Memory>(op)
         || std::holds_alternative<Data>(op);
 }
 
@@ -116,6 +116,13 @@ static bool isEightBytesImm(const Operand &op)
         return static_cast<int64_t>(imm->value) <= std::numeric_limits<int32_t>::lowest() ||
                static_cast<int64_t>(imm->value) >= std::numeric_limits<int32_t>::max();
     }
+    return false;
+}
+
+static bool isXMMRegister(const Operand &op)
+{
+    if (const Reg *r = std::get_if<Reg>(&op))
+        return r->reg >= XMM0 && r->reg <= XMM15;
     return false;
 }
 
@@ -173,6 +180,20 @@ static std::list<Instruction>::iterator postprocessMovZeroExtend(std::list<Instr
         it = asmList.erase(it);
         it = asmList.emplace(it, Mov{current.src, Reg{R11, 4}, WordType::Longword});
         it = asmList.emplace(std::next(it), Mov{Reg{R11, 8}, current.dst, WordType::Quadword});
+    }
+    return std::next(it);
+}
+
+static std::list<Instruction>::iterator postprocessLea(std::list<Instruction> &asmList, std::list<Instruction>::iterator it)
+{
+    auto &obj = std::get<Lea>(*it);
+    // The source can't be a constant or a register - currently it's guaranteed.
+    // The destination of LEA must be a register.
+    if (!std::holds_alternative<Reg>(obj.dst)) {
+        auto current = obj;
+        it = asmList.erase(it);
+        it = asmList.emplace(it, Lea{ current.src, Reg{ AX, 8 } });
+        it = asmList.emplace(std::next(it), Mov{ Reg{ AX, 8 }, current.dst, Quadword });
     }
     return std::next(it);
 }
@@ -255,12 +276,18 @@ static std::list<Instruction>::iterator postprocessSetCC(std::list<Instruction> 
 static std::list<Instruction>::iterator postprocessPush(std::list<Instruction> &asmList, std::list<Instruction>::iterator it)
 {
     auto &obj = std::get<Push>(*it);
-    // PUSHQ can handle quadwords only
     if (isEightBytesImm(obj.op)) {
+        // PUSHQ can handle quadwords only
         auto current = obj;
         it = asmList.erase(it);
         it = asmList.emplace(it, Mov{ current.op, Reg{ R10, 8 }, Quadword });
         it = asmList.emplace(std::next(it), Push{ Reg{ R10, 8 } });
+    } else if (isXMMRegister(obj.op)) {
+        // Can't have XMM register as operand
+        auto current = obj;
+        it = asmList.erase(it);
+        it = asmList.emplace(it, Binary{ Sub_AB, Imm{ 8 }, Reg{ SP, 8 }, Quadword });
+        it = asmList.emplace(std::next(it), Mov{ obj.op, Memory{ SP, 0 }, Doubleword });
     }
     return std::next(it);
 }
@@ -382,6 +409,8 @@ static void postprocessInvalidInstructions(std::list<Instruction> &asmList)
                 return postprocessMovsx(asmList, it);
             else if constexpr (std::is_same_v<T, MovZeroExtend>)
                 return postprocessMovZeroExtend(asmList, it);
+            else if constexpr (std::is_same_v<T, Lea>)
+                return postprocessLea(asmList, it);
             else if constexpr (std::is_same_v<T, Cvttsd2si>)
                 return postprocessCvttsd2si(asmList, it);
             else if constexpr (std::is_same_v<T, Cvtsi2sd>)

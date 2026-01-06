@@ -152,7 +152,7 @@ int main(int argc, char **argv)
     tacPrinter.print(tacVector);
 #endif
 
-#if 1
+#if 0
     std::cout << std::endl << "Symbol table:" << std::endl;
     typeChecker.symbolTable()->print();
 #endif

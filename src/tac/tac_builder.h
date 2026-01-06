@@ -55,7 +55,6 @@ private:
         const Value &result,
         const Type &from_type,
         const Type &to_type);
-    std::optional<Variant> GetTargetLvalue(const parser::Expression &expr);
     Type GetType(const Value &value);
     void ProcessStaticSymbols();
 
@@ -65,13 +64,22 @@ private:
         if (PlainOperand *plain = std::get_if<PlainOperand>(&result))
             return plain->val;
         else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&result)) {
-            Variant dst = CreateTemporaryVariable(GetType(deref->ptr));
+            PointerType *ptr_type = GetType(deref->ptr).getAs<PointerType>();
+            assert(ptr_type);
+            Variant dst = CreateTemporaryVariable(*(ptr_type->referenced));
             m_instructions.push_back(Load{ deref->ptr, dst });
             return dst;
         }
         assert(false);
         return std::monostate();
     }
+
+    struct LHSInfo {
+        enum class Kind { Plain, Deref } kind;
+        Value address;          // Where to write the result
+        Type original_type;     // Before a potential cast
+    };
+    LHSInfo AnalyzeLHS(const parser::Expression &expr);
 
     std::vector<TopLevel> m_topLevel;
     std::vector<Instruction> m_instructions;

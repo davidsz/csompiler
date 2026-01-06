@@ -20,6 +20,7 @@ namespace assembly {
     X(R10, "r10", "r10d", "r10b") \
     X(R11, "r11", "r11d", "r11b") \
     X(SP, "rsp", "rsp", "rsp") \
+    X(BP, "rbp", "rbp", "rbp") \
     X(XMM0, "xmm0", "xmm0", "xmm0") \
     X(XMM1, "xmm1", "xmm1", "xmm1") \
     X(XMM2, "xmm2", "xmm2", "xmm2") \
@@ -38,7 +39,8 @@ namespace assembly {
         uint64_t value;) \
     X(Pseudo, \
         std::string name;) \
-    X(Stack, \
+    X(Memory, \
+        Register reg; \
         int offset;) \
     X(Data, \
         std::string name;)
@@ -54,6 +56,9 @@ namespace assembly {
         Operand src; \
         Operand dst;) \
     X(MovZeroExtend, \
+        Operand src; \
+        Operand dst;) \
+    X(Lea, \
         Operand src; \
         Operand dst;) \
     X(Cvttsd2si, \

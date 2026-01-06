@@ -25,6 +25,24 @@ static const std::unordered_set<std::string> s_specifiers {
 #undef ADD_CLASS_TO_SET
 };
 
+static std::string toString(BasicType type)
+{
+    switch (type) {
+    case BasicType::Int:
+        return "int";
+    case BasicType::UInt:
+        return "unsigned int";
+    case BasicType::Long:
+        return "long";
+    case BasicType::ULong:
+        return "unsigned long";
+    case BasicType::Double:
+        return "double";
+    default:
+        return "unknown";
+    }
+}
+
 bool IsTypeSpecifier(const std::string &type)
 {
     return s_typeSpecifiers.contains(type);
@@ -181,7 +199,7 @@ std::ostream &operator<<(std::ostream &os, const Type &type)
     std::visit([&](auto &obj) {
         using T = std::decay_t<decltype(obj)>;
         if constexpr (std::is_same_v<T, BasicType>)
-            os << "BasicType " << (int)obj;
+            os << toString(obj);
         else if constexpr (std::is_same_v<T, FunctionType>)
             os << "FunctionType";
         else if constexpr (std::is_same_v<T, PointerType>)

@@ -189,7 +189,8 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
 
     // Division, Remainder
     if (b.op == BinaryOperator::Divide || b.op == BinaryOperator::Remainder) {
-        Comment(m_instructions, std::format("Binary operator {}", toString(b.op)));
+        Comment(m_instructions, std::format("Binary operator {} ({})",
+            toString(b.op), isSigned ? "signed" : "unsigned"));
         uint8_t bytes = GetBytesOfWordType(srcType);
         m_instructions.push_back(Mov{ src1, Reg{ AX, bytes }, srcType });
         if (isSigned) {
@@ -259,18 +260,44 @@ Operand ASMBuilder::operator()(const tac::Copy &c)
     return std::monostate();
 }
 
-Operand ASMBuilder::operator()(const tac::GetAddress &)
+Operand ASMBuilder::operator()(const tac::GetAddress &g)
 {
+    // Load Effective Address;
+    // moves the address of source to the destination.
+    m_instructions.push_back(Lea{
+        std::visit(*this, g.src),
+        std::visit(*this, g.dst)
+    });
     return std::monostate();
 }
 
-Operand ASMBuilder::operator()(const tac::Load &)
+Operand ASMBuilder::operator()(const tac::Load &l)
 {
+    m_instructions.push_back(Mov{
+        std::visit(*this, l.src_ptr),
+        Reg{ AX, 8 },
+        Quadword
+    });
+    m_instructions.push_back(Mov{
+        Memory{ AX, 0 },
+        std::visit(*this, l.dst),
+        GetWordType(l.dst)
+    });
     return std::monostate();
 }
 
-Operand ASMBuilder::operator()(const tac::Store &)
+Operand ASMBuilder::operator()(const tac::Store &s)
 {
+    m_instructions.push_back(Mov{
+        std::visit(*this, s.dst_ptr),
+        Reg{ AX, 8 },
+        Quadword
+    });
+    m_instructions.push_back(Mov{
+        std::visit(*this, s.src),
+        Memory{ AX, 0 },
+        GetWordType(s.src)
+    });
     return std::monostate();
 }
 
@@ -636,7 +663,7 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     size_t stack_offset = 16;
     for (auto &param : stack_params) {
         func.instructions.push_back(Mov{
-            Stack{ static_cast<int>(stack_offset) },
+            Memory{ BP, static_cast<int>(stack_offset) },
             Pseudo{ param.first },
             param.second
         });

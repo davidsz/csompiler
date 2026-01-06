@@ -17,6 +17,11 @@ ASMSymbolTable::ASMSymbolTable(
             insert(name, FunEntry{
                 .defined = entry.attrs.defined
             });
+        } else if (entry.type.getAs<PointerType>()) {
+            insert(name, ObjEntry{
+                .type = Quadword,
+                .is_static = entry.attrs.type == IdentifierAttributes::Static
+            });
         } else
             assert(false);
     }
