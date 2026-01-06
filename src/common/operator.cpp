@@ -1,5 +1,7 @@
 #include "operator.h"
+#include "common/system.h"
 #include <cassert>
+#include <format>
 #include <unordered_map>
 
 static const std::unordered_map<std::string_view, BinaryOperator> s_binary_map = {
@@ -88,13 +90,14 @@ std::string AddSuffix(std::string_view instruction, WordType type)
 
 ASMUnaryOperator toASMUnaryOperator(UnaryOperator op)
 {
+    ASMUnaryOperator ret;
     switch (op) {
 #define CASE_TO_STRING(name, str, prec, asm) \
-    case UnaryOperator::name: \
-        return ASMUnaryOperator::asm;
+    case UnaryOperator::name: ret = ASMUnaryOperator::asm; break;
     UNARY_OPERATOR_LIST(CASE_TO_STRING)
 #undef CASE_TO_STRING
     }
+    return ret;
 }
 
 ASMBinaryOperator toASMBinaryOperator(BinaryOperator op, WordType wordType, bool isSigned)
@@ -150,8 +153,8 @@ int getPrecedence(UnaryOperator op)
     return -1;
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wswitch-enum"
+DIAG_PUSH
+DIAG_IGNORE("-Wswitch-enum")
 bool isAssignment(BinaryOperator op)
 {
     switch (op) {
@@ -235,7 +238,7 @@ BinaryOperator unaryToBinary(UnaryOperator op)
             return BinaryOperator::UnknownBinary;
     }
 }
-#pragma clang diagnostic pop
+DIAG_POP
 
 bool canBePostfix(UnaryOperator op)
 {

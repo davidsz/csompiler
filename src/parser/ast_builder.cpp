@@ -1,6 +1,8 @@
 #include "ast_builder.h"
 #include "ast_nodes.h"
+#include <algorithm>
 #include <cassert>
+#include <format>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -257,10 +259,15 @@ Expression ASTBuilder::ParseConstantExpression()
     if (literal.contains('E') || literal.contains('e') || literal.contains('.')) {
         // Floating point
         // These numbers can have L suffixes, but we don't implement it.
+
+        // TODO: Figure out what was the issue with strtod on Mac
+#ifdef __APPLE__
         std::istringstream iss(literal);
-        iss >> std::setprecision(std::numeric_limits<double>::max_digits10);
         double value;
         iss >> value;
+#else
+        double value = std::strtod(literal.c_str(), nullptr);
+#endif
         return ConstantExpression{ value };
     } else if (hasU) {
         // Unsigned
@@ -697,6 +704,7 @@ ASTBuilder::ProcessDeclarator(const Declarator &declarator, const Type &base_typ
     } else if (auto func = std::get_if<FunctionDeclarator>(&declarator)) {
         if (auto func_id = std::get_if<IdentifierDeclarator>(func->inner_declarator.get())) {
             FunctionType func_type = FunctionType{
+                .params = {},
                 .ret = std::make_shared<Type>(base_type)
             };
             std::vector<std::string> param_names;

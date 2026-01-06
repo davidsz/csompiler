@@ -21,24 +21,27 @@ static bool is_keyword(std::string_view word)
 
 static bool is_operator(char c)
 {
-    static const bool lookup[256] = {
-        ['+'] = true, ['-'] = true, ['*'] = true, ['/'] = true,
-        ['<'] = true, ['>'] = true, ['^'] = true, ['?'] = true,
-        ['%'] = true, ['!'] = true, ['='] = true, ['~'] = true,
-        ['|'] = true, ['&'] = true, [','] = true, ['.'] = true,
-        [':'] = true,
-    };
-    return lookup[(unsigned char)c];
+    switch (c) {
+    case '+': case '-': case '*': case '/':
+    case '<': case '>': case '^': case '?':
+    case '%': case '!': case '=': case '~':
+    case '|': case '&': case ',': case '.':
+    case ':':
+        return true;
+    default:
+        return false;
+    }
 }
 
 static bool is_punctator(char c)
 {
-    static const bool lookup[256] = {
-        ['('] = true, ['['] = true, ['{'] = true,
-        [')'] = true, [']'] = true, ['}'] = true,
-        [';'] = true,
-    };
-    return lookup[(unsigned char)c];
+    switch (c) {
+    case '(': case '[': case '{': case ')':
+    case ']': case '}': case ';':
+        return true;
+    default:
+        return false;
+    }
 }
 
 static bool is_whitespace(char c)

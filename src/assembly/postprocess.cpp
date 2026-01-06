@@ -1,5 +1,6 @@
 #include "postprocess.h"
 #include <cassert>
+#include <limits>
 #include <map>
 
 namespace assembly {
@@ -17,12 +18,12 @@ static int postprocessPseudoRegisters(
         if (auto pseudo = std::get_if<Pseudo>(&op)) {
             ObjEntry *entry = asmSymbolTable->getAs<ObjEntry>(pseudo->name);
             assert(entry);
-            if (!pseudoOffset.contains(pseudo->name)) {
-                if (entry && entry->is_static) {
-                    // Replace static variables with Data operands
-                    op.emplace<Data>(pseudo->name);
-                    return;
-                }
+            if (entry && entry->is_static) {
+                // Can't use pseudo->name directly in emplace() as argument (use-after-free)
+                std::string name_copy = pseudo->name;
+                // Replace static variables with Data operands
+                op.emplace<Data>(name_copy);
+                return;
             }
             // All other variable types are stack offsets
             // If a variable has no stack offset yet, determine it
@@ -36,6 +37,7 @@ static int postprocessPseudoRegisters(
             op.emplace<Memory>(BP, pseudoOffset[pseudo->name]);
         }
     };
+
 
     for (auto &inst : asmList) {
         std::visit([&](auto &obj) {
@@ -105,6 +107,15 @@ static bool isMemoryAddress(const Operand &op)
         || std::holds_alternative<Data>(op);
 }
 
+static bool isFourBytesImm(const Operand &op)
+{
+    if (const Imm *imm = std::get_if<Imm>(&op)) {
+        return static_cast<int64_t>(imm->value) >= std::numeric_limits<int32_t>::lowest() ||
+               static_cast<int64_t>(imm->value) <= std::numeric_limits<int32_t>::max();
+    }
+    return false;
+}
+
 // "The assembler permits an immediate value in addq, imulq, subq, cmpq, or pushq only if
 // it can be represented as a signed 32-bit integer. That’s because these instructions all
 // sign extend their immediate operands from 32 to 64 bits. If an immediate value can
@@ -142,6 +153,12 @@ static std::list<Instruction>::iterator postprocessMov(std::list<Instruction> &a
             it = asmList.emplace(it, Mov{current.src, Reg{R10, bytes}, current.type});
             it = asmList.emplace(std::next(it), Mov{Reg{R10, bytes}, current.dst, current.type});
         }
+    } else if (obj.type == Longword && isFourBytesImm(obj.src)) {
+        // GCC throws a warning then we directly use MOVL to truncate an immediate value from 64 to 32 bits
+        auto current = obj;
+        it = asmList.erase(it);
+        it = asmList.emplace(it, Mov{ current.src, Reg{ R10, 8 }, Quadword });
+        it = asmList.emplace(std::next(it), Mov{ Reg{ R10, 4 }, current.dst, Longword });
     }
     return std::next(it);
 }

@@ -1,10 +1,15 @@
 #pragma once
 
+#include "common/system.h"
 #include "common/values.h"
+#include <cstring>
 #include <map>
 
 // In case of floating point types, +0.0 and -0.0 should be separate keys
 struct ConstantValueComparator {
+DIAG_PUSH
+DIAG_IGNORE("-Wsign-compare")
+DIAG_IGNORE("-Wconversion")
     bool operator()(const ConstantValue &a, const ConstantValue &b) const {
         return std::visit([](const auto &x, const auto &y) {
             using X = std::decay_t<decltype(x)>;
@@ -20,6 +25,7 @@ struct ConstantValueComparator {
                 return x < y;
         }, a, b);
     }
+DIAG_POP
 };
 
 using ConstantMap = std::map<ConstantValue, std::string, ConstantValueComparator>;

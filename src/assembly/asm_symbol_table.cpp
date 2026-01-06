@@ -11,7 +11,8 @@ ASMSymbolTable::ASMSymbolTable(
         if (entry.type.getAs<BasicType>()) {
             insert(name, ObjEntry{
                 .type = entry.type.wordType(),
-                .is_static = entry.attrs.type == IdentifierAttributes::Static
+                .is_static = entry.attrs.type == IdentifierAttributes::Static,
+                .is_constant = false
             });
         } else if (entry.type.getAs<FunctionType>()) {
             insert(name, FunEntry{
@@ -20,7 +21,8 @@ ASMSymbolTable::ASMSymbolTable(
         } else if (entry.type.getAs<PointerType>()) {
             insert(name, ObjEntry{
                 .type = Quadword,
-                .is_static = entry.attrs.type == IdentifierAttributes::Static
+                .is_static = entry.attrs.type == IdentifierAttributes::Static,
+                .is_constant = false
             });
         } else
             assert(false);

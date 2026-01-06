@@ -1,5 +1,6 @@
 #include "semantic_analyzer.h"
 #include "common/labeling.h"
+#include <format>
 #include <variant>
 
 namespace parser {

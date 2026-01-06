@@ -13,6 +13,15 @@ static std::string getInitializer(WordType type)
     }
 }
 
+static std::string_view formatLabel(std::string_view name)
+{
+#ifdef __APPLE__
+    return "_" + name;
+#else
+    return name;
+#endif
+}
+
 static std::string getEightByteName(Register reg)
 {
     switch (reg) {
@@ -90,11 +99,8 @@ void ASMPrinter::operator()(const Memory &m)
 
 void ASMPrinter::operator()(const Data &d)
 {
-    ObjEntry *entry = m_symbolTable->getAs<ObjEntry>(d.name);
-    assert(entry);
-    // TODO: Append L
-    // TODO: No "_" on Linux
-    m_codeStream << "_" << d.name << "(%rip)";
+    // TODO: Append L?
+    m_codeStream << formatLabel(d.name) << "(%rip)";
 }
 
 void ASMPrinter::operator()(const Comment &c)
@@ -250,16 +256,17 @@ void ASMPrinter::operator()(const Push &p)
 
 void ASMPrinter::operator()(const Call &c)
 {
-    m_codeStream << "    call _" << c.identifier << std::endl;
+    m_codeStream << "    call " << formatLabel(c.identifier) << std::endl;
 }
 
 void ASMPrinter::operator()(const Function &f)
 {
-    // TODO: Annotating with _ is specific to MacOS
     if (f.global)
-        m_codeStream << "    .globl _" << f.name << std::endl;
+        m_codeStream << "    .globl " << formatLabel(f.name) << std::endl;
+
     m_codeStream << "    .text" << std::endl;
-    m_codeStream << "_" << f.name << ":" << std::endl;
+
+    m_codeStream << formatLabel(f.name) << ":" << std::endl;
 
     // Prologue
     m_codeStream << "    pushq %rbp" << std::endl;
@@ -273,9 +280,8 @@ void ASMPrinter::operator()(const Function &f)
 
 void ASMPrinter::operator()(const StaticVariable &s)
 {
-    // TODO: Annotating with _ is specific to MacOS
     if (s.global)
-        m_codeStream << "    .globl _" << s.name << std::endl;
+        m_codeStream << "    .globl " << formatLabel(s.name) << std::endl;
 
     Type type = getType(s.init);
     WordType wordType = type.wordType();
@@ -286,27 +292,38 @@ void ASMPrinter::operator()(const StaticVariable &s)
         m_codeStream << "    .bss" << std::endl;
 
     m_codeStream << "    .balign " << s.alignment << std::endl;
-    m_codeStream << "_" << s.name << ":" << std::endl;
+
+    m_codeStream << formatLabel(s.name) << ":" << std::endl;
 
     if (isZero)
         m_codeStream << "    .zero " << type.size() << std::endl;
     else
-        m_codeStream << getInitializer(wordType) << " " << toString(s.init) << std::endl;
+        m_codeStream << "    " << getInitializer(wordType) << " " << toString(s.init) << std::endl;
     m_codeStream << std::endl;
 }
 
 void ASMPrinter::operator()(const StaticConstant &s)
 {
-    Type type = getType(s.init);
+#ifdef __APPLE__
     m_codeStream << "    .literal" << s.alignment << std::endl;
     m_codeStream << "    .balign " << s.alignment << std::endl;
-    m_codeStream << "_" << s.name << ":" << std::endl;
+#else
+    m_codeStream << "    .section .rodata" << std::endl;
+    m_codeStream << "    .balign " << s.alignment << std::endl;
+#endif
+
+    m_codeStream << formatLabel(s.name) << ":" << std::endl;
+
+    Type type = getType(s.init);
     if (isPositiveZero(s.init))
         m_codeStream << "    .zero " << type.size() << std::endl;
     else
         m_codeStream << "    " << getInitializer(type.wordType()) << " " << toString(s.init) << std::endl;
+
+#ifdef __APPLE__
     if (s.alignment == 16)
         m_codeStream << "    .quad 0" << std::endl;
+#endif
     m_codeStream << std::endl;
 }
 
@@ -319,6 +336,12 @@ std::string ASMPrinter::ToText(std::list<TopLevel> instructions)
 {
     for (auto &i: instructions)
         std::visit(*this, i);
+
+    // Disallow executable stack
+#ifdef __linux__
+    m_codeStream << std::endl << ".section .note.GNU-stack,\"\",@progbits" << std::endl;
+#endif
+
     return m_codeStream.str();
 }
 

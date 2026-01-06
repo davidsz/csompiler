@@ -9,7 +9,10 @@
 #include "parser/type_checker.h"
 #include "tac/tac.h"
 #include "tac/tac_printer.h"
+#include <algorithm>
 #include <cstdlib>
+#include <filesystem>
+#include <format>
 #include <fstream>
 #include <iostream>
 #include <iterator>

@@ -13,8 +13,8 @@ static const std::array<Register, 8> s_doubleArgRegisters = {
     XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7
 };
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wswitch-enum"
+DIAG_PUSH
+DIAG_IGNORE("-Wswitch-enum")
 static std::string toConditionCode(BinaryOperator op, bool unsignedOrDouble)
 {
     switch (op) {
@@ -34,7 +34,7 @@ static std::string toConditionCode(BinaryOperator op, bool unsignedOrDouble)
             return "UNKNOWN_COND";
     }
 }
-#pragma clang diagnostic pop
+DIAG_POP
 
 ASMBuilder::ASMBuilder(
     std::shared_ptr<SymbolTable> symbolTable,

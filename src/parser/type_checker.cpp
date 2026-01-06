@@ -1,5 +1,6 @@
 #include "type_checker.h"
 #include <cassert>
+#include <format>
 
 namespace parser {
 
@@ -602,12 +603,12 @@ Type TypeChecker::operator()(VariableDeclaration &v)
         } else if (v.storage == StorageStatic) {
             InitialValue init = NoInitializer{};
             /*
-            if (!v.init)
-                init = Initial{ .i = MakeConstantValue(0, v.type) };
-            else if (v.type.isPointer()) {
-                if (!isNullPointerConstant(*v.init))
+            if (v.type.isPointer()) {
+                if (v.init && !isNullPointerConstant(*v.init))
                     Abort(std::format("Trying to initialize pointer '{}' with a non-null constant", v.identifier));
                 init = Initial{ .i = MakeConstantValue(0, ULong) };
+            } else if (!v.init) {
+                init = Initial{ .i = MakeConstantValue(0, v.type) };
             } else if (auto n = std::get_if<ConstantExpression>(v.init.get()))
                 init = Initial{ .i = ConvertValue(n->value, v.type) };
             else

@@ -1,4 +1,5 @@
 #include "values.h"
+#include <cstring>
 #include <format>
 
 std::string toString(const ConstantValue &v)
@@ -101,6 +102,8 @@ ConstantValue ConvertValue(const ConstantValue &v, const Type &to_type)
             return static_cast<unsigned long>(x);
         case BasicType::Double:
             return static_cast<double>(x);
+        default:
+            return static_cast<int>(x);
         }
     }, v);
 }
