@@ -95,15 +95,25 @@ void ASTPrinter::operator()(const FunctionCallExpression &f)
 
 void ASTPrinter::operator()(const DereferenceExpression &d)
 {
-    pad(); std::cout << "DereferenceExpression( " << d.type << std::endl;;
+    pad(); std::cout << "DereferenceExpression( " << d.type << std::endl;
     tab(); std::visit(*this, *d.expr); shift_tab();
     pad(); std::cout << ") " << std::endl;
 }
 
 void ASTPrinter::operator()(const AddressOfExpression &a)
 {
-    pad(); std::cout << "AddressOfExpression( " << a.type << std::endl;;
+    pad(); std::cout << "AddressOfExpression( " << a.type << std::endl;
     tab(); std::visit(*this, *a.expr); shift_tab();
+    pad(); std::cout << ") " << std::endl;
+}
+
+void ASTPrinter::operator()(const SubscriptExpression &s)
+{
+    pad(); std::cout << "SubscriptExpression( " << s.type << std::endl;
+    tab();
+    std::visit(*this, *s.pointer);
+    std::visit(*this, *s.index);
+    shift_tab();
     pad(); std::cout << ") " << std::endl;
 }
 
@@ -256,6 +266,16 @@ void ASTPrinter::operator()(const VariableDeclaration &d)
         pad(); std::cout << "Init: " << std::endl;
         tab(); std::visit(*this, *d.init); shift_tab();
     }
+}
+
+void ASTPrinter::operator()(const SingleInit &)
+{
+    // TODO
+}
+
+void ASTPrinter::operator()(const CompoundInit &)
+{
+    // TODO
 }
 
 void ASTPrinter::print(const std::vector<Declaration> &root)

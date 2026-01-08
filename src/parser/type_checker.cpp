@@ -350,6 +350,11 @@ Type TypeChecker::operator()(AddressOfExpression &a)
     return a.type;
 }
 
+Type TypeChecker::operator()(SubscriptExpression &)
+{
+    return Type{};
+}
+
 Type TypeChecker::operator()(ReturnStatement &r)
 {
     Type ret_type = std::visit(*this, *r.expr);
@@ -537,6 +542,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
     if (m_fileScope) {
         // File-scope variable
         InitialValue init = NoInitializer{};
+        /*
         if (!v.init) {
             if (v.storage == StorageExtern)
                 init = NoInitializer{};
@@ -550,6 +556,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             init = Initial{ .i = ConvertValue(n->value, v.type) };
         else
             Abort(std::format("Non-constant initializer of '{}'", v.identifier));
+        */
 
         bool is_global = (v.storage != StorageStatic);
 
@@ -594,6 +601,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             }
         } else if (v.storage == StorageStatic) {
             InitialValue init = NoInitializer{};
+            /*
             if (!v.init)
                 init = Initial{ .i = MakeConstantValue(0, v.type) };
             else if (v.type.isPointer()) {
@@ -604,7 +612,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
                 init = Initial{ .i = ConvertValue(n->value, v.type) };
             else
                 Abort(std::format("Non-constant initializer on local static variable '{}'", v.identifier));
-
+            */
             m_symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
                 .type = IdentifierAttributes::Static,
                 .global = false,
@@ -615,6 +623,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
                 .type = IdentifierAttributes::Local
             });
 
+            /*
             if (v.init) {
                 if (v.type.isPointer()) {
                     if (std::holds_alternative<ConstantExpression>(*v.init) && !isNullPointerConstant(*v.init))
@@ -625,8 +634,19 @@ Type TypeChecker::operator()(VariableDeclaration &v)
                 if (!(v.init = convertByAssignment(std::move(v.init), init_type, v.type)))
                     Abort("Can't convert initializer type.");
             }
+            */
         }
     }
+    return Type{ std::monostate() };
+}
+
+Type TypeChecker::operator()(SingleInit &)
+{
+    return Type{ std::monostate() };
+}
+
+Type TypeChecker::operator()(CompoundInit &)
+{
     return Type{ std::monostate() };
 }
 

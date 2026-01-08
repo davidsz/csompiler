@@ -59,11 +59,18 @@ struct PointerType {
     bool operator==(const PointerType &other) const;
 };
 
+struct ArrayType {
+    std::shared_ptr<Type> element;
+    uint64_t count;
+    bool operator==(const ArrayType &other) const;
+};
+
 using TypeInfo = std::variant<
     std::monostate,
     BasicType,
     FunctionType,
-    PointerType
+    PointerType,
+    ArrayType
 >;
 
 struct Type {
@@ -78,6 +85,7 @@ struct Type {
     bool isBasic(BasicType type) const;
     bool isFunction() const;
     bool isPointer() const;
+    bool isArray() const;
     bool isSigned() const;
     bool isArithmetic() const;
     bool isInitialized() const;

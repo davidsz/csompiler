@@ -138,6 +138,12 @@ void SemanticAnalyzer::operator()(AddressOfExpression &a)
     std::visit(*this, *a.expr);
 }
 
+void SemanticAnalyzer::operator()(SubscriptExpression &s)
+{
+    std::visit(*this, *s.pointer);
+    std::visit(*this, *s.index);
+}
+
 void SemanticAnalyzer::operator()(ReturnStatement &r)
 {
     std::visit(*this, *r.expr);
@@ -418,6 +424,16 @@ void SemanticAnalyzer::operator()(VariableDeclaration &v)
 
     if (v.init)
         std::visit(*this, *v.init);
+}
+
+void SemanticAnalyzer::operator()(SingleInit &)
+{
+
+}
+
+void SemanticAnalyzer::operator()(CompoundInit &)
+{
+
 }
 
 void SemanticAnalyzer::operator()(std::monostate)

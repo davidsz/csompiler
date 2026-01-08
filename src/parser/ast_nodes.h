@@ -23,7 +23,7 @@ namespace parser {
         StorageClass storage; \
         Type type; \
         std::string identifier; \
-        std::unique_ptr<Expression> init;) \
+        std::unique_ptr<Initializer> init;) \
 
 #define AST_STATEMENT_LIST(X) \
     X(ReturnStatement, \
@@ -120,6 +120,18 @@ namespace parser {
         Type type = Type{};) \
     X(AddressOfExpression, \
         std::unique_ptr<Expression> expr; \
+        Type type = Type{};) \
+    X(SubscriptExpression, \
+        std::unique_ptr<Expression> pointer; \
+        std::unique_ptr<Expression> index; \
+        Type type = Type{};)
+
+#define AST_INITIALIZER_LIST(X) \
+    X(SingleInit, \
+        std::unique_ptr<Expression> expr; \
+        Type type = Type{};) \
+    X(CompoundInit, \
+        std::vector<std::unique_ptr<Initializer>> list; \
         Type type = Type{};)
 
 AST_DECLARATION_LIST(FORWARD_DECL_NODE)
@@ -139,6 +151,8 @@ using ForInit = std::variant<
     AST_EXPRESSION_LIST(ADD_TO_VARIANT)
     std::monostate
 >;
+
+DEFINE_NODES_WITH_COMMON_VARIANT(Initializer, AST_INITIALIZER_LIST);
 
 AST_DECLARATION_LIST(DEFINE_NODE)
 AST_STATEMENT_LIST(DEFINE_NODE)

@@ -30,6 +30,7 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
     void operator()(FunctionCallExpression &f) override;
     void operator()(DereferenceExpression &d) override;
     void operator()(AddressOfExpression &a) override;
+    void operator()(SubscriptExpression &s) override;
     void operator()(ReturnStatement &r) override;
     void operator()(IfStatement &i) override;
     void operator()(GotoStatement &g) override;
@@ -47,6 +48,8 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
     void operator()(DefaultStatement &d) override;
     void operator()(FunctionDeclaration &f) override;
     void operator()(VariableDeclaration &v) override;
+    void operator()(SingleInit &s) override;
+    void operator()(CompoundInit &c) override;
     void operator()(std::monostate) override;
 
     Error CheckAndMutate(std::vector<parser::Declaration> &);

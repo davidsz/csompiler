@@ -18,6 +18,7 @@ struct TypeChecker : public IASTMutatingVisitor<Type> {
     Type operator()(FunctionCallExpression &f) override;
     Type operator()(DereferenceExpression &d) override;
     Type operator()(AddressOfExpression &a) override;
+    Type operator()(SubscriptExpression &s) override;
     Type operator()(ReturnStatement &r) override;
     Type operator()(IfStatement &i) override;
     Type operator()(GotoStatement &g) override;
@@ -35,6 +36,8 @@ struct TypeChecker : public IASTMutatingVisitor<Type> {
     Type operator()(DefaultStatement &d) override;
     Type operator()(FunctionDeclaration &f) override;
     Type operator()(VariableDeclaration &v) override;
+    Type operator()(SingleInit &s) override;
+    Type operator()(CompoundInit &c) override;
     Type operator()(std::monostate) override;
 
     Error CheckAndMutate(std::vector<parser::Declaration> &);

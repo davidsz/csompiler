@@ -23,6 +23,10 @@ struct ASTBuilder::IdentifierDeclarator {
 struct ASTBuilder::PointerDeclarator {
     std::unique_ptr<Declarator> inner_declarator;
 };
+struct ASTBuilder::ArrayDeclarator {
+    uint64_t size;
+    std::unique_ptr<Declarator> inner_declarator;
+};
 struct ASTBuilder::FunctionDeclarator {
     std::vector<DeclaratorParam> params;
     std::unique_ptr<Declarator> inner_declarator;
@@ -30,6 +34,10 @@ struct ASTBuilder::FunctionDeclarator {
 
 struct ASTBuilder::AbstractBaseDeclarator {};
 struct ASTBuilder::AbstractPointerDeclarator {
+    std::unique_ptr<AbstractDeclarator> inner_declarator;
+};
+struct ASTBuilder::AbstractArrayDeclarator {
+    uint64_t size;
     std::unique_ptr<AbstractDeclarator> inner_declarator;
 };
 
@@ -83,7 +91,7 @@ std::optional<lexer::Token> ASTBuilder::Peek(long n)
 Expression ASTBuilder::ParseExpression(int min_precedence)
 {
     LOG("ParseExpression");
-    Expression left = ParseFactor();
+    Expression left = ParseUnaryExpression();
     auto next = Peek();
 
     // Postfix unary expressions (left-associative)
@@ -126,45 +134,14 @@ Expression ASTBuilder::ParseExpression(int min_precedence)
     return left;
 }
 
-Expression ASTBuilder::ParseFactor()
+Expression ASTBuilder::ParseUnaryExpression()
 {
-    LOG("ParseFactor");
+    LOG("ParseUnaryExpression");
     auto next = Peek();
-    if (next->type() == TokenType::Punctator && next->value() == "(") {
-        Consume(TokenType::Punctator, "(");
-        if (Peek()->type() == TokenType::Keyword) {
-            LOG("CastExpression");
-            auto ret = CastExpression{};
-            Type base_type = ParseTypes();
-            AbstractDeclarator declarator = ParseAbstractDeclarator();
-            ret.target_type = ProcessAbstractDeclarator(declarator, base_type);
-            Consume(TokenType::Punctator, ")");
-            // Expression will include the next unary expression,
-            // but the precedence is higher than binary expressions.
-            ret.expr = unique_expression(ParseExpression(75));
-            return ret;
-        }
-        LOG("( Expression )");
-        auto expr = ParseExpression(0);
-        Consume(TokenType::Punctator, ")");
-        return expr;
-    }
-
-    if (next->type() == TokenType::NumericLiteral)
-        return ParseNumericLiteral();
-
-    if (next->type() == TokenType::Identifier) {
-        next = Peek(1);
-        if (next->type() == TokenType::Punctator && next->value() == "(")
-            return ParseFunctionCall();
-        LOG("VariableExpression");
-        return VariableExpression{ Consume(TokenType::Identifier) };
-    }
 
     // Prefix unary expressions (right-associative)
-    // TODO: Ideally ParseExpression() should have this
-    // and handle precedence of different unary expressions
     if (next->type() == TokenType::Operator && isUnaryOperator(next->value())) {
+        LOG("Prefix Unary Expression");
         UnaryOperator op = toUnaryOperator(Consume(TokenType::Operator));
         auto expr = ParseExpression(getPrecedence(op) + 1);
         // AddressOf and Dereference are unary expressions, but we create different node
@@ -177,8 +154,66 @@ Expression ASTBuilder::ParseFactor()
             return UnaryExpression{ op, UE(expr), false };
     }
 
-    assert(false);
-    return std::monostate();
+    // Cast expression
+    if (next->type() == TokenType::Punctator && next->value() == "("
+        && Peek(1)->type() == TokenType::Keyword) {
+        LOG("CastExpression");
+        Consume(TokenType::Punctator, "(");
+        auto ret = CastExpression{};
+        Type base_type = ParseTypes();
+        AbstractDeclarator declarator = ParseAbstractDeclarator();
+        ret.target_type = ProcessAbstractDeclarator(declarator, base_type);
+        Consume(TokenType::Punctator, ")");
+        ret.expr = unique_expression(ParseUnaryExpression());
+        return ret;
+    }
+
+    return ParsePostfixExpression();
+}
+
+Expression ASTBuilder::ParsePostfixExpression()
+{
+    LOG("ParsePostfixExpression");
+    Expression primary = ParsePrimaryExpression();
+    auto next = Peek();
+    if (next->type() == TokenType::Punctator && next->value() == "[") {
+        LOG("SubscriptExpression");
+        while (next->type() == TokenType::Punctator && next->value() == "[") {
+            Consume(TokenType::Punctator, "[");
+            primary = SubscriptExpression{
+                .pointer = UE(primary),
+                .index = unique_expression(ParseExpression(0))
+            };
+            Consume(TokenType::Punctator, "]");
+            next = Peek();
+        }
+    }
+    return primary;
+}
+
+Expression ASTBuilder::ParsePrimaryExpression()
+{
+    LOG("ParsePrimaryExpression");
+    auto next = Peek();
+
+    if (next->type() == TokenType::Identifier) {
+        next = Peek(1);
+        if (next->type() == TokenType::Punctator && next->value() == "(")
+            return ParseFunctionCall();
+        LOG("VariableExpression");
+        return VariableExpression{ Consume(TokenType::Identifier) };
+    }
+
+    if (next->type() == TokenType::Punctator && next->value() == "(") {
+        LOG("( Expression )");
+        Consume(TokenType::Punctator, "(");
+        auto expr = ParseExpression(0);
+        Consume(TokenType::Punctator, ")");
+        return expr;
+    }
+
+    assert(next->type() == TokenType::NumericLiteral);
+    return ParseConstantExpression();
 }
 
 Expression ASTBuilder::ParseFunctionCall()
@@ -198,9 +233,9 @@ Expression ASTBuilder::ParseFunctionCall()
     return ret;
 }
 
-Expression ASTBuilder::ParseNumericLiteral()
+Expression ASTBuilder::ParseConstantExpression()
 {
-    LOG("ParseNumericLiteral");
+    LOG("ParseConstantExpression");
     std::string literal = Consume(TokenType::NumericLiteral);
     // Parse suffixes
     // TODO: Maybe make different token types for different literals to skip this part here
@@ -248,6 +283,24 @@ Expression ASTBuilder::ParseNumericLiteral()
         }
         return ConstantExpression{ value };
     }
+}
+
+uint64_t ASTBuilder::ParsePositiveInteger()
+{
+    // Expect a positive integer for array sizes
+    std::string l = Consume(TokenType::NumericLiteral);
+    if (l.contains('E') || l.contains('e') || l.contains('.'))
+        Abort("Expected a positive integer, but a floating point literal found.");
+
+    // Only keep the numbers in the literal
+    l.erase(std::remove_if(l.begin(), l.end(), [](unsigned char c) {
+        return !std::isdigit(c);
+    }), l.end());
+
+    uint64_t value = std::stoul(l);
+    if (value == 0)
+        Abort("Zero length arrays are not supported.");
+    return value;
 }
 
 Statement ASTBuilder::ParseReturn()
@@ -520,7 +573,7 @@ Declaration ASTBuilder::ParseDeclaration(bool allow_function)
             return decl;
         }
         Consume(TokenType::Operator, "=");
-        decl.init = unique_expression(ParseExpression(0));
+        decl.init = std::make_unique<Initializer>(ParseInitializer());
         Consume(TokenType::Punctator, ";");
         return decl;
     }
@@ -528,10 +581,39 @@ Declaration ASTBuilder::ParseDeclaration(bool allow_function)
     return VariableDeclaration{};
 }
 
+Initializer ASTBuilder::ParseInitializer()
+{
+    LOG("ParseInitializer");
+    Initializer ret;
+    auto next = Peek();
+    if (next->type() == TokenType::Punctator && next->value() == "{") {
+        LOG("CompoundInit");
+        CompoundInit init;
+        Consume(TokenType::Punctator, "{");
+        while (next->value() != "}") {
+            init.list.push_back(std::make_unique<Initializer>(ParseInitializer()));
+            next = Peek();
+            if (next->type() == TokenType::Operator && next->value() == ",")
+                Consume(TokenType::Operator, ",");
+            next = Peek();
+        }
+        Consume(TokenType::Punctator, "}");
+        ret.emplace<CompoundInit>(std::move(init));
+    } else {
+        LOG("SingleInit");
+        SingleInit init{
+            .expr = unique_expression(ParseExpression(0))
+        };
+        ret.emplace<SingleInit>(std::move(init));
+    }
+    return ret;
+}
+
 ASTBuilder::Declarator ASTBuilder::ParseDeclarator()
 {
     // <declarator> ::= "*" <declarator> | <direct-declarator>
-    // <direct-declarator> ::= <simple-declarator> [ <param-list> ]
+    // <direct-declarator> ::= <simple-declarator> [ <declarator-suffix> ]
+    // <declarator-suffix> ::= <param-list> | { "[" <const> "]" }+
     // <simple-declarator> ::= <identifier> | "(" <declarator> ")"
     // <param-list> ::= "(" "void" ")" | "(" <param> { "," <param> } ")"
     // <param> ::= { <type-specifier> }+ <declarator>
@@ -546,7 +628,7 @@ ASTBuilder::Declarator ASTBuilder::ParseDeclarator()
             std::make_unique<Declarator>(ParseDeclarator())
         };
     } else {
-        // <direct-declarator> ::= <simple-declarator> [ <param-list> ]
+        // <direct-declarator> ::= <simple-declarator> [ <declarator-suffix> ]
         Declarator direct_declarator;
         // <simple-declarator> ::= <identifier> | "(" <declarator> ")"
         Declarator simple_declarator;
@@ -559,9 +641,11 @@ ASTBuilder::Declarator ASTBuilder::ParseDeclarator()
             simple_declarator = IdentifierDeclarator{ identifier };
         }
         next = Peek();
-        // <param-list> ::= "(" "void" ")" | "(" <param> { "," <param> } ")"
+        // <declarator-suffix> ::= <param-list> | { "[" <const> "]" }+
         if (next->type() == TokenType::Punctator && next->value() == "(") {
-            FunctionDeclarator func_declarator = FunctionDeclarator{};
+            // <param-list> ::= "(" "void" ")" | "(" <param> { "," <param> } ")"
+            FunctionDeclarator func_declarator;
+            func_declarator.inner_declarator = std::make_unique<Declarator>(std::move(simple_declarator));
             Consume(TokenType::Punctator, "(");
             if (Peek()->value() == "void" && Peek(1)->value() == ")")
                 Consume(TokenType::Keyword, "void");
@@ -578,11 +662,22 @@ ASTBuilder::Declarator ASTBuilder::ParseDeclarator()
                 }
             }
             Consume(TokenType::Punctator, ")");
-            func_declarator.inner_declarator = std::make_unique<Declarator>(std::move(simple_declarator));
             direct_declarator.emplace<FunctionDeclarator>(std::move(func_declarator));
-        } else {
+        } else if (next->type() == TokenType::Punctator && next->value() == "[") {
+            // { "[" <const> "]" }+
+            // E.g.: array[1][2] -> ArrayDeclarator(ArrayDeclarator(ID("array"), 1), 2)
+            Declarator outmost_declarator = Declarator{ std::move(simple_declarator) };
+            while (Peek()->value() == "[") {
+                ArrayDeclarator outer_arr;
+                outer_arr.inner_declarator = std::make_unique<Declarator>(std::move(outmost_declarator));
+                Consume(TokenType::Punctator, "[");
+                outer_arr.size = ParsePositiveInteger();
+                Consume(TokenType::Punctator, "]");
+                outmost_declarator = Declarator{ std::move(outer_arr) };
+            }
+            direct_declarator = std::move(outmost_declarator);
+        } else
             direct_declarator = std::move(simple_declarator);
-        }
         return direct_declarator;
     }
 }
@@ -596,6 +691,9 @@ ASTBuilder::ProcessDeclarator(const Declarator &declarator, const Type &base_typ
     else if (auto ptr = std::get_if<PointerDeclarator>(&declarator)) {
         Type derived_type = Type{ PointerType{ std::make_shared<Type>(base_type) } };
         return ProcessDeclarator(*ptr->inner_declarator, derived_type);
+    } else if (auto arr = std::get_if<ArrayDeclarator>(&declarator)) {
+        Type derived_type = Type{ ArrayType{ std::make_shared<Type>(base_type), arr->size } };
+        return ProcessDeclarator(*arr->inner_declarator, derived_type);
     } else if (auto func = std::get_if<FunctionDeclarator>(&declarator)) {
         if (auto func_id = std::get_if<IdentifierDeclarator>(func->inner_declarator.get())) {
             FunctionType func_type = FunctionType{
@@ -621,7 +719,8 @@ ASTBuilder::AbstractDeclarator ASTBuilder::ParseAbstractDeclarator()
 {
     // <abstract-declarator> ::= "*" [ <abstract-declarator> ]
     // | <direct-abstract-declarator>
-    // <direct-abstract-declarator> ::= "(" <abstract-declarator> ")"
+    // <direct-abstract-declarator> ::= "(" <abstract-declarator> ")" { "[" <const> "]" }
+    // | { "[" <const> "]" }+
 
     LOG("ParseAbstractDeclarator (recursive)");
     AbstractDeclarator abstract_declarator;
@@ -633,10 +732,37 @@ ASTBuilder::AbstractDeclarator ASTBuilder::ParseAbstractDeclarator()
         ptr.inner_declarator = std::make_unique<AbstractDeclarator>(ParseAbstractDeclarator());
         abstract_declarator.emplace<AbstractPointerDeclarator>(std::move(ptr));
     } else if (next->type() == TokenType::Punctator && next->value() == "(") {
-        // <direct-abstract-declarator> ::= "(" <abstract-declarator> ")"
+        // <direct-abstract-declarator> ::= "(" <abstract-declarator> ")" { "[" <const> "]" }
         Consume(TokenType::Punctator, "(");
         abstract_declarator = ParseAbstractDeclarator();
         Consume(TokenType::Punctator, ")");
+        next = Peek();
+        if (next->type() == TokenType::Punctator && next->value() == "[") {
+            // { "[" <const> "]" } is zero or more [const]
+            AbstractDeclarator outmost = AbstractDeclarator{ std::move(abstract_declarator) };
+            while (Peek()->value() == "[") {
+                AbstractArrayDeclarator outer_arr;
+                outer_arr.inner_declarator = std::make_unique<AbstractDeclarator>(std::move(outmost));
+                Consume(TokenType::Punctator, "[");
+                outer_arr.size = ParsePositiveInteger();
+                Consume(TokenType::Punctator, "]");
+                outmost = AbstractDeclarator{ std::move(outer_arr) };
+            }
+            abstract_declarator = std::move(outmost);
+        }
+    } else if (next->type() == TokenType::Punctator && next->value() == "[") {
+        // <direct-abstract-declarator> ::= ... | { "[" <const> "]" }+
+        AbstractDeclarator outmost;
+        outmost.emplace<AbstractBaseDeclarator>();
+        while (Peek()->value() == "[") {
+            AbstractArrayDeclarator outer_arr;
+            outer_arr.inner_declarator = std::make_unique<AbstractDeclarator>(std::move(outmost));
+            Consume(TokenType::Punctator, "[");
+            outer_arr.size = ParsePositiveInteger();
+            Consume(TokenType::Punctator, "]");
+            outmost.emplace<AbstractArrayDeclarator>(std::move(outer_arr));
+        }
+        abstract_declarator = std::move(outmost);
     } else
         abstract_declarator.emplace<AbstractBaseDeclarator>();
     return abstract_declarator;
@@ -645,11 +771,14 @@ ASTBuilder::AbstractDeclarator ASTBuilder::ParseAbstractDeclarator()
 Type ASTBuilder::ProcessAbstractDeclarator(const AbstractDeclarator &decl, const Type &base_type)
 {
     LOG("ProcessAbstractDeclarator (recursive)");
-    if (std::get_if<AbstractBaseDeclarator>(&decl)) {
+    if (std::holds_alternative<parser::ASTBuilder::AbstractBaseDeclarator>(decl)) {
         return base_type;
-    } else if (const AbstractPointerDeclarator *ptr = std::get_if<AbstractPointerDeclarator>(&decl)) {
+    } else if (auto ptr = std::get_if<AbstractPointerDeclarator>(&decl)) {
         Type derived_type = Type{ PointerType{ std::make_shared<Type>(base_type) } };
         return ProcessAbstractDeclarator(*ptr->inner_declarator, derived_type);
+    } else if (auto arr = std::get_if<AbstractArrayDeclarator>(&decl)) {
+        Type derived_type = Type{ ArrayType{ std::make_shared<Type>(base_type), arr->size } };
+        return ProcessAbstractDeclarator(*arr->inner_declarator, derived_type);
     } else
         assert(false);
     return Type{};

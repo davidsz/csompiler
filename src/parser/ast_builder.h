@@ -26,9 +26,12 @@ private:
     std::optional<lexer::Token> Peek(long n = 0);
 
     Expression ParseExpression(int min_precedence);
-    Expression ParseFactor();
+    Expression ParseUnaryExpression();
+    Expression ParsePostfixExpression();
+    Expression ParsePrimaryExpression();
     Expression ParseFunctionCall();
-    Expression ParseNumericLiteral();
+    Expression ParseConstantExpression();
+    uint64_t ParsePositiveInteger();
 
     Statement ParseReturn();
     Statement ParseIf();
@@ -46,17 +49,28 @@ private:
     BlockItem ParseBlockItem();
     Statement ParseStatement();
 
+    // Declarator: specifies type with an identifier
     struct IdentifierDeclarator;
     struct PointerDeclarator;
+    struct ArrayDeclarator;
     struct FunctionDeclarator;
     struct DeclaratorParam;
     using Declarator = std::variant<
-        IdentifierDeclarator, PointerDeclarator, FunctionDeclarator>;
+        IdentifierDeclarator,
+        PointerDeclarator,
+        ArrayDeclarator,
+        FunctionDeclarator
+    >;
 
+    // Abstract declarator: specifies type without an identifier
     struct AbstractBaseDeclarator;
     struct AbstractPointerDeclarator;
+    struct AbstractArrayDeclarator;
     using AbstractDeclarator = std::variant<
-        AbstractBaseDeclarator, AbstractPointerDeclarator>;
+        AbstractBaseDeclarator,
+        AbstractPointerDeclarator,
+        AbstractArrayDeclarator
+    >;
 
     Declaration ParseDeclaration(bool allow_function = true);
     Declarator ParseDeclarator();
@@ -64,6 +78,7 @@ private:
         ProcessDeclarator(const Declarator &, const Type &);
     AbstractDeclarator ParseAbstractDeclarator();
     Type ProcessAbstractDeclarator(const AbstractDeclarator &, const Type &);
+    Initializer ParseInitializer();
 
     // Parse type names and storage classes
     std::pair<StorageClass, Type> ParseTypeSpecifierList();

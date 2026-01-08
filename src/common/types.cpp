@@ -98,6 +98,11 @@ bool PointerType::operator==(const PointerType &other) const
     return *referenced == *other.referenced;
 }
 
+bool ArrayType::operator==(const ArrayType &other) const
+{
+    return *element == *other.element && count == other.count;
+}
+
 bool Type::isBasic(BasicType type) const
 {
     if (auto p = std::get_if<BasicType>(&t))
@@ -113,6 +118,11 @@ bool Type::isFunction() const
 bool Type::isPointer() const
 {
     return std::holds_alternative<PointerType>(t);
+}
+
+bool Type::isArray() const
+{
+    return std::holds_alternative<ArrayType>(t);
 }
 
 bool Type::isSigned() const
@@ -156,8 +166,10 @@ bool Type::isInitialized() const
 
 int Type::size() const
 {
-    if (std::get_if<PointerType>(&t))
+    if (isPointer())
         return 8;
+    if (const ArrayType *arr = std::get_if<ArrayType>(&t))
+        return arr->element->size() * static_cast<int>(arr->count);
     const BasicType *basic_type = std::get_if<BasicType>(&t);
     if (!basic_type)
         return 0;
@@ -204,14 +216,14 @@ std::ostream &operator<<(std::ostream &os, const Type &type)
             os << "FunctionType";
         else if constexpr (std::is_same_v<T, PointerType>)
             os << "PointerType";
+        else if constexpr (std::is_same_v<T, ArrayType>)
+            os << "ArrayType";
         else
             os << "typeless";
     }, type.t);
     return os;
 }
 
-// TODO: If we only use this for registers, consider storing
-// WordType in the Reg structure instead of the bytes.
 uint8_t GetBytesOfWordType(WordType type)
 {
     switch (type) {

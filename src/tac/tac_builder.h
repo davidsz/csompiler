@@ -26,6 +26,7 @@ public:
     ExpResult operator()(const parser::FunctionCallExpression &f) override;
     ExpResult operator()(const parser::DereferenceExpression &d) override;
     ExpResult operator()(const parser::AddressOfExpression &a) override;
+    ExpResult operator()(const parser::SubscriptExpression &s) override;
     ExpResult operator()(const parser::ReturnStatement &r) override;
     ExpResult operator()(const parser::IfStatement &i) override;
     ExpResult operator()(const parser::GotoStatement &g) override;
@@ -43,6 +44,8 @@ public:
     ExpResult operator()(const parser::DefaultStatement &d) override;
     ExpResult operator()(const parser::FunctionDeclaration &f) override;
     ExpResult operator()(const parser::VariableDeclaration &v) override;
+    ExpResult operator()(const parser::SingleInit &s) override;
+    ExpResult operator()(const parser::CompoundInit &c) override;
     ExpResult operator()(std::monostate) override;
 
     std::vector<TopLevel> ConvertTopLevel(const std::vector<parser::Declaration> &list);

@@ -309,6 +309,11 @@ ExpResult TACBuilder::operator()(const parser::AddressOfExpression &a)
     return std::monostate();
 }
 
+ExpResult TACBuilder::operator()(const parser::SubscriptExpression &)
+{
+    return std::monostate();
+}
+
 ExpResult TACBuilder::operator()(const parser::ReturnStatement &r)
 {
     auto ret = Return{};
@@ -507,9 +512,24 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
     }
     // We discard declarations, but we handle their init expressions
     if (v.init) {
-        Value result = VisitAndConvert(*v.init);
-        m_instructions.push_back(Copy{ result, Variant{ v.identifier } });
+        if (auto single_init = std::get_if<parser::SingleInit>(v.init.get())) {
+            Value result = VisitAndConvert(*single_init->expr);
+            m_instructions.push_back(Copy{ result, Variant{ v.identifier } });
+        } else if (auto compound_init = std::get_if<parser::CompoundInit>(v.init.get())) {
+            // TODO
+            assert(compound_init);
+        }
     }
+    return std::monostate();
+}
+
+ExpResult TACBuilder::operator()(const parser::SingleInit &)
+{
+    return std::monostate();
+}
+
+ExpResult TACBuilder::operator()(const parser::CompoundInit &)
+{
     return std::monostate();
 }
 
