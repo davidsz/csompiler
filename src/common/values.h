@@ -3,10 +3,15 @@
 #include "types.h"
 #include <variant>
 
-// Holds a value for constant literals or initializers
+// Constant literals and initializers
+struct ZeroBytes{
+    size_t bytes;
+    auto operator<=>(const ZeroBytes &) const = default;
+};
 using ConstantValue = std::variant<
-    int, long, uint32_t, uint64_t, double
+    int, long, uint32_t, uint64_t, double, ZeroBytes
 >;
+
 std::string toString(const ConstantValue &v);
 std::string toLabel(const ConstantValue &v);
 Type getType(const ConstantValue &v);

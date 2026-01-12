@@ -1,4 +1,5 @@
 #include "values.h"
+#include <cassert>
 #include <cstring>
 #include <format>
 
@@ -15,39 +16,48 @@ std::string toString(const ConstantValue &v)
                               x,
                               std::chars_format::general);
             return std::string(buf.data(), ptr);
-        } else
+        } else if constexpr (std::is_same_v<T, ZeroBytes>)
+            return std::format("ZeroBytes[{}]", x.bytes);
+        else
             return std::to_string(x);
     }, v);
 }
 
 std::string toLabel(const ConstantValue &v)
 {
-    return std::visit([](auto x) {
+    return std::visit([](auto x) -> std::string {
         using T = decltype(x);
         if constexpr (std::is_signed_v<T>) {
             if (x < 0) {
                 x *= -1;
                 return std::format("_{}", std::to_string(x));
             }
-        }
-        return std::to_string(x);
+            return std::to_string(x);
+        } else if constexpr (std::is_same_v<T, ZeroBytes>) {
+            assert(false);
+            return "";
+        } else
+            return std::to_string(x);
     }, v);
 }
 
 Type getType(const ConstantValue &v)
 {
     Type ret;
-    if (std::holds_alternative<int>(v)) {
+    if (std::holds_alternative<int>(v))
         ret.t = BasicType::Int;
-    } else if (std::holds_alternative<long>(v)) {
+    else if (std::holds_alternative<long>(v))
         ret.t = BasicType::Long;
-    } else if (std::holds_alternative<uint32_t>(v)) {
+    else if (std::holds_alternative<uint32_t>(v))
         ret.t = BasicType::UInt;
-    } else if (std::holds_alternative<uint64_t>(v)) {
+    else if (std::holds_alternative<uint64_t>(v))
         ret.t = BasicType::ULong;
-    } else if (std::holds_alternative<double>(v)) {
+    else if (std::holds_alternative<double>(v))
         ret.t = BasicType::Double;
-    }
+    else if (std::holds_alternative<ZeroBytes>(v))
+        assert(false);
+    else
+        assert(false);
     return ret;
 }
 
@@ -66,8 +76,12 @@ bool fitsLongWord(const ConstantValue &v)
 
 uint64_t forceLong(const ConstantValue &v)
 {
-    return std::visit([&](auto value) {
-        return static_cast<uint64_t>(value);
+    return std::visit([&](auto value) -> uint64_t {
+        using T = decltype(value);
+        if constexpr (std::is_same_v<T, ZeroBytes>)
+            return 0;
+        else
+            return static_cast<uint64_t>(value);
     }, v);
 }
 
@@ -87,23 +101,29 @@ bool isPositiveZero(const ConstantValue &v) {
 
 ConstantValue ConvertValue(const ConstantValue &v, const Type &to_type)
 {
-    return std::visit([&](auto x) -> ConstantValue {
-        const BasicType *basic_type = to_type.getAs<BasicType>();
-        if (!basic_type)
-            return v;
-        switch (*basic_type) {
-        case BasicType::Int:
-            return static_cast<int>(x);
-        case BasicType::Long:
-            return static_cast<long>(x);
-        case BasicType::UInt:
-            return static_cast<unsigned int>(x);
-        case BasicType::ULong:
-            return static_cast<unsigned long>(x);
-        case BasicType::Double:
-            return static_cast<double>(x);
-        default:
-            return static_cast<int>(x);
+    return std::visit([&](const auto &x) -> ConstantValue {
+        using X = std::decay_t<decltype(x)>;
+        if constexpr (std::is_same_v<X, ZeroBytes>) {
+            assert(false);
+            return x;
+        } else {
+            const BasicType *basic_type = to_type.getAs<BasicType>();
+            if (!basic_type)
+                return v;
+            switch (*basic_type) {
+            case BasicType::Int:
+                return static_cast<int>(x);
+            case BasicType::Long:
+                return static_cast<long>(x);
+            case BasicType::UInt:
+                return static_cast<unsigned int>(x);
+            case BasicType::ULong:
+                return static_cast<unsigned long>(x);
+            case BasicType::Double:
+                return static_cast<double>(x);
+            default:
+                return static_cast<int>(x);
+            }
         }
     }, v);
 }

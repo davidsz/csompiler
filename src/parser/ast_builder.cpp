@@ -268,27 +268,27 @@ Expression ASTBuilder::ParseConstantExpression()
 #else
         double value = std::strtod(literal.c_str(), nullptr);
 #endif
-        return ConstantExpression{ value };
+        return ConstantExpression{ value, Type{ BasicType::Double } };
     } else if (hasU) {
         // Unsigned
         unsigned long value = std::stoul(literal);
         if (hasL)
-            return ConstantExpression{ value };
+            return ConstantExpression{ value, Type{ BasicType::ULong } };
         if (value > std::numeric_limits<uint32_t>::min() &&
             value < std::numeric_limits<uint32_t>::max()) {
-                return ConstantExpression{ static_cast<uint32_t>(value) };
+                return ConstantExpression{ static_cast<uint32_t>(value), Type{ BasicType::UInt } };
         }
-        return ConstantExpression{ value };
+        return ConstantExpression{ value, Type{ BasicType::ULong } };
     } else {
         // Signed
         long value = std::stol(literal);
         if (hasL)
-            return ConstantExpression{ value };
+            return ConstantExpression{ value, Type{ BasicType::Long } };
         if (value > std::numeric_limits<int>::min() &&
             value < std::numeric_limits<int>::max()) {
-                return ConstantExpression{ static_cast<int>(value) };
+                return ConstantExpression{ static_cast<int>(value), Type{ BasicType::Int } };
         }
-        return ConstantExpression{ value };
+        return ConstantExpression{ value, Type{ BasicType::Long } };
     }
 }
 

@@ -574,12 +574,14 @@ void TACBuilder::ProcessStaticSymbols()
                     .global = entry.attrs.global,
                     .init = MakeConstantValue(0, entry.type)
                 });
-            } else if (auto n = std::get_if<Initial>(&entry.attrs.init)) {
+            } else if (/*auto n = */std::get_if<Initial>(&entry.attrs.init)) {
+                // TODO: Single or Compound
                 m_topLevel.push_back(StaticVariable{
                     .name = name,
                     .type = entry.type,
                     .global = entry.attrs.global,
-                    .init = n->i
+                    // .init = n->i
+                    .init = MakeConstantValue(0, entry.type)
                 });
             }
         }

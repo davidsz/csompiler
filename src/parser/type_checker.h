@@ -46,12 +46,15 @@ struct TypeChecker : public IASTMutatingVisitor<Type> {
     std::shared_ptr<SymbolTable> symbolTable() { return m_symbolTable; }
 
 private:
-    std::shared_ptr<SymbolTable> m_symbolTable = std::make_shared<SymbolTable>();
+    Type VisitAndConvert(std::unique_ptr<Expression> &expr);
+    std::vector<ConstantValue> ToConstantValueList(Initializer &init, const Type &type);
 
+    std::shared_ptr<SymbolTable> m_symbolTable = std::make_shared<SymbolTable>();
     bool m_fileScope = false;
     bool m_forLoopInitializer = false;
     std::vector<Type> m_functionTypeStack;
     std::vector<SwitchStatement *> m_switches;
+    std::shared_ptr<Type> m_targetTypeForInitializer;
 };
 
 }; // namespace parser

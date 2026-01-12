@@ -42,9 +42,10 @@ void SymbolTable::print()
         std::cout << "[" << entry.type << "] ";
         std::cout << (entry.attrs.defined ? "defined" : "undefined") << " ";
         std::cout << (entry.attrs.global ? "global" : "local") << " ";
-        if (std::holds_alternative<Initial>(entry.attrs.init)) {
-            auto &initial = std::get<Initial>(entry.attrs.init);
-            std::cout << "Initial " << toString(initial.i);
+        if (const Initial *init = std::get_if<Initial>(&entry.attrs.init)) {
+            std::cout << "Initial " << std::endl;
+            for (auto &a : init->list)
+                std::cout << toString(a) << ", ";
         } else if (std::holds_alternative<Tentative>(entry.attrs.init))
             std::cout << "Tentative";
         else

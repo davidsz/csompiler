@@ -1,6 +1,7 @@
 #include "types.h"
 #include <cassert>
 #include <iostream>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -125,6 +126,23 @@ bool Type::isArray() const
     return std::holds_alternative<ArrayType>(t);
 }
 
+bool Type::isInteger() const
+{
+    const BasicType *basic_type = std::get_if<BasicType>(&t);
+    if (!basic_type)
+        return false;
+    switch (*basic_type) {
+    case BasicType::Int:
+    case BasicType::UInt:
+    case BasicType::Long:
+    case BasicType::ULong:
+        return true;
+    case BasicType::Double:
+    default:
+        return false;
+    }
+}
+
 bool Type::isSigned() const
 {
     const BasicType *basic_type = std::get_if<BasicType>(&t);
@@ -212,16 +230,26 @@ std::ostream &operator<<(std::ostream &os, const Type &type)
         using T = std::decay_t<decltype(obj)>;
         if constexpr (std::is_same_v<T, BasicType>)
             os << toString(obj);
-        else if constexpr (std::is_same_v<T, FunctionType>)
-            os << "FunctionType";
-        else if constexpr (std::is_same_v<T, PointerType>)
-            os << "PointerType";
+        else if constexpr (std::is_same_v<T, FunctionType>) {
+            os << "FunctionType(";
+            for (auto &p : obj.params)
+                os << *p << ", ";
+            os << ") -> " << *obj.ret;
+        } else if constexpr (std::is_same_v<T, PointerType>)
+            os << "PointerType(" << *obj.referenced << ")";
         else if constexpr (std::is_same_v<T, ArrayType>)
-            os << "ArrayType";
+            os << "ArrayType(" << *obj.element << ")[" << obj.count << "]";
         else
             os << "typeless";
     }, type.t);
     return os;
+}
+
+std::string Type::toString() const
+{
+    std::ostringstream oss;
+    oss << *this;
+    return oss.str();
 }
 
 uint8_t GetBytesOfWordType(WordType type)

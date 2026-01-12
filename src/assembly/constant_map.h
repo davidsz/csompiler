@@ -16,7 +16,7 @@ DIAG_IGNORE("-Wconversion")
             using Y = std::decay_t<decltype(y)>;
             if constexpr (!std::is_same_v<X, Y>)
                 return typeid(X).before(typeid(Y));
-            if constexpr (std::is_floating_point_v<X>) {
+            else if constexpr (std::is_floating_point_v<X>) {
                 uint64_t bx, by;
                 std::memcpy(&bx, &x, sizeof(x));
                 std::memcpy(&by, &y, sizeof(y));

@@ -688,7 +688,7 @@ Operand ASMBuilder::operator()(const tac::StaticVariable &s)
         .name = s.name,
         .global = s.global,
         .init = s.init,
-        .alignment = getType(s.init).size()
+        .alignment = getType(s.init).size() // TODO: s.type.size()?
     });
     return std::monostate();
 }

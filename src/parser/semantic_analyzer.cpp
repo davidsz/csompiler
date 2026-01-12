@@ -1,5 +1,6 @@
 #include "semantic_analyzer.h"
 #include "common/labeling.h"
+#include <cassert>
 #include <format>
 #include <variant>
 
@@ -427,18 +428,20 @@ void SemanticAnalyzer::operator()(VariableDeclaration &v)
         std::visit(*this, *v.init);
 }
 
-void SemanticAnalyzer::operator()(SingleInit &)
+void SemanticAnalyzer::operator()(SingleInit &s)
 {
-
+    std::visit(*this, *s.expr);
 }
 
-void SemanticAnalyzer::operator()(CompoundInit &)
+void SemanticAnalyzer::operator()(CompoundInit &c)
 {
-
+    for (auto &e : c.list)
+        std::visit(*this, *e);
 }
 
 void SemanticAnalyzer::operator()(std::monostate)
 {
+    assert(false);
 }
 
 Error SemanticAnalyzer::CheckAndMutate(std::vector<parser::Declaration> &astVector)

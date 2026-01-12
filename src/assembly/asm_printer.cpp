@@ -13,10 +13,10 @@ static std::string getInitializer(WordType type)
     }
 }
 
-static std::string_view formatLabel(std::string_view name)
+static std::string formatLabel(std::string_view name)
 {
 #ifdef __APPLE__
-    return "_" + name;
+    return std::format("_{}", name);
 #else
     return name;
 #endif

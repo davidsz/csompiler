@@ -268,14 +268,20 @@ void ASTPrinter::operator()(const VariableDeclaration &d)
     }
 }
 
-void ASTPrinter::operator()(const SingleInit &)
+void ASTPrinter::operator()(const SingleInit &s)
 {
-    // TODO
+    std::visit(*this, *s.expr);
 }
 
-void ASTPrinter::operator()(const CompoundInit &)
+void ASTPrinter::operator()(const CompoundInit &c)
 {
-    // TODO
+    pad(); std::cout << "{" << std::endl;
+    tab();
+    for (auto &i : c.list) {
+        std::visit(*this, *i);
+    }
+    shift_tab();
+    pad(); std::cout << "}" << std::endl;
 }
 
 void ASTPrinter::print(const std::vector<Declaration> &root)

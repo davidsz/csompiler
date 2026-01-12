@@ -8,7 +8,7 @@
 struct Tentative {};
 struct NoInitializer {};
 struct Initial {
-    ConstantValue i;
+    std::vector<ConstantValue> list;
     auto operator<=>(const Initial &) const = default;
 };
 using InitialValue = std::variant<Tentative, NoInitializer, Initial>;

@@ -87,6 +87,7 @@ struct Type {
     bool isFunction() const;
     bool isPointer() const;
     bool isArray() const;
+    bool isInteger() const;
     bool isSigned() const;
     bool isArithmetic() const;
     bool isInitialized() const;
@@ -102,6 +103,7 @@ struct Type {
     }
 
     friend std::ostream &operator<<(std::ostream &os, const Type &t);
+    std::string toString() const;
 };
 
 std::optional<Type> DetermineType(const std::set<std::string> &type_specifiers);
