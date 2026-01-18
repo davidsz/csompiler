@@ -310,27 +310,32 @@ Type TypeChecker::operator()(BinaryExpression &b)
     if (b.op == Add) {
         if (left_type.isPointer() && right_type.isInteger()) {
             b.rhs = explicitCast(std::move(b.rhs), right_type, Type{ BasicType::Long });
-            return left_type;
+            b.type = left_type;
+            return b.type;
         } else if (left_type.isInteger() && right_type.isPointer()) {
             b.lhs = explicitCast(std::move(b.lhs), left_type, Type{ BasicType::Long });
-            return right_type;
+            b.type = right_type;
+            return b.type;
         } else if (!left_type.isArithmetic() && !right_type.isArithmetic())
             Abort("Invalid operands for addition.");
     }
     if (b.op == Subtract) {
         if (left_type.isPointer() && right_type.isInteger()) {
             b.rhs = explicitCast(std::move(b.rhs), right_type, Type{ BasicType::Long });
-            return left_type;
-        } else if (left_type.isPointer() && left_type == right_type)
-            return Type{ BasicType::Long };  // This would be ptrdiff_t officially
-        else if (!left_type.isArithmetic() && !right_type.isArithmetic())
+            b.type = left_type;
+            return b.type;
+        } else if (left_type.isPointer() && left_type == right_type) {
+            b.type = Type{ BasicType::Long };  // This would be ptrdiff_t officially
+            return b.type;
+        } else if (!left_type.isArithmetic() && !right_type.isArithmetic())
             Abort("Invalid operands for subtraction.");
     }
     if (b.op == LessThan || b.op == LessOrEqual || b.op == GreaterThan || b.op == GreaterOrEqual) {
         if (left_type.isPointer() && right_type.isPointer()) {
-            if (left_type == right_type)
-                return Type{ BasicType::Int };
-            else
+            if (left_type == right_type) {
+                b.type = Type{ BasicType::Int };
+                return b.type;
+            } else
                 Abort("Not allowed operation between different pointer types.");
         }
     }
@@ -506,7 +511,8 @@ Type TypeChecker::operator()(SubscriptExpression &s)
         s.pointer = explicitCast(std::move(s.pointer), base_type, Type{ BasicType::Long });
     } else
         Abort("Subscript expressions must have pointer and integer operands.");
-    return *result_type.getAs<PointerType>()->referenced;
+    s.type = *result_type.getAs<PointerType>()->referenced;
+    return s.type;
 }
 
 Type TypeChecker::operator()(ReturnStatement &r)
@@ -726,10 +732,8 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             Initial initial{};
             initial.list.push_back(MakeConstantValue(0, ULong));
             init = std::move(initial);
-        } else {
-            std::cout << "--- " << v.identifier << std::endl;
+        } else
             init = Initial{ ToConstantValueList(*v.init, v.type) };
-        }
 
         // std::visit() only after checking the initializer
         // to avoid CastExpression wrappers on ConstantExpressions

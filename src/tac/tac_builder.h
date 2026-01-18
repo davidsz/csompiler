@@ -84,6 +84,13 @@ private:
     };
     LHSInfo AnalyzeLHS(const parser::Expression &expr);
 
+    void EmitRuntimeCompoundInit(
+        const parser::Initializer &init,
+        const std::string &base,
+        const Type &type,
+        int offset
+    );
+
     std::vector<TopLevel> m_topLevel;
     std::vector<Instruction> m_instructions;
     std::shared_ptr<SymbolTable> m_symbolTable;

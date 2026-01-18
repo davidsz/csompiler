@@ -75,6 +75,22 @@ TACBuilder::LHSInfo TACBuilder::AnalyzeLHS(const parser::Expression &expr)
     assert(false);
 }
 
+void TACBuilder::EmitRuntimeCompoundInit(
+    const parser::Initializer &init,
+    const std::string &base,
+    const Type &type,
+    int offset)
+{
+    if (auto single = std::get_if<parser::SingleInit>(&init)) {
+        Value v = VisitAndConvert(*single->expr);
+        m_instructions.push_back(CopyToOffset{ v, base, offset });
+        offset += type.size();
+    } else if (auto compound = std::get_if<parser::CompoundInit>(&init)) {
+        for (auto &elem : compound->list)
+            EmitRuntimeCompoundInit(*elem, base, type, offset);
+    }
+}
+
 Type TACBuilder::GetType(const Value &value)
 {
     if (auto c = std::get_if<Constant>(&value))
@@ -191,10 +207,73 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
         return PlainOperand{ result };
     }
 
+    Value lhs = VisitAndConvert(*b.lhs);
+    Value rhs = VisitAndConvert(*b.rhs);
+    Type lhs_type = GetType(lhs);
+    Type rhs_type = GetType(rhs);
+
+    // Pointer arithmetics
+    if (lhs_type.isPointer() || rhs_type.isPointer()) {
+        if (b.op == BinaryOperator::Add) {
+            // We determine the pointer and the integer operands for addition
+            Value pointer_operand = lhs_type.isPointer() ? lhs : rhs;
+            Value integer_operand = lhs_type.isPointer() ? rhs : lhs;
+            auto add_ptr = AddPtr{
+                .ptr = pointer_operand,
+                .index = integer_operand,
+                .scale = b.type.size(),
+                .dst = CreateTemporaryVariable(b.type)
+            };
+            m_instructions.push_back(add_ptr);
+            return PlainOperand{ add_ptr.dst };
+        }
+        if (b.op == BinaryOperator::Subtract) {
+            if (rhs_type.isInteger()) {
+                // ptr - int; the order of the operands is already correct
+                // The integer operand was converted to long
+                auto negate = Unary{
+                    .op = UnaryOperator::Negate,
+                    .src = rhs,
+                    .dst = CreateTemporaryVariable(Type{ BasicType::Long })
+                };
+                m_instructions.push_back(negate);
+                auto add_ptr = AddPtr{
+                    .ptr = lhs,
+                    .index = negate.dst,
+                    .scale = lhs_type.size(),
+                    .dst = CreateTemporaryVariable(lhs_type)
+                };
+                m_instructions.push_back(add_ptr);
+                return PlainOperand{ add_ptr.dst };
+            } else if (rhs_type.isPointer()) {
+                /* Subtracting one pointer from another: First, we calculate the difference
+                 * in bytes, using an ordinary Subtract instruction. Then, we divide this
+                 * result by the number of bytes in one array element, to calculate the
+                 * difference between the two pointers in terms of array indices. */
+                auto diff = Binary{
+                    .op = BinaryOperator::Subtract,
+                    .src1 = lhs,
+                    .src2 = rhs,
+                    .dst = CreateTemporaryVariable(lhs_type)
+                };
+                m_instructions.push_back(diff);
+                auto result = Binary{
+                    .op = BinaryOperator::Divide,
+                    .src1 = diff.dst,
+                    .src2 = Constant{ MakeConstantValue(lhs_type.size(), lhs_type) },
+                    .dst = CreateTemporaryVariable(lhs_type)
+                };
+                m_instructions.push_back(result);
+                return PlainOperand{ result.dst };
+            } else
+                assert(false);
+        }
+    }
+
     auto binary = Binary{};
     binary.op = b.op;
-    binary.src1 = VisitAndConvert(*b.lhs);
-    binary.src2 = VisitAndConvert(*b.rhs);
+    binary.src1 = lhs;
+    binary.src2 = rhs;
     binary.dst = CreateTemporaryVariable(b.type);
     m_instructions.push_back(binary);
     return PlainOperand{ binary.dst };
@@ -309,9 +388,25 @@ ExpResult TACBuilder::operator()(const parser::AddressOfExpression &a)
     return std::monostate();
 }
 
-ExpResult TACBuilder::operator()(const parser::SubscriptExpression &)
+ExpResult TACBuilder::operator()(const parser::SubscriptExpression &s)
 {
-    return std::monostate();
+    Value lhs = VisitAndConvert(*s.pointer);
+    Value rhs = VisitAndConvert(*s.index);
+    Type lhs_type = GetType(lhs);
+
+    // Support both ptr[i] and i[ptr]
+    Value pointer_operand = lhs_type.isPointer() ? lhs : rhs;
+    Value integer_operand = lhs_type.isPointer() ? rhs : lhs;
+    std::shared_ptr<Type> element_type = std::make_shared<Type>(s.type);
+
+    auto add_ptr = AddPtr{
+        .ptr = pointer_operand,
+        .index = integer_operand,
+        .scale = element_type->size(),
+        .dst = CreateTemporaryVariable(Type{ PointerType{ .referenced = element_type } })
+    };
+    m_instructions.push_back(add_ptr);
+    return DereferencedPointer{ add_ptr.dst };
 }
 
 ExpResult TACBuilder::operator()(const parser::ReturnStatement &r)
@@ -505,31 +600,76 @@ ExpResult TACBuilder::operator()(const parser::FunctionDeclaration &f)
 
 ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
 {
+    const SymbolEntry *entry = m_symbolTable->get(v.identifier);
+    assert(entry);
+
     // We will move static variable declarations to the top level in a later step
-    if (const SymbolEntry *entry = m_symbolTable->get(v.identifier)) {
-        if (entry->attrs.type == IdentifierAttributes::Static)
-            return std::monostate();
-    }
+    if (entry->attrs.type == IdentifierAttributes::Static)
+        return std::monostate();
+
     // We discard declarations, but we handle their init expressions
-    if (v.init) {
-        if (auto single_init = std::get_if<parser::SingleInit>(v.init.get())) {
-            Value result = VisitAndConvert(*single_init->expr);
-            m_instructions.push_back(Copy{ result, Variant{ v.identifier } });
-        } else if (auto compound_init = std::get_if<parser::CompoundInit>(v.init.get())) {
-            // TODO
-            assert(compound_init);
-        }
+    if (!v.init)
+        return std::monostate();
+
+    if (auto single_init = std::get_if<parser::SingleInit>(v.init.get())) {
+        Value result = VisitAndConvert(*single_init->expr);
+        m_instructions.push_back(Copy{ result, Variant{ v.identifier } });
+        return std::monostate();
     }
+
+    if (std::holds_alternative<parser::CompoundInit>(*v.init)) {
+        auto initial = std::get_if<Initial>(&entry->attrs.init);
+        // Having no initializer in the entry means it should be computed in runtime.
+        // e.g.: initializers with automatic storage duration (in block scopes)
+        if (!initial) {
+            int offset = 0;
+            EmitRuntimeCompoundInit(*v.init, v.identifier, entry->type, offset);
+            return std::monostate();
+        }
+
+        // Having initializers in the entry means the type checker already converted
+        // it into a list of constant values, because it was possible,
+        // e.g.: file scope and static initializers
+        int offset = 0;
+        for (const ConstantValue &cv : initial->list) {
+            std::visit([&](auto &val) {
+                using T = std::decay_t<decltype(val)>;
+                // TODO: Add directly a 0 ConstantValue in the type checker
+                // in these cases of initializers
+                if constexpr (std::is_same_v<T, ZeroBytes>) {
+                    auto copy = CopyToOffset{
+                        .src = Constant{ MakeConstantValue(0, entry->type) },
+                        .dst_identifier = v.identifier,
+                        .offset = offset
+                    };
+                    m_instructions.push_back(copy);
+                    offset += val.bytes;
+                } else {
+                    auto copy = CopyToOffset{
+                        .src = Constant{ val },
+                        .dst_identifier = v.identifier,
+                        .offset = offset
+                    };
+                    m_instructions.push_back(copy);
+                    offset += entry->type.size();
+                }
+            }, cv);
+        }
+        return std::monostate();
+    }
+    assert(false);
     return std::monostate();
 }
 
 ExpResult TACBuilder::operator()(const parser::SingleInit &)
 {
+    assert(false);
     return std::monostate();
 }
 
 ExpResult TACBuilder::operator()(const parser::CompoundInit &)
 {
+    assert(false);
     return std::monostate();
 }
 
@@ -568,20 +708,23 @@ void TACBuilder::ProcessStaticSymbols()
     for (const auto &[name, entry] : m_symbolTable->m_table) {
         if (entry.attrs.type == IdentifierAttributes::Static) {
             if (std::holds_alternative<Tentative>(entry.attrs.init)) {
+                std::vector<ConstantValue> initializer;
+                if (entry.type.isArray())
+                    initializer.push_back(ZeroBytes{ static_cast<size_t>(entry.type.size()) });
+                else
+                    initializer.push_back(MakeConstantValue(0, entry.type));
                 m_topLevel.push_back(StaticVariable{
                     .name = name,
                     .type = entry.type,
                     .global = entry.attrs.global,
-                    .init = MakeConstantValue(0, entry.type)
+                    .list = initializer
                 });
-            } else if (/*auto n = */std::get_if<Initial>(&entry.attrs.init)) {
-                // TODO: Single or Compound
+            } else if (auto initial = std::get_if<Initial>(&entry.attrs.init)) {
                 m_topLevel.push_back(StaticVariable{
                     .name = name,
                     .type = entry.type,
                     .global = entry.attrs.global,
-                    // .init = n->i
-                    .init = MakeConstantValue(0, entry.type)
+                    .list = initial->list
                 });
             }
         }

@@ -74,7 +74,16 @@ namespace tac {
         Value dst;) \
     X(UIntToDouble, \
         Value src; \
-        Value dst;)
+        Value dst;) \
+    X(AddPtr, \
+        Value ptr; \
+        Value index; \
+        int scale; \
+        Value dst;) \
+    X(CopyToOffset, \
+        Value src; \
+        std::string dst_identifier; \
+        int offset;)
 
 #define TAC_TOP_LEVEL_LIST(X) \
     X(FunctionDefinition, \
@@ -86,7 +95,7 @@ namespace tac {
         std::string name; \
         Type type = Type{}; \
         bool global; \
-        ConstantValue init;)
+        std::vector<ConstantValue> list;)
 
 DEFINE_NODES_WITH_COMMON_VARIANT(Value, TAC_VALUE_TYPE_LIST);
 DEFINE_NODES_WITH_COMMON_VARIANT(Instruction, TAC_INSTRUCTION_LIST);

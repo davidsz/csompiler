@@ -601,6 +601,16 @@ Operand ASMBuilder::operator()(const tac::UIntToDouble &u)
     return std::monostate();
 }
 
+Operand ASMBuilder::operator()(const tac::AddPtr &)
+{
+    return std::monostate();
+}
+
+Operand ASMBuilder::operator()(const tac::CopyToOffset &)
+{
+    return std::monostate();
+}
+
 Operand ASMBuilder::operator()(const tac::Constant &c)
 {
     if (getType(c.value).isBasic(Double)) {
@@ -687,8 +697,9 @@ Operand ASMBuilder::operator()(const tac::StaticVariable &s)
     m_topLevel.push_back(StaticVariable{
         .name = s.name,
         .global = s.global,
-        .init = s.init,
-        .alignment = getType(s.init).size() // TODO: s.type.size()?
+        // TODO
+        // .init = s.init,
+        // .alignment = getType(s.init).size() // TODO: s.type.size()?
     });
     return std::monostate();
 }

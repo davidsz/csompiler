@@ -34,6 +34,8 @@ public:
     Operand operator()(const tac::DoubleToUInt &) override;
     Operand operator()(const tac::IntToDouble &) override;
     Operand operator()(const tac::UIntToDouble &) override;
+    Operand operator()(const tac::AddPtr &) override;
+    Operand operator()(const tac::CopyToOffset &) override;
     Operand operator()(const tac::FunctionDefinition &) override;
     Operand operator()(const tac::StaticVariable &) override;
     Operand operator()(std::monostate) override {

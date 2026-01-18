@@ -185,6 +185,29 @@ void TACPrinter::operator()(const tac::UIntToDouble &u)
     pad(); std::cout << ")" << std::endl;
 }
 
+void TACPrinter::operator()(const tac::AddPtr &a)
+{
+    pad(); std::cout << "AddPtr(" << std::endl;
+    tab();
+    std::visit(*this, a.ptr);
+    std::visit(*this, a.index);
+    pad(); std::cout << "scale = " << a.scale << std::endl;
+    std::visit(*this, a.dst);
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
+void TACPrinter::operator()(const tac::CopyToOffset &c)
+{
+    pad(); std::cout << "CopyToOffset(" << std::endl;
+    tab();
+    std::visit(*this, c.src);
+    pad(); std::cout << "identifier = " << c.dst_identifier << std::endl;
+    pad(); std::cout << "offset = " << c.offset << std::endl;
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
 void TACPrinter::operator()(const tac::FunctionDefinition &f)
 {
     pad();
@@ -203,7 +226,8 @@ void TACPrinter::operator()(const tac::StaticVariable &s)
     std::cout << (s.global ? "global" : "local");
     std::cout << " StaticVariable(" << s.name << ") {" << std::endl;
     tab();
-    pad(); std::cout << "Init " << toString(s.init) << std::endl;
+    // TODO
+    // pad(); std::cout << "Init " << toString(s.init) << std::endl;
     shift_tab();
     pad(); std::cout << "}" << std::endl;
 }
