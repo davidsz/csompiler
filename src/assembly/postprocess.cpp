@@ -15,27 +15,31 @@ static int postprocessPseudoRegisters(
     int currentOffset = 0;
 
     auto resolvePseudo = [&](Operand &op) {
-        if (auto pseudo = std::get_if<Pseudo>(&op)) {
-            ObjEntry *entry = asmSymbolTable->getAs<ObjEntry>(pseudo->name);
-            assert(entry);
-            if (entry && entry->is_static) {
-                // Can't use pseudo->name directly in emplace() as argument (use-after-free)
-                std::string name_copy = pseudo->name;
-                // Replace static variables with Data operands
-                op.emplace<Data>(name_copy);
-                return;
-            }
-            // All other variable types are stack offsets
-            // If a variable has no stack offset yet, determine it
-            if (auto it = pseudoOffset.find(pseudo->name); it == pseudoOffset.end()) {
-                int size = GetBytesOfWordType(entry->type);
-                currentOffset -= size;
-                // Correct alignment: currentOffset = (currentOffset / size) * size)
-                currentOffset &= ~(size - 1);
-                pseudoOffset[pseudo->name] = currentOffset;
-            }
-            op.emplace<Memory>(BP, pseudoOffset[pseudo->name]);
+        std::string name;
+        int extra_offset = 0; // The offset inside the array
+        if (auto pseudo = std::get_if<Pseudo>(&op))
+            name = pseudo->name;
+        else if (auto pseudo_aggr = std::get_if<PseudoAggregate>(&op)) {
+            name = pseudo_aggr->name;
+            extra_offset = pseudo_aggr->offset;
+        } else
+            return;
+
+        ObjEntry *entry = asmSymbolTable->getAs<ObjEntry>(name);
+        assert(entry);
+        if (entry && entry->is_static) {
+            // Replace static variables with Data operands
+            op.emplace<Data>(name);
+            return;
         }
+        // All other variable types are stack offsets
+        // If a variable has no stack offset yet, determine it
+        if (auto it = pseudoOffset.find(name); it == pseudoOffset.end()) {
+            currentOffset -= entry->type.size();
+            currentOffset &= ~(entry->type.alignment() - 1);
+            pseudoOffset[name] = currentOffset;
+        }
+        op.emplace<Memory>(BP, pseudoOffset[name] + extra_offset);
     };
 
 
@@ -104,7 +108,8 @@ void postprocessPseudoRegisters(
 static bool isMemoryAddress(const Operand &op)
 {
     return std::holds_alternative<Memory>(op)
-        || std::holds_alternative<Data>(op);
+        || std::holds_alternative<Data>(op)
+        || std::holds_alternative<Indexed>(op);
 }
 
 static bool isFourBytesImm(const Operand &op)

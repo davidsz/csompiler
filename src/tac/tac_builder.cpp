@@ -79,7 +79,7 @@ void TACBuilder::EmitRuntimeCompoundInit(
     const parser::Initializer &init,
     const std::string &base,
     const Type &type,
-    int offset)
+    int &offset)
 {
     if (auto single = std::get_if<parser::SingleInit>(&init)) {
         Value v = VisitAndConvert(*single->expr);
@@ -622,8 +622,10 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
         // Having no initializer in the entry means it should be computed in runtime.
         // e.g.: initializers with automatic storage duration (in block scopes)
         if (!initial) {
+            const ArrayType *arr_type = entry->type.getAs<ArrayType>();
+            assert(arr_type);
             int offset = 0;
-            EmitRuntimeCompoundInit(*v.init, v.identifier, entry->type, offset);
+            EmitRuntimeCompoundInit(*v.init, v.identifier, *arr_type->element, offset);
             return std::monostate();
         }
 
@@ -634,17 +636,9 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
         for (const ConstantValue &cv : initial->list) {
             std::visit([&](auto &val) {
                 using T = std::decay_t<decltype(val)>;
-                // TODO: Add directly a 0 ConstantValue in the type checker
-                // in these cases of initializers
-                if constexpr (std::is_same_v<T, ZeroBytes>) {
-                    auto copy = CopyToOffset{
-                        .src = Constant{ MakeConstantValue(0, entry->type) },
-                        .dst_identifier = v.identifier,
-                        .offset = offset
-                    };
-                    m_instructions.push_back(copy);
-                    offset += val.bytes;
-                } else {
+                if constexpr (std::is_same_v<T, ZeroBytes>)
+                    assert(false);
+                else {
                     auto copy = CopyToOffset{
                         .src = Constant{ val },
                         .dst_identifier = v.identifier,

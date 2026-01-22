@@ -12,8 +12,10 @@ struct ASMPrinter : public IASMVisitor<void> {
     void operator()(const Reg &) override;
     void operator()(const Imm &) override;
     void operator()(const Pseudo &) override;
+    void operator()(const PseudoAggregate &) override;
     void operator()(const Memory &) override;
     void operator()(const Data &) override;
+    void operator()(const Indexed &) override;
     void operator()(const Comment &) override;
     void operator()(const Mov &) override;
     void operator()(const Movsx &) override;

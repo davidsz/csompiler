@@ -28,17 +28,44 @@ enum StorageClass {
 bool IsTypeSpecifier(const std::string &type);
 std::optional<StorageClass> GetStorageClass(const std::string &storage);
 bool IsStorageOrTypeSpecifier(const std::string &type);
+// ---
 
-// Assembly word types
+// Assembly types
+struct AssemblyType;
+
 enum WordType {
     Longword,
     Quadword,
     Doubleword
 };
 
-uint8_t GetBytesOfWordType(WordType type);
+struct ByteArray {
+    int size;
+    int alignment;
+};
 
-// Recursive type which represents types
+using AssemblyTypeInfo = std::variant<WordType, ByteArray>;
+
+struct AssemblyType {
+    AssemblyTypeInfo t;
+
+    template <typename T>
+    T *getAs() { return std::get_if<T>(&t); }
+
+    template <typename T>
+    const T *getAs() const { return std::get_if<T>(&t); }
+
+    bool isWord(WordType type) const;
+    bool isByteArray() const;
+    int size() const;
+    int alignment() const;
+};
+
+// TODO: Remove this and replace with .size() when possible
+uint8_t GetBytesOfWordType(WordType type);
+//---
+
+// Recursive type structure which represents higher level type information
 struct Type;
 
 enum BasicType {
@@ -92,6 +119,7 @@ struct Type {
     bool isArithmetic() const;
     bool isInitialized() const;
     int size() const;
+    int alignment() const;
     WordType wordType() const;
 
     friend bool operator==(const Type &a, const Type &b) {

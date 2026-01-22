@@ -1,4 +1,5 @@
 #include "asm_printer.h"
+#include <algorithm>
 #include <cassert>
 
 namespace assembly {
@@ -9,7 +10,7 @@ static std::string getInitializer(WordType type)
     case Longword:   return ".long";
     case Quadword:   return ".quad";
     case Doubleword: return ".double";
-    default: assert(false); return ".zero";
+    default: assert(false); return "ERROR";
     }
 }
 
@@ -92,6 +93,12 @@ void ASMPrinter::operator()(const Pseudo &)
     m_codeStream << "!!!PSEUDO!!!";
 }
 
+void ASMPrinter::operator()(const PseudoAggregate &)
+{
+    // Something is wrong if you see this in Assembly
+    m_codeStream << "!!!PSEUDO_AGGREGATE!!!";
+}
+
 void ASMPrinter::operator()(const Memory &m)
 {
     m_codeStream << m.offset << "(%" << getEightByteName(m.reg) << ")";
@@ -101,6 +108,14 @@ void ASMPrinter::operator()(const Data &d)
 {
     // TODO: Append L?
     m_codeStream << formatLabel(d.name) << "(%rip)";
+}
+
+void ASMPrinter::operator()(const Indexed &i)
+{
+    m_codeStream << "(";
+    m_codeStream << "%" << getEightByteName(i.base) << ", ";
+    m_codeStream << "%" << getEightByteName(i.index) << ", ";
+    m_codeStream << std::to_string(i.scale) << ")";
 }
 
 void ASMPrinter::operator()(const Comment &c)
@@ -283,10 +298,10 @@ void ASMPrinter::operator()(const StaticVariable &s)
     if (s.global)
         m_codeStream << "    .globl " << formatLabel(s.name) << std::endl;
 
-    Type type = getType(s.init);
-    WordType wordType = type.wordType();
-    bool isZero = isPositiveZero(s.init);
-    if (!isZero || wordType == Doubleword)
+    bool isZero = std::ranges::all_of(s.list, [&](ConstantValue v) {
+        return std::holds_alternative<ZeroBytes>(v) || isPositiveZero(v);
+    });
+    if (!isZero)
         m_codeStream << "    .data" << std::endl;
     else
         m_codeStream << "    .bss" << std::endl;
@@ -295,10 +310,13 @@ void ASMPrinter::operator()(const StaticVariable &s)
 
     m_codeStream << formatLabel(s.name) << ":" << std::endl;
 
-    if (isZero)
-        m_codeStream << "    .zero " << type.size() << std::endl;
-    else
-        m_codeStream << "    " << getInitializer(wordType) << " " << toString(s.init) << std::endl;
+    for (auto &i : s.list) {
+        // TODO: Create a function to avoid duplication of this condition
+        if (auto z = std::get_if<ZeroBytes>(&i))
+            m_codeStream << "    .zero " << z->bytes << std::endl;
+        else
+            m_codeStream << "    " << getInitializer(getType(i).wordType()) << " " << toString(i) << std::endl;
+    }
     m_codeStream << std::endl;
 }
 

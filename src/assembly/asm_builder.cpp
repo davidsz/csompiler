@@ -15,7 +15,7 @@ static const std::array<Register, 8> s_doubleArgRegisters = {
 
 DIAG_PUSH
 DIAG_IGNORE("-Wswitch-enum")
-static std::string toConditionCode(BinaryOperator op, bool unsignedOrDouble)
+static std::string toConditionCode(BinaryOperator op, bool another)
 {
     switch (op) {
         case BinaryOperator::Equal:
@@ -23,13 +23,13 @@ static std::string toConditionCode(BinaryOperator op, bool unsignedOrDouble)
         case BinaryOperator::NotEqual:
             return "ne";
         case BinaryOperator::LessThan:
-            return unsignedOrDouble ? "b" : "l"; // less, below
+            return another ? "b" : "l"; // less, below
         case BinaryOperator::LessOrEqual:
-            return unsignedOrDouble ? "be" : "le";
+            return another ? "be" : "le";
         case BinaryOperator::GreaterThan:
-            return unsignedOrDouble ? "a" : "g"; // greater, above
+            return another ? "a" : "g"; // greater, above
         case BinaryOperator::GreaterOrEqual:
-            return unsignedOrDouble ? "ae" : "ge";
+            return another ? "ae" : "ge";
         default:
             return "UNKNOWN_COND";
     }
@@ -601,13 +601,55 @@ Operand ASMBuilder::operator()(const tac::UIntToDouble &u)
     return std::monostate();
 }
 
-Operand ASMBuilder::operator()(const tac::AddPtr &)
+Operand ASMBuilder::operator()(const tac::AddPtr &a)
 {
+    Operand ptr = std::visit(*this, a.ptr);
+    Operand index = std::visit(*this, a.index);
+    Operand dst = std::visit(*this, a.dst);
+
+    // If the index operand is a constant, we can save an instruction
+    // by computing index * scale at compile time.
+    if (auto const_index = std::get_if<tac::Constant>(&a.index)) {
+        int offset = getAs<int>(const_index->value) * a.scale;
+        m_instructions.push_back(Mov{ ptr, Reg{ AX, 8 }, Quadword });
+        m_instructions.push_back(Lea{ Memory{ AX, offset }, dst });
+        return std::monostate();
+    }
+
+    // Load ptr and index into registers
+    m_instructions.push_back(Mov{ ptr, Reg{ AX, 8 }, Quadword });
+    m_instructions.push_back(Mov{ index, Reg{ DX, 8 }, Quadword });
+
+    // Check if the scale is supported by Indexed operands
+    if (a.scale == 1 || a.scale == 2 || a.scale == 4 || a.scale == 8) {
+        m_instructions.push_back(Lea{
+            Indexed{ AX, DX, static_cast<uint8_t>(a.scale) },
+            dst
+        });
+        return std::monostate();
+    }
+
+    // We have to multiply the scale by the index using an ASM instruction
+    m_instructions.push_back(Binary{
+        Mult_AB,
+        Imm{ static_cast<uint64_t>(a.scale) },
+        Reg{ DX, 8 },
+        Quadword
+    });
+    m_instructions.push_back(Lea{
+        Indexed{ AX, DX, 1 },
+        dst
+    });
     return std::monostate();
 }
 
-Operand ASMBuilder::operator()(const tac::CopyToOffset &)
+Operand ASMBuilder::operator()(const tac::CopyToOffset &c)
 {
+    m_instructions.push_back(Mov{
+        std::visit(*this, c.src),
+        PseudoAggregate{ c.dst_identifier, c.offset },
+        GetWordType(c.src)
+    });
     return std::monostate();
 }
 
@@ -623,7 +665,10 @@ Operand ASMBuilder::operator()(const tac::Constant &c)
 
 Operand ASMBuilder::operator()(const tac::Variant &v)
 {
-    return Pseudo{ v.name };
+    if (m_symbolTable->getTypeAs<ArrayType>(v.name))
+        return PseudoAggregate{ v.name, 0 };
+    else
+        return Pseudo{ v.name }; // TODO: Rename to PseudoScalar?
 }
 
 Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
@@ -697,9 +742,8 @@ Operand ASMBuilder::operator()(const tac::StaticVariable &s)
     m_topLevel.push_back(StaticVariable{
         .name = s.name,
         .global = s.global,
-        // TODO
-        // .init = s.init,
-        // .alignment = getType(s.init).size() // TODO: s.type.size()?
+        .list = s.list,
+        .alignment = s.type.alignment()
     });
     return std::monostate();
 }

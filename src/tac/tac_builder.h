@@ -69,7 +69,10 @@ private:
         else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&result)) {
             PointerType *ptr_type = GetType(deref->ptr).getAs<PointerType>();
             assert(ptr_type);
-            Variant dst = CreateTemporaryVariable(*(ptr_type->referenced));
+            Type ref_type = *(ptr_type->referenced);
+            if (ref_type.isArray())
+                return deref->ptr;
+            Variant dst = CreateTemporaryVariable(ref_type);
             m_instructions.push_back(Load{ deref->ptr, dst });
             return dst;
         }
@@ -88,7 +91,7 @@ private:
         const parser::Initializer &init,
         const std::string &base,
         const Type &type,
-        int offset
+        int &offset
     );
 
     std::vector<TopLevel> m_topLevel;

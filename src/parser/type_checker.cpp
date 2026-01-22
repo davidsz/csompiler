@@ -49,21 +49,6 @@ static bool isNullPointerInit(const Initializer &init)
     return false;
 }
 
-static bool isZeroConstantExpression(const Expression &expr)
-{
-    if (const ConstantExpression *c = std::get_if<ConstantExpression>(&expr)) {
-        return std::visit([](const auto &x) -> bool {
-            using T = std::decay_t<decltype(x)>;
-            if constexpr (std::is_same_v<T, ZeroBytes>) {
-                assert(false);
-                return true;
-            } else
-                return x == 0;
-        }, c->value);
-    }
-    return false;
-}
-
 static std::unique_ptr<Expression> explicitCast(
     std::unique_ptr<Expression> expr,
     const Type &from_type,
@@ -166,28 +151,27 @@ TypeChecker::ToConstantValueList(Initializer &init, const Type &type)
 
     std::vector<ConstantValue> ret;
     if (SingleInit *single = std::get_if<SingleInit>(&init)) {
-        if (auto c = std::get_if<ConstantExpression>(single->expr.get())) {
-            if (isZeroConstantExpression(*single->expr))
-                ret.push_back(ZeroBytes{ (size_t)type.size() });
-            else
-                ret.push_back(ConvertValue(c->value, type));
-        } else
+        if (auto c = std::get_if<ConstantExpression>(single->expr.get()))
+            ret.push_back(ConvertValue(c->value, type));
+        else
             Abort("Initializer is not a constant expression.");
     } else if (CompoundInit *compound = std::get_if<CompoundInit>(&init)) {
         size_t init_size = compound->list.size();
-        size_t array_size = type.getAs<ArrayType>()->count;
-        Type element_type = *type.getAs<ArrayType>()->element;
+        const ArrayType *array_type = type.getAs<ArrayType>();
+        assert(array_type);
+        size_t array_size = array_type->count;
         if (array_size < init_size)
             Abort("Too long compound initializer for the given type.");
         for (size_t i = 0; i < array_size; i++) {
             if (i < init_size) {
-                auto values = ToConstantValueList(*compound->list[i], element_type);
+                // Explicit initializers
+                auto values = ToConstantValueList(*compound->list[i], *array_type->element);
                 ret.insert(ret.end(),
                            std::make_move_iterator(values.begin()),
                            std::make_move_iterator(values.end()));
             } else {
-                ret.push_back(ZeroBytes{ (size_t)type.size() * (array_size - init_size) });
-                break;
+                // Implicitly added zeros
+                ret.push_back(MakeConstantValue(0, *array_type->element));
             }
         }
     } else

@@ -34,16 +34,24 @@ namespace assembly {
 
 #define ASM_OPERAND_LIST(X) \
     X(Reg, \
-        Register reg; uint8_t bytes = 4;) \
+        Register reg; \
+        uint8_t bytes = 4;) \
     X(Imm, \
         uint64_t value;) \
     X(Pseudo, \
         std::string name;) \
+    X(PseudoAggregate, \
+        std::string name; \
+        int offset;) \
     X(Memory, \
         Register reg; \
         int offset;) \
     X(Data, \
-        std::string name;)
+        std::string name;) \
+    X(Indexed, \
+        Register base; \
+        Register index; \
+        uint8_t scale;)
 
 #define ASM_INSTRUCTION_LIST(X) \
     X(Comment, \
@@ -115,7 +123,7 @@ namespace assembly {
     X(StaticVariable, \
         std::string name; \
         bool global; \
-        ConstantValue init; \
+        std::vector<ConstantValue> list; \
         int alignment;) \
     X(StaticConstant, \
         std::string name; \

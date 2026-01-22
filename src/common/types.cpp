@@ -83,6 +83,42 @@ std::optional<Type> DetermineType(const std::set<std::string> &type_specifiers)
         return Type { BasicType::Int };
 }
 
+bool AssemblyType::isWord(WordType type) const
+{
+    if (auto w = std::get_if<WordType>(&t))
+        return *w == type;
+    return false;
+}
+
+bool AssemblyType::isByteArray() const
+{
+    return std::holds_alternative<ByteArray>(t);
+}
+
+int AssemblyType::size() const
+{
+    if (auto b = std::get_if<ByteArray>(&t))
+        return b->size;
+    auto w = std::get_if<WordType>(&t);
+    assert(w);
+    switch (*w) {
+    case WordType::Longword:
+        return 4;
+    case WordType::Quadword:
+    case WordType::Doubleword:
+        return 8;
+    default:
+        return 1;
+    }
+}
+
+int AssemblyType::alignment() const
+{
+    if (auto b = std::get_if<ByteArray>(&t))
+        return b->alignment;
+    return size();
+}
+
 bool FunctionType::operator==(const FunctionType &other) const
 {
     if (params.size() != other.params.size())
@@ -202,6 +238,15 @@ int Type::size() const
     default:
         return 0;
     }
+}
+
+int Type::alignment() const
+{
+    int size = this->size();
+    if (auto array_type = std::get_if<ArrayType>(&t)) {
+        return size > 16 ? 16 : array_type->element->size();
+    } else
+        return size;
 }
 
  WordType Type::wordType() const

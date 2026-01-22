@@ -10,7 +10,7 @@ ASMSymbolTable::ASMSymbolTable(
     for (const auto &[name, entry] : symbolTable->m_table) {
         if (entry.type.getAs<BasicType>()) {
             insert(name, ObjEntry{
-                .type = entry.type.wordType(),
+                .type = AssemblyType{ entry.type.wordType() },
                 .is_static = entry.attrs.type == IdentifierAttributes::Static,
                 .is_constant = false
             });
@@ -20,7 +20,15 @@ ASMSymbolTable::ASMSymbolTable(
             });
         } else if (entry.type.getAs<PointerType>()) {
             insert(name, ObjEntry{
-                .type = Quadword,
+                .type = AssemblyType{ Quadword },
+                .is_static = entry.attrs.type == IdentifierAttributes::Static,
+                .is_constant = false
+            });
+        } else if (entry.type.getAs<ArrayType>()) {
+            insert(name, ObjEntry{
+                .type = AssemblyType{
+                    ByteArray{ entry.type.size(), entry.type.alignment() }
+                },
                 .is_static = entry.attrs.type == IdentifierAttributes::Static,
                 .is_constant = false
             });
@@ -31,7 +39,7 @@ ASMSymbolTable::ASMSymbolTable(
     for (auto const &[value, label] : *constants) {
         assert(std::holds_alternative<double>(value));
         insert(label, ObjEntry{
-            .type = Doubleword,
+            .type = AssemblyType{ Doubleword },
             .is_static = true,
             .is_constant = true
         });

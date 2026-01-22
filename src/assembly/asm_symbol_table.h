@@ -7,7 +7,7 @@
 namespace assembly {
 
 struct ObjEntry {
-    WordType type;
+    AssemblyType type;
     bool is_static;
     bool is_constant;
 };
