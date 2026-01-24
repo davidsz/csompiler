@@ -164,7 +164,7 @@ Expression ASTBuilder::ParseUnaryExpression()
         auto ret = CastExpression{};
         Type base_type = ParseTypes();
         AbstractDeclarator declarator = ParseAbstractDeclarator();
-        ret.target_type = ProcessAbstractDeclarator(declarator, base_type);
+        ret.type = ProcessAbstractDeclarator(declarator, base_type);
         Consume(TokenType::Punctator, ")");
         ret.expr = unique_expression(ParseUnaryExpression());
         return ret;

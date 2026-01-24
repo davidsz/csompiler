@@ -20,7 +20,7 @@ void ASTPrinter::operator()(const VariableExpression &v)
 void ASTPrinter::operator()(const CastExpression &c)
 {
     pad(); std::cout << "CastExpression(";
-    std::cout << c.inner_type << " -> " << c.target_type << std::endl;
+    std::cout << c.inner_type << " -> " << c.type << std::endl;
     tab(); std::visit(*this, *c.expr); shift_tab();
     pad(); std::cout << ") " << std::endl;
 }
@@ -55,7 +55,7 @@ void ASTPrinter::operator()(const AssignmentExpression &a)
 void ASTPrinter::operator()(const CompoundAssignmentExpression &c)
 {
     pad(); std::cout << "CompoundAssignmentExpression(" << toString(c.op) << " ";
-    std::cout << c.inner_type << " -> " << c.result_type << std::endl;
+    std::cout << c.inner_type << " -> " << c.type << std::endl;
     tab();
     std::visit(*this, *c.lhs);
     std::visit(*this, *c.rhs);
@@ -87,10 +87,7 @@ void ASTPrinter::operator()(const FunctionCallExpression &f)
         std::visit(*this, *a);
     shift_tab();
     pad(); std::cout << ") ";
-    if (f.type)
-        std::cout << *f.type << std::endl;
-    else
-        std::cout << "typeless" << std::endl;
+    std::cout << f.type << std::endl;
 }
 
 void ASTPrinter::operator()(const DereferenceExpression &d)
@@ -277,8 +274,12 @@ void ASTPrinter::operator()(const CompoundInit &c)
 {
     pad(); std::cout << "{" << std::endl;
     tab();
-    for (auto &i : c.list) {
-        std::visit(*this, *i);
+    for (size_t i = 0; i < c.list.size(); i++) {
+        std::visit(*this, *c.list[i]);
+        if (i == 2) {
+            pad(); std::cout << "... " << c.list.size() << " elements" << std::endl;
+            break;
+        }
     }
     shift_tab();
     pad(); std::cout << "}" << std::endl;

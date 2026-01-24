@@ -4,6 +4,22 @@
 
 namespace tac {
 
+#if 0
+// This can be useful later, but it's a layering violation
+Type GetExpressionType(parser::Expression &expr)
+{
+    return std::visit([](const auto &node) -> Type {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, std::monostate>) {
+            assert(false);
+            return Type{};
+        } else {
+            return node.type;
+        }
+    }, expr);
+}
+#endif
+
 Variant TACBuilder::CreateTemporaryVariable(const Type &type)
 {
     Variant var = Variant{ GenerateTempVariableName() };
@@ -78,16 +94,16 @@ TACBuilder::LHSInfo TACBuilder::AnalyzeLHS(const parser::Expression &expr)
 void TACBuilder::EmitRuntimeCompoundInit(
     const parser::Initializer &init,
     const std::string &base,
-    const Type &type,
+    int type_size,
     int &offset)
 {
     if (auto single = std::get_if<parser::SingleInit>(&init)) {
         Value v = VisitAndConvert(*single->expr);
         m_instructions.push_back(CopyToOffset{ v, base, offset });
-        offset += type.size();
+        offset += type_size;
     } else if (auto compound = std::get_if<parser::CompoundInit>(&init)) {
         for (auto &elem : compound->list)
-            EmitRuntimeCompoundInit(*elem, base, type, offset);
+            EmitRuntimeCompoundInit(*elem, base, type_size, offset);
     }
 }
 
@@ -118,10 +134,10 @@ ExpResult TACBuilder::operator()(const parser::VariableExpression &v)
 ExpResult TACBuilder::operator()(const parser::CastExpression &c)
 {
     Value result = VisitAndConvert(*c.expr);
-    if (c.target_type == c.inner_type)
+    if (c.type == c.inner_type)
         return PlainOperand{ result };
     return PlainOperand{
-        CastValue(m_instructions, result, c.inner_type, c.target_type)
+        CastValue(m_instructions, result, c.inner_type, c.type)
     };
 }
 
@@ -218,10 +234,12 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
             // We determine the pointer and the integer operands for addition
             Value pointer_operand = lhs_type.isPointer() ? lhs : rhs;
             Value integer_operand = lhs_type.isPointer() ? rhs : lhs;
+            auto ptr_type = b.type.getAs<PointerType>();
+            assert(ptr_type);
             auto add_ptr = AddPtr{
                 .ptr = pointer_operand,
                 .index = integer_operand,
-                .scale = b.type.size(),
+                .scale = ptr_type->referenced->size(),
                 .dst = CreateTemporaryVariable(b.type)
             };
             m_instructions.push_back(add_ptr);
@@ -237,31 +255,37 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
                     .dst = CreateTemporaryVariable(Type{ BasicType::Long })
                 };
                 m_instructions.push_back(negate);
+                auto ptr_type = b.type.getAs<PointerType>();
+                assert(ptr_type);
                 auto add_ptr = AddPtr{
                     .ptr = lhs,
                     .index = negate.dst,
-                    .scale = lhs_type.size(),
+                    .scale = ptr_type->referenced->size(),
                     .dst = CreateTemporaryVariable(lhs_type)
                 };
                 m_instructions.push_back(add_ptr);
                 return PlainOperand{ add_ptr.dst };
             } else if (rhs_type.isPointer()) {
-                /* Subtracting one pointer from another: First, we calculate the difference
-                 * in bytes, using an ordinary Subtract instruction. Then, we divide this
-                 * result by the number of bytes in one array element, to calculate the
-                 * difference between the two pointers in terms of array indices. */
+                // Subtracting one pointer from another: First, we calculate the difference
+                // in bytes, using an ordinary Subtract instruction. Then, we divide this
+                // result by the number of bytes in one array element, to calculate the
+                // difference between the two pointers in terms of array indices.
                 auto diff = Binary{
                     .op = BinaryOperator::Subtract,
                     .src1 = lhs,
                     .src2 = rhs,
-                    .dst = CreateTemporaryVariable(lhs_type)
+                    .dst = CreateTemporaryVariable(Type{ BasicType::Long })
                 };
                 m_instructions.push_back(diff);
+
+                auto ptr_type = lhs_type.getAs<PointerType>();
+                assert(ptr_type);
+                int elem_size = ptr_type->referenced->size();
                 auto result = Binary{
                     .op = BinaryOperator::Divide,
                     .src1 = diff.dst,
-                    .src2 = Constant{ MakeConstantValue(lhs_type.size(), lhs_type) },
-                    .dst = CreateTemporaryVariable(lhs_type)
+                    .src2 = Constant{ MakeConstantValue(elem_size, Type{ BasicType::Long }) },
+                    .dst = CreateTemporaryVariable(Type{ BasicType::Long })
                 };
                 m_instructions.push_back(result);
                 return PlainOperand{ result.dst };
@@ -324,8 +348,8 @@ ExpResult TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
 
     // Cast back if needed
     Value result = tmp;
-    if (c.inner_type != c.result_type)
-        result = CastValue(m_instructions, tmp, c.inner_type, c.result_type);
+    if (c.inner_type != c.type)
+        result = CastValue(m_instructions, tmp, c.inner_type, c.type);
 
     // Store the result if it was modified through a pointer
     if (lhs.kind == LHSInfo::Kind::Plain)
@@ -362,7 +386,7 @@ ExpResult TACBuilder::operator()(const parser::FunctionCallExpression &f)
     ret.identifier = f.identifier;
     for (auto &a : f.args)
         ret.args.push_back(VisitAndConvert(*a));
-    ret.dst = CreateTemporaryVariable(*f.type);
+    ret.dst = CreateTemporaryVariable(f.type);
     m_instructions.push_back(ret);
     return PlainOperand{ ret.dst };
 }
@@ -624,8 +648,9 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
         if (!initial) {
             const ArrayType *arr_type = entry->type.getAs<ArrayType>();
             assert(arr_type);
+            int type_size = arr_type->element->storedType().size();
             int offset = 0;
-            EmitRuntimeCompoundInit(*v.init, v.identifier, *arr_type->element, offset);
+            EmitRuntimeCompoundInit(*v.init, v.identifier, type_size, offset);
             return std::monostate();
         }
 
@@ -633,19 +658,22 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
         // it into a list of constant values, because it was possible,
         // e.g.: file scope and static initializers
         int offset = 0;
+        int incr = entry->type.storedType().size();
         for (const ConstantValue &cv : initial->list) {
             std::visit([&](auto &val) {
                 using T = std::decay_t<decltype(val)>;
-                if constexpr (std::is_same_v<T, ZeroBytes>)
+                if constexpr (std::is_same_v<T, ZeroBytes>) {
+                    // Only static variables will have ZeroBytes values,
+                    // and we already early-returned when processing those.
                     assert(false);
-                else {
+                } else {
                     auto copy = CopyToOffset{
                         .src = Constant{ val },
                         .dst_identifier = v.identifier,
                         .offset = offset
                     };
                     m_instructions.push_back(copy);
-                    offset += entry->type.size();
+                    offset += incr;
                 }
             }, cv);
         }

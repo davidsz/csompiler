@@ -47,6 +47,8 @@ struct TypeChecker : public IASTMutatingVisitor<Type> {
 
 private:
     Type VisitAndConvert(std::unique_ptr<Expression> &expr);
+    std::unique_ptr<Initializer>
+        AddMissingInitializers(std::unique_ptr<Initializer> init, const Type &type);
     std::vector<ConstantValue> ToConstantValueList(Initializer &init, const Type &type);
 
     std::shared_ptr<SymbolTable> m_symbolTable = std::make_shared<SymbolTable>();
@@ -54,7 +56,7 @@ private:
     bool m_forLoopInitializer = false;
     std::vector<Type> m_functionTypeStack;
     std::vector<SwitchStatement *> m_switches;
-    std::shared_ptr<Type> m_targetTypeForInitializer;
+    Type m_targetTypeForInitializer;
 };
 
 }; // namespace parser

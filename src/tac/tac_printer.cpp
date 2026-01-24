@@ -226,8 +226,13 @@ void TACPrinter::operator()(const tac::StaticVariable &s)
     std::cout << (s.global ? "global" : "local");
     std::cout << " StaticVariable(" << s.name << ") {" << std::endl;
     tab();
-    // TODO
-    // pad(); std::cout << "Init " << toString(s.init) << std::endl;
+    for (size_t i = 0; i < s.list.size(); i++) {
+        pad(); std::cout << toString(s.list[i]) << std::endl;
+        if (i == 2) {
+            pad(); std::cout << "... " << s.list.size() << " elements" << std::endl;
+            break;
+        }
+    }
     shift_tab();
     pad(); std::cout << "}" << std::endl;
 }

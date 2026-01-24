@@ -121,6 +121,7 @@ struct Type {
     int size() const;
     int alignment() const;
     WordType wordType() const;
+    Type storedType() const;
 
     friend bool operator==(const Type &a, const Type &b) {
         return a.t == b.t;

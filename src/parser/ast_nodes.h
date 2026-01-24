@@ -10,8 +10,6 @@
 
 namespace parser {
 
-// TODO: Convert declaration types to shared_ptr
-// -> convert symbol table entries
 #define AST_DECLARATION_LIST(X) \
     X(FunctionDeclaration, \
         StorageClass storage; \
@@ -83,9 +81,9 @@ namespace parser {
         std::string identifier; \
         Type type = Type{};) \
     X(CastExpression, \
-        Type target_type; \
         std::unique_ptr<Expression> expr; \
-        Type inner_type = Type{};) \
+        Type inner_type = Type{}; \
+        Type type;) \
     X(UnaryExpression, \
         UnaryOperator op; \
         std::unique_ptr<Expression> expr; \
@@ -105,7 +103,7 @@ namespace parser {
         std::unique_ptr<Expression> lhs; \
         std::unique_ptr<Expression> rhs; \
         Type inner_type = Type{}; \
-        Type result_type = Type{};) \
+        Type type = Type{};) \
     X(ConditionalExpression, \
         std::unique_ptr<Expression> condition; \
         std::unique_ptr<Expression> trueBranch; \
@@ -114,7 +112,7 @@ namespace parser {
     X(FunctionCallExpression, \
         std::string identifier; \
         std::vector<std::unique_ptr<Expression>> args; \
-        std::shared_ptr<Type> type;) \
+        Type type;) \
     X(DereferenceExpression, \
         std::unique_ptr<Expression> expr; \
         Type type = Type{};) \

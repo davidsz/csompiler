@@ -58,7 +58,7 @@ static std::unique_ptr<Expression> explicitCast(
     if (from_type == to_type)
         return expr;
     return std::make_unique<Expression>(CastExpression{
-        .target_type = to_type,
+        .type = to_type,
         .expr = std::move(expr),
         .inner_type = from_type,
     });
@@ -121,26 +121,51 @@ static std::optional<Type> getCommonPointerType(
     return std::nullopt;
 }
 
-static Initializer zeroInitializer(const Type &type)
+std::unique_ptr<Initializer>
+TypeChecker::AddMissingInitializers(std::unique_ptr<Initializer> init, const Type &type)
 {
-    if (const ArrayType *array_type = type.getAs<ArrayType>()) {
-        CompoundInit init;
-        init.type = type;
-        init.list.reserve(array_type->count);
-        for (size_t i = 0; i < array_type->count; i++) {
-            init.list.push_back(make_unique<Initializer>(
-                zeroInitializer(*array_type->element)
-            ));
-        }
-        return init;
-    } else {
-        return SingleInit{
-            std::make_unique<Expression>(ConstantExpression{
+    if (!init) {
+        if (const ArrayType *array_type = type.getAs<ArrayType>()) {
+            CompoundInit compound_init;
+            compound_init.type = type;
+            compound_init.list.reserve(array_type->count);
+            init = std::make_unique<Initializer>(std::move(compound_init));
+        } else
+            init = std::make_unique<Initializer>(SingleInit{});
+    }
+
+    if (SingleInit *single_init = std::get_if<SingleInit>(init.get())) {
+        if (!single_init->expr) {
+            single_init->expr = std::make_unique<Expression>(ConstantExpression{
                 .value = MakeConstantValue(0, type),
                 .type = type
-            })
-        };
+            });
+        }
+        return init;
     }
+
+    CompoundInit *compound_init = std::get_if<CompoundInit>(init.get());
+    const ArrayType *array_type = type.getAs<ArrayType>();
+    assert(compound_init && array_type);
+    if (compound_init->list.size() > array_type->count)
+        Abort("Too many initializers for the array.");
+
+    // Iterate through exisiting nested initializers
+    for (size_t i = 0; i < compound_init->list.size(); i++) {
+        compound_init->list[i] = AddMissingInitializers(
+            std::move(compound_init->list[i]),
+            *array_type->element
+        );
+    }
+    // Pad missing elements with zero-initializers
+    // TODO: "If a static array is only partially initialized,
+    // we’ll use ZeroInit to pad out any uninitialized elements."
+    while (compound_init->list.size() < array_type->count) {
+        compound_init->list.push_back(
+            AddMissingInitializers(nullptr, *array_type->element)
+        );
+    }
+    return init;
 }
 
 std::vector<ConstantValue>
@@ -151,28 +176,22 @@ TypeChecker::ToConstantValueList(Initializer &init, const Type &type)
 
     std::vector<ConstantValue> ret;
     if (SingleInit *single = std::get_if<SingleInit>(&init)) {
-        if (auto c = std::get_if<ConstantExpression>(single->expr.get()))
+        if (!single->expr)
+            ret.push_back(MakeConstantValue(0, type));
+        else if (auto c = std::get_if<ConstantExpression>(single->expr.get()))
             ret.push_back(ConvertValue(c->value, type));
         else
             Abort("Initializer is not a constant expression.");
     } else if (CompoundInit *compound = std::get_if<CompoundInit>(&init)) {
-        size_t init_size = compound->list.size();
         const ArrayType *array_type = type.getAs<ArrayType>();
         assert(array_type);
-        size_t array_size = array_type->count;
-        if (array_size < init_size)
+        if (array_type->count < compound->list.size())
             Abort("Too long compound initializer for the given type.");
-        for (size_t i = 0; i < array_size; i++) {
-            if (i < init_size) {
-                // Explicit initializers
-                auto values = ToConstantValueList(*compound->list[i], *array_type->element);
-                ret.insert(ret.end(),
-                           std::make_move_iterator(values.begin()),
-                           std::make_move_iterator(values.end()));
-            } else {
-                // Implicitly added zeros
-                ret.push_back(MakeConstantValue(0, *array_type->element));
-            }
+        for (auto &i : compound->list) {
+            auto values = ToConstantValueList(*i, *array_type->element);
+            ret.insert(ret.end(),
+                        std::make_move_iterator(values.begin()),
+                        std::make_move_iterator(values.end()));
         }
     } else
         assert(false);
@@ -216,13 +235,13 @@ Type TypeChecker::operator()(VariableExpression &v)
 Type TypeChecker::operator()(CastExpression &c)
 {
     c.inner_type = Type{ VisitAndConvert(c.expr) };
-    // target_type is already determined in the AST builder
-    if (c.target_type.isArray())
+    // .type is already determined in the AST builder
+    if (c.type.isArray())
         Abort("Not allowed to cast an expression to an array type.");
-    if ((c.inner_type.isPointer() && c.target_type.isBasic(Double))
-        || (c.inner_type.isBasic(Double) && c.target_type.isPointer()))
+    if ((c.inner_type.isPointer() && c.type.isBasic(Double))
+        || (c.inner_type.isBasic(Double) && c.type.isPointer()))
         Abort("Not allowed to cast pointer from/to a floating point type.");
-    return c.target_type;
+    return c.type;
 }
 
 Type TypeChecker::operator()(UnaryExpression &u)
@@ -309,6 +328,7 @@ Type TypeChecker::operator()(BinaryExpression &b)
             b.type = left_type;
             return b.type;
         } else if (left_type.isPointer() && left_type == right_type) {
+            // Difference of two pointers: the number of array elements between them
             b.type = Type{ BasicType::Long };  // This would be ptrdiff_t officially
             return b.type;
         } else if (!left_type.isArithmetic() && !right_type.isArithmetic())
@@ -406,16 +426,16 @@ Type TypeChecker::operator()(CompoundAssignmentExpression &c)
         // The right operand of shift operators need an integer promotion
         c.rhs = explicitCast(std::move(c.rhs), right_type, Type{ BasicType::Int });
         c.inner_type = left_type;
-        c.result_type = left_type;
-        return c.result_type;
+        c.type = left_type;
+        return c.type;
     }
 
     Type common_type = getCommonType(left_type, right_type);
     c.lhs = explicitCast(std::move(c.lhs), left_type, common_type);
     c.rhs = explicitCast(std::move(c.rhs), right_type, common_type);
     c.inner_type = common_type;
-    c.result_type = left_type;
-    return c.result_type;
+    c.type = left_type;
+    return c.type;
 }
 
 Type TypeChecker::operator()(ConditionalExpression &c)
@@ -452,8 +472,8 @@ Type TypeChecker::operator()(FunctionCallExpression &f)
             if (!(f.args[i] = convertByAssignment(std::move(f.args[i]), arg_type, *type->params[i])))
                 Abort("Can't convert argument type for function call");
         }
-        f.type = type->ret;
-        return *f.type;
+        f.type = *type->ret;
+        return f.type;
     } else {
         // The symbol name exists, we verified it during the semantic analysis.
         Abort(std::format("'{}' is not a function name", f.identifier));
@@ -702,6 +722,9 @@ Type TypeChecker::operator()(VariableDeclaration &v)
     if (m_forLoopInitializer && v.storage != StorageDefault)
         Abort("Initializer of a for loop can't have storage specifier");
 
+    // This member helps to verify the correct types in initializer visitors
+    m_targetTypeForInitializer = v.type;
+
     if (m_fileScope) {
         // File-scope variable
         InitialValue init = NoInitializer{};
@@ -716,15 +739,15 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             Initial initial{};
             initial.list.push_back(MakeConstantValue(0, ULong));
             init = std::move(initial);
-        } else
+        } else {
+            v.init = AddMissingInitializers(std::move(v.init), v.type);
             init = Initial{ ToConstantValueList(*v.init, v.type) };
-
-        // std::visit() only after checking the initializer
-        // to avoid CastExpression wrappers on ConstantExpressions
-        if (v.init) {
-            m_targetTypeForInitializer = std::make_shared<Type>(v.type);
-            std::visit(*this, *v.init);
         }
+
+        // std::visit() v.init only after adjusting and compile-time processing
+        // to avoid CastExpression wrappers on ConstantExpressions
+        if (v.init)
+            std::visit(*this, *v.init);
 
         bool is_global = (v.storage != StorageStatic);
 
@@ -775,35 +798,35 @@ Type TypeChecker::operator()(VariableDeclaration &v)
                 Initial initial{};
                 initial.list.push_back(MakeConstantValue(0, ULong));
                 init = std::move(initial);
-            } else if (!v.init) {
-                Initial initial{};
-                initial.list.push_back(MakeConstantValue(0, v.type));
-                init = std::move(initial);
-            } else
+            } else {
+                // It doesn't matter if we have an initializer or not; we adjust it
+                // if any part is missing and calculate the values in build time,
+                // because it has static storage.
+                // TODO: Optimize by placing one ZeroBytes instead of many zeros.
+                v.init = AddMissingInitializers(std::move(v.init), v.type);
                 init = Initial{ ToConstantValueList(*v.init, v.type) };
+            }
+
+            // std::visit() v.init only after adjusting and compile-time processing
+            // to avoid CastExpression wrappers on ConstantExpressions
+            if (v.init)
+                std::visit(*this, *v.init);
 
             m_symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
                 .type = IdentifierAttributes::Static,
                 .global = false,
                 .init = init
             });
-
-            // std::visit() only after checking the initializer
-            // to avoid CastExpression wrappers on ConstantExpressions
-            if (v.init) {
-                m_targetTypeForInitializer = std::make_shared<Type>(v.type);
-                std::visit(*this, *v.init);
-            }
         } else {
+            // Automatic storage duration; handle the initializer in TAC
+            // Insert into the table first, because a variable can be used
+            // in its own initializer. (int a = a = 5;)
             m_symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
                 .type = IdentifierAttributes::Local
             });
-
-            if (v.init) {
-                m_fileScope = false;
-                m_targetTypeForInitializer = std::make_shared<Type>(v.type);
-                std::visit(*this, *v.init);
-            }
+            v.init = AddMissingInitializers(std::move(v.init), v.type);
+            m_fileScope = false;
+            std::visit(*this, *v.init);
         }
     }
     return Type{ std::monostate() };
@@ -811,44 +834,37 @@ Type TypeChecker::operator()(VariableDeclaration &v)
 
 Type TypeChecker::operator()(SingleInit &s)
 {
-    assert(m_targetTypeForInitializer);
+    assert(m_targetTypeForInitializer.isInitialized());
+    Type targetType = m_targetTypeForInitializer;
     Type type = VisitAndConvert(s.expr);
-    if (!(s.expr = convertByAssignment(std::move(s.expr), type, *m_targetTypeForInitializer)))
+    m_targetTypeForInitializer = targetType;
+    if (!(s.expr = convertByAssignment(std::move(s.expr), type, m_targetTypeForInitializer)))
         Abort(std::format("Can't convert initializer from {} to {}.",
-            type.toString(), m_targetTypeForInitializer->toString()));
-    // TODO: Do we have to store the type for initializers?
-    s.type = *m_targetTypeForInitializer;
+            type.toString(), m_targetTypeForInitializer.toString()));
+    s.type = m_targetTypeForInitializer;
     return s.type;
 }
 
 Type TypeChecker::operator()(CompoundInit &c)
 {
-    assert(m_targetTypeForInitializer);
-    ArrayType *array_type = m_targetTypeForInitializer->getAs<ArrayType>();
+    assert(m_targetTypeForInitializer.isInitialized());
+    const ArrayType *array_type = m_targetTypeForInitializer.getAs<ArrayType>();
     if (!array_type)
         Abort("Can't initialize a scalar object with a compound initializer.");
+    if (c.list.size() > array_type->count)
+        Abort("Too many initializers for the array.");
 
-    // The initializer list can be shorter than the type length
-    if (array_type->count < c.list.size())
-        Abort("Wrong number of values in compound initializer.");
-
-    // Recursively visit and add zero-inits where an initializer is missing
-    std::vector<std::unique_ptr<Initializer>> visited_list;
-    Type outer_type = *m_targetTypeForInitializer;
-    m_targetTypeForInitializer = array_type->element;
-    for (auto &init : c.list) {
-        std::visit(*this, *init);
-        visited_list.push_back(std::move(init));
+    // Save outer_target to restore it later
+    Type outer_target = m_targetTypeForInitializer;
+    // Make a copy of the pointed type, because setting m_targetTypeForInitializer
+    // in a nested initializer would modify the memory area of array_type->element
+    Type inner_target = *array_type->element;
+    for (auto &i: c.list) {
+        m_targetTypeForInitializer = inner_target;
+        std::visit(*this, *i);
     }
-    m_targetTypeForInitializer = std::make_shared<Type>(outer_type);
-    while (visited_list.size() < array_type->count) {
-        visited_list.push_back(
-            std::make_unique<Initializer>(zeroInitializer(*array_type->element))
-        );
-    }
-
-    c.list = std::move(visited_list);
-    c.type = *m_targetTypeForInitializer;
+    m_targetTypeForInitializer = outer_target;
+    c.type = outer_target;
     return c.type;
 }
 

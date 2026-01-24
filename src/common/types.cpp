@@ -269,6 +269,14 @@ int Type::alignment() const
      }
  }
 
+ Type Type::storedType() const
+ {
+     if (auto a = std::get_if<ArrayType>(&t))
+         return a->element->storedType();
+     else
+         return *this;
+ }
+
 std::ostream &operator<<(std::ostream &os, const Type &type)
 {
     std::visit([&](auto &obj) {

@@ -69,10 +69,7 @@ private:
         else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&result)) {
             PointerType *ptr_type = GetType(deref->ptr).getAs<PointerType>();
             assert(ptr_type);
-            Type ref_type = *(ptr_type->referenced);
-            if (ref_type.isArray())
-                return deref->ptr;
-            Variant dst = CreateTemporaryVariable(ref_type);
+            Variant dst = CreateTemporaryVariable(ptr_type->referenced->storedType());
             m_instructions.push_back(Load{ deref->ptr, dst });
             return dst;
         }
@@ -90,7 +87,7 @@ private:
     void EmitRuntimeCompoundInit(
         const parser::Initializer &init,
         const std::string &base,
-        const Type &type,
+        int type_size,
         int &offset
     );
 
