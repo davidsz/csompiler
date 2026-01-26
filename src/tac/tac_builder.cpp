@@ -66,11 +66,11 @@ Variant TACBuilder::CastValue(
 TACBuilder::LHSInfo TACBuilder::AnalyzeLHS(const parser::Expression &expr)
 {
     if (const auto *var = std::get_if<parser::VariableExpression>(&expr)) {
-        Type t = GetType(Variant{ var->identifier });
+        Variant v{ var->identifier };
         return {
             .kind = LHSInfo::Kind::Plain,
-            .address = Variant{ var->identifier },
-            .original_type = t
+            .address = v,
+            .original_type = GetType(v)
         };
     }
 
@@ -85,6 +85,37 @@ TACBuilder::LHSInfo TACBuilder::AnalyzeLHS(const parser::Expression &expr)
             .kind = LHSInfo::Kind::Deref,
             .address = ptr,
             .original_type = *pt->referenced
+        };
+    }
+
+    if (const auto *sub = std::get_if<parser::SubscriptExpression>(&expr)) {
+        Value lhs = VisitAndConvert(*sub->pointer);
+        Value rhs = VisitAndConvert(*sub->index);
+        Type lhs_type = GetType(lhs);
+
+        Value pointer_operand = lhs_type.isPointer() ? lhs : rhs;
+        Value integer_operand = lhs_type.isPointer() ? rhs : lhs;
+
+        const PointerType *pt = GetType(pointer_operand).getAs<PointerType>();
+        assert(pt);
+
+        Type element_type = pt->referenced->storedType();
+
+        Variant addr = CreateTemporaryVariable(
+            Type{ PointerType{ .referenced = std::make_shared<Type>(element_type) } }
+        );
+
+        m_instructions.push_back(AddPtr{
+            .ptr   = pointer_operand,
+            .index = integer_operand,
+            .scale = element_type.size(),
+            .dst   = addr
+        });
+
+        return {
+            .kind = LHSInfo::Kind::Deref,
+            .address = addr,
+            .original_type = element_type
         };
     }
 
@@ -149,7 +180,7 @@ ExpResult TACBuilder::operator()(const parser::UnaryExpression &u)
         LHSInfo lhs = AnalyzeLHS(*u.expr);
 
         // Load current value if it's a pointer dereference
-        Variant old_val = CreateTemporaryVariable(lhs.original_type);
+        Variant old_val = CreateTemporaryVariable(lhs.original_type.storedType());
         if (lhs.kind == LHSInfo::Kind::Plain)
             m_instructions.push_back(Copy{ lhs.address, old_val });
         else
@@ -161,18 +192,30 @@ ExpResult TACBuilder::operator()(const parser::UnaryExpression &u)
             typed_val = CastValue(m_instructions, old_val, lhs.original_type, u.type);
 
         // Increment/Decrement
-        Variant new_value = CreateTemporaryVariable(u.type);
-        m_instructions.push_back(Binary{
-            unaryToBinary(u.op),
-            typed_val,
-            Constant{ MakeConstantValue(1, u.type) },
-            new_value
-        });
+        Variant new_value = CreateTemporaryVariable(u.type.storedType());
+        if (u.type.isPointer()) {
+            auto ptr_type = u.type.getAs<PointerType>();
+            assert(ptr_type);
+            int offset = (u.op == UnaryOperator::Increment) ? 1 : -1;
+            m_instructions.push_back(AddPtr{
+                .ptr = typed_val,
+                .index = Constant{ MakeConstantValue(offset, Type{ BasicType::Long }) },
+                .scale = ptr_type->referenced->size(),
+                .dst = new_value
+            });
+        } else {
+            m_instructions.push_back(Binary{
+                unaryToBinary(u.op),
+                typed_val,
+                Constant{ MakeConstantValue(1, u.type) },
+                new_value
+            });
+        }
 
         // Cast back if needed
         Value result_to_store = new_value;
         if (u.type != lhs.original_type)
-            result_to_store = CastValue(m_instructions, new_value, u.type, lhs.original_type);
+            result_to_store = CastValue(m_instructions, new_value, u.type, lhs.original_type.storedType());
 
         // Store the result back
         if (lhs.kind == LHSInfo::Kind::Plain)
@@ -329,7 +372,7 @@ ExpResult TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
     LHSInfo lhs = AnalyzeLHS(*c.lhs);
 
     // Load the value if lhs is a pointer dereference
-    Variant old_val = CreateTemporaryVariable(lhs.original_type);
+    Variant old_val = CreateTemporaryVariable(lhs.original_type.storedType());
     if (lhs.kind == LHSInfo::Kind::Plain)
         m_instructions.push_back(Copy{ lhs.address, old_val });
     else
@@ -342,14 +385,32 @@ ExpResult TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
 
     Value rhs = VisitAndConvert(*c.rhs);
 
-    // Perform the actual operation as a Binary in Assembly
-    Variant tmp = CreateTemporaryVariable(c.inner_type);
-    m_instructions.push_back(Binary{ compoundToBinary(c.op), typed_left, rhs, tmp });
+    // Perform the actual operation (binary or pointer arithmetic)
+    Variant tmp = CreateTemporaryVariable(c.inner_type.storedType());
+    if (const PointerType *pointer_type = c.inner_type.getAs<PointerType>()) {
+        Value index = rhs;
+        if (c.op == BinaryOperator::AssignSub) {
+            Variant negated = CreateTemporaryVariable(GetType(rhs));
+            m_instructions.push_back(Unary{
+                UnaryOperator::Negate,
+                rhs,
+                negated
+            });
+            index = negated;
+        }
+        m_instructions.push_back(AddPtr{
+            .ptr = typed_left,
+            .index = index,
+            .scale = pointer_type->referenced->size(),
+            .dst = tmp
+        });
+    } else
+        m_instructions.push_back(Binary{ compoundToBinary(c.op), typed_left, rhs, tmp });
 
     // Cast back if needed
     Value result = tmp;
     if (c.inner_type != c.type)
-        result = CastValue(m_instructions, tmp, c.inner_type, c.type);
+        result = CastValue(m_instructions, tmp, c.inner_type, c.type.storedType());
 
     // Store the result if it was modified through a pointer
     if (lhs.kind == LHSInfo::Kind::Plain)

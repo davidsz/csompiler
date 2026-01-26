@@ -96,15 +96,6 @@ Expression ASTBuilder::ParseExpression(int min_precedence)
     Expression left = ParseUnaryExpression();
     auto next = Peek();
 
-    // Postfix unary expressions (left-associative)
-    UnaryOperator unop = toUnaryOperator(next->value());
-    while (unop && canBePostfix(unop)) {
-        Consume(TokenType::Operator);
-        left = UnaryExpression{ unop, UE(left), true };
-        next = Peek();
-        unop = toUnaryOperator(next->value());
-    }
-
     // Binary expressions
     BinaryOperator op = toBinaryOperator(next->value());
     int precedence = getPrecedence(op);
@@ -176,21 +167,26 @@ Expression ASTBuilder::ParseUnaryExpression()
 Expression ASTBuilder::ParsePostfixExpression()
 {
     LOG("ParsePostfixExpression");
-    Expression primary = ParsePrimaryExpression();
-    auto next = Peek();
-    if (next->type() == TokenType::Punctator && next->value() == "[") {
-        LOG("SubscriptExpression");
-        while (next->type() == TokenType::Punctator && next->value() == "[") {
+    Expression expr = ParsePrimaryExpression();
+    while (true) {
+        auto next = Peek();
+        UnaryOperator unop = toUnaryOperator(next->value());
+        if (unop && canBePostfix(unop)) {
+            LOG("Postfix Unary Operator");
+            Consume(TokenType::Operator);
+            expr = UnaryExpression{ unop, UE(expr), true };
+        } else if (next->type() == TokenType::Punctator && next->value() == "[") {
+            LOG("SubscriptExpression");
             Consume(TokenType::Punctator, "[");
-            primary = SubscriptExpression{
-                .pointer = UE(primary),
+            expr = SubscriptExpression{
+                .pointer = UE(expr),
                 .index = unique_expression(ParseExpression(0))
             };
             Consume(TokenType::Punctator, "]");
-            next = Peek();
-        }
+        } else
+            break;
     }
-    return primary;
+    return expr;
 }
 
 Expression ASTBuilder::ParsePrimaryExpression()
@@ -274,8 +270,8 @@ Expression ASTBuilder::ParseConstantExpression()
         unsigned long value = std::stoul(literal);
         if (hasL)
             return ConstantExpression{ value, Type{ BasicType::ULong } };
-        if (value > std::numeric_limits<uint32_t>::min() &&
-            value < std::numeric_limits<uint32_t>::max()) {
+        if (value >= std::numeric_limits<uint32_t>::min() &&
+            value <= std::numeric_limits<uint32_t>::max()) {
                 return ConstantExpression{ static_cast<uint32_t>(value), Type{ BasicType::UInt } };
         }
         return ConstantExpression{ value, Type{ BasicType::ULong } };

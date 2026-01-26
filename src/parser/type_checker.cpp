@@ -98,8 +98,12 @@ static std::unique_ptr<Expression> notNot(std::unique_ptr<Expression> expr)
     return ret;
 }
 
-static bool isLvalue(const Expression &expr)
+static bool isLvalue(const Expression &expr, const Type &type)
 {
+    if (const PointerType *pointer_type = type.getAs<PointerType>()) {
+        if (pointer_type->decayed)
+            return false;
+    }
     return std::holds_alternative<VariableExpression>(expr)
         || std::holds_alternative<DereferenceExpression>(expr)
         || std::holds_alternative<SubscriptExpression>(expr);
@@ -204,7 +208,8 @@ Type TypeChecker::VisitAndConvert(std::unique_ptr<Expression> &expr)
     if (type.isArray()) {
         auto old_expr = std::move(expr);
         Type new_type = Type{ PointerType{
-            .referenced = type.getAs<ArrayType>()->element
+            .referenced = type.getAs<ArrayType>()->element,
+            .decayed = true
         } };
         AddressOfExpression addr{
             .expr = std::move(old_expr),
@@ -246,11 +251,10 @@ Type TypeChecker::operator()(CastExpression &c)
 
 Type TypeChecker::operator()(UnaryExpression &u)
 {
-    // canBePostfix also covers the prefix versions of ++ and --
-    if (canBePostfix(u.op) && !isLvalue(*u.expr))
-        Abort("Invalid lvalue in unary expression");
-
     Type type = VisitAndConvert(u.expr);
+    // canBePostfix also covers the prefix versions of ++ and --
+    if (canBePostfix(u.op) && !isLvalue(*u.expr, type))
+        Abort("Invalid lvalue in unary expression");
 
     if (type.isBasic(Double) && u.op == UnaryOperator::BitwiseComplement)
         Abort("The type of a unary bitwise complement operation can't be double.");
@@ -386,7 +390,7 @@ Type TypeChecker::operator()(BinaryExpression &b)
 Type TypeChecker::operator()(AssignmentExpression &a)
 {
     Type left_type = VisitAndConvert(a.lhs);
-    if (!isLvalue(*a.lhs))
+    if (!isLvalue(*a.lhs, left_type))
         Abort("The left side of an assignment should be an lvalue.");
     Type right_type = VisitAndConvert(a.rhs);
     if (!(a.rhs = convertByAssignment(std::move(a.rhs), right_type, left_type)))
@@ -397,10 +401,10 @@ Type TypeChecker::operator()(AssignmentExpression &a)
 
 Type TypeChecker::operator()(CompoundAssignmentExpression &c)
 {
-    if (!isLvalue(*c.lhs))
-        Abort("The left side of a compound assignment should be an lvalue.");
     Type left_type = VisitAndConvert(c.lhs);
     Type right_type = VisitAndConvert(c.rhs);
+    if (!isLvalue(*c.lhs, left_type))
+        Abort("The left side of a compound assignment should be an lvalue.");
 
     if (left_type.isBasic(Double) || right_type.isBasic(Double)) {
         if (c.op == BinaryOperator::AssignLShift
@@ -412,18 +416,32 @@ Type TypeChecker::operator()(CompoundAssignmentExpression &c)
             Abort("The type of the compound operation can't be double.");
     }
 
-    if (left_type.isPointer() || right_type.isPointer()) {
+    // Pointer arithmetics
+    if (left_type.isPointer()) {
         if (c.op == BinaryOperator::AssignMult
             || c.op == BinaryOperator::AssignDiv
             || c.op == BinaryOperator::AssignMod
             || c.op == BinaryOperator::AssignBitwiseAnd
             || c.op == BinaryOperator::AssignBitwiseXor
-            || c.op == BinaryOperator::AssignBitwiseOr)
-            Abort("The type of the binary operation can't be a pointer.");
+            || c.op == BinaryOperator::AssignBitwiseOr
+            || c.op == BinaryOperator::AssignLShift
+            || c.op == BinaryOperator::AssignRShift)
+            Abort("The type of the given compound operation can't be a pointer.");
+
+        if (!right_type.isInteger())
+            Abort("The right side of += and -= must be integer if left is a pointer.");
+
+        // += and -=
+        c.rhs = explicitCast(std::move(c.rhs), right_type, Type{ BasicType::ULong });
+        c.inner_type = left_type;
+        c.type = left_type;
+        return c.type;
     }
+    if (right_type.isPointer())
+        Abort("The right side of compound operations can't be a pointer.");
 
     if (c.op == BinaryOperator::AssignLShift || c.op == BinaryOperator::AssignRShift) {
-        // The right operand of shift operators need an integer promotion
+        // The right operand of shift operators needs an integer promotion
         c.rhs = explicitCast(std::move(c.rhs), right_type, Type{ BasicType::Int });
         c.inner_type = left_type;
         c.type = left_type;
@@ -493,9 +511,9 @@ Type TypeChecker::operator()(DereferenceExpression &d)
 
 Type TypeChecker::operator()(AddressOfExpression &a)
 {
-    if (!isLvalue(*a.expr))
-        Abort("Can't take the address of a non-lvalue");
     Type type = std::visit(*this, *a.expr);
+    if (!isLvalue(*a.expr, type))
+        Abort("Can't take the address of a non-lvalue");
     a.type = Type{ PointerType{ .referenced = std::make_shared<Type>(type) } };
     return a.type;
 }
@@ -675,7 +693,7 @@ Type TypeChecker::operator()(FunctionDeclaration &f)
     for (size_t i = 0; i < f.params.size(); i++) {
         Type adjusted_type;
         if (ArrayType *arr = params_types[i]->getAs<ArrayType>())
-            adjusted_type = Type{ PointerType{ .referenced = arr->element } };
+            adjusted_type = Type{ PointerType{ .referenced = arr->element, .decayed = true } };
         else
             adjusted_type = *params_types[i];
         adjusted_param_types.push_back(std::make_shared<Type>(adjusted_type));

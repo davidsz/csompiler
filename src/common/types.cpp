@@ -288,9 +288,11 @@ std::ostream &operator<<(std::ostream &os, const Type &type)
             for (auto &p : obj.params)
                 os << *p << ", ";
             os << ") -> " << *obj.ret;
-        } else if constexpr (std::is_same_v<T, PointerType>)
+        } else if constexpr (std::is_same_v<T, PointerType>) {
             os << "PointerType(" << *obj.referenced << ")";
-        else if constexpr (std::is_same_v<T, ArrayType>)
+            if (obj.decayed)
+                os << " [decayed]";
+        } else if constexpr (std::is_same_v<T, ArrayType>)
             os << "ArrayType(" << *obj.element << ")[" << obj.count << "]";
         else
             os << "typeless";

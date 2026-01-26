@@ -84,6 +84,7 @@ struct FunctionType {
 
 struct PointerType {
     std::shared_ptr<Type> referenced;
+    bool decayed = false;
     bool operator==(const PointerType &other) const;
 };
 
