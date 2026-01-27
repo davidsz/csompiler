@@ -32,7 +32,7 @@ private:
     Expression ParseFunctionCall();
     Expression ParseStringExpression();
     Expression ParseConstantExpression();
-    uint64_t ParsePositiveInteger();
+    uint64_t ParseArrayDimension();
 
     Statement ParseReturn();
     Statement ParseIf();

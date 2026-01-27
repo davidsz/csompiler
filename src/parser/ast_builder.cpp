@@ -305,8 +305,12 @@ Expression ASTBuilder::ParseConstantExpression()
     }
 }
 
-uint64_t ASTBuilder::ParsePositiveInteger()
+uint64_t ASTBuilder::ParseArrayDimension()
 {
+    // Arrays can be indexed by char literals
+    if (Peek()->type() == TokenType::CharLiteral)
+        return static_cast<uint64_t>(Consume(TokenType::CharLiteral)[0]);
+
     // Expect a positive integer for array sizes
     std::string l = Consume(TokenType::NumericLiteral);
     if (l.contains('E') || l.contains('e') || l.contains('.'))
@@ -691,7 +695,7 @@ ASTBuilder::Declarator ASTBuilder::ParseDeclarator()
                 ArrayDeclarator outer_arr;
                 outer_arr.inner_declarator = std::make_unique<Declarator>(std::move(outmost_declarator));
                 Consume(TokenType::Punctator, "[");
-                outer_arr.size = ParsePositiveInteger();
+                outer_arr.size = ParseArrayDimension();
                 Consume(TokenType::Punctator, "]");
                 outmost_declarator = Declarator{ std::move(outer_arr) };
             }
@@ -765,7 +769,7 @@ ASTBuilder::AbstractDeclarator ASTBuilder::ParseAbstractDeclarator()
                 AbstractArrayDeclarator outer_arr;
                 outer_arr.inner_declarator = std::make_unique<AbstractDeclarator>(std::move(outmost));
                 Consume(TokenType::Punctator, "[");
-                outer_arr.size = ParsePositiveInteger();
+                outer_arr.size = ParseArrayDimension();
                 Consume(TokenType::Punctator, "]");
                 outmost = AbstractDeclarator{ std::move(outer_arr) };
             }
@@ -779,7 +783,7 @@ ASTBuilder::AbstractDeclarator ASTBuilder::ParseAbstractDeclarator()
             AbstractArrayDeclarator outer_arr;
             outer_arr.inner_declarator = std::make_unique<AbstractDeclarator>(std::move(outmost));
             Consume(TokenType::Punctator, "[");
-            outer_arr.size = ParsePositiveInteger();
+            outer_arr.size = ParseArrayDimension();
             Consume(TokenType::Punctator, "]");
             outmost.emplace<AbstractArrayDeclarator>(std::move(outer_arr));
         }

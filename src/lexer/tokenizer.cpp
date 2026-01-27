@@ -54,6 +54,26 @@ static bool is_numeric_suffix(char c)
     return c == 'l' || c == 'L' || c == 'u' || c == 'U';
 }
 
+static bool decode_escape(char esc, char &out)
+{
+    switch (esc) {
+        case '\'': out = 39; break;
+        case '"':  out = 34; break;
+        case '?':  out = 63; break;
+        case '\\': out = 92; break;
+        case 'a':  out = 7;  break;  // audible alert
+        case 'b':  out = 8;  break;  // backspace
+        case 'f':  out = 12; break;  // form feed
+        case 'n':  out = 10; break;  // new line
+        case 'r':  out = 13; break;  // carriage return
+        case 't':  out = 9;  break;  // horizontal tab
+        case 'v':  out = 11; break;  // vertical tab
+        default:
+            return false;
+    }
+    return true;
+}
+
 namespace lexer {
 
 Tokenizer::Tokenizer(std::string_view s)
@@ -250,20 +270,21 @@ Token Tokenizer::MakeStringLiteral()
     assert(next == '"');
     do {
         next = Step();
-        if (next == '\\')
-            next = Step();
-        literal += next;
-
+        if (next == '"')
+            break;
         if (ReachedEOF()) {
             AbortAtPosition("Unclosed string literal");
             break;
         }
-
-        next = PeekNextChar();
-        if (next == '"') {
-            Step();
+        if (next == '\n') {
+            AbortAtPosition("Newlines are not allowed in string literals");
             break;
         }
+        if (next == '\\' && !decode_escape(Step(), next)) {
+            AbortAtPosition("Invalid escape sequence");
+            break;
+        }
+        literal += next;
     } while (true);
 
     return CreateToken(Token::StringLiteral, literal);
@@ -280,16 +301,19 @@ Token Tokenizer::MakeCharLiteral()
     char next = Step();
     assert(next == '\'');
 
-    char character = 0;
+    char value;
     next = Step();
-    if (next == '\\')
-        next = Step();
-    character = next;
+    if (next == '\'')
+        AbortAtPosition("Empty char literal");
+    if (next == '\\' && !decode_escape(Step(), value))
+        AbortAtPosition("Invalid escape sequence");
+    else
+        value = next;
 
-    next = Step();
-    if (next != '\'')
+    if (Step() != '\'')
         AbortAtPosition("Invalid char literal");
-    return CreateToken(Token::CharLiteral, std::string(1, character));
+
+    return CreateToken(Token::CharLiteral, std::string(1, value));
 }
 
 void Tokenizer::SkipWhitespace()
