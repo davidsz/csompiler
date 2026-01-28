@@ -19,7 +19,7 @@ static std::string formatLabel(std::string_view name)
 #ifdef __APPLE__
     return std::format("_{}", name);
 #else
-    return name;
+    return std::string(name);
 #endif
 }
 
@@ -301,7 +301,8 @@ void ASMPrinter::operator()(const StaticVariable &s)
     bool isZero = std::ranges::all_of(s.list, [&](ConstantValue v) {
         return std::holds_alternative<ZeroBytes>(v) || isPositiveZero(v);
     });
-    if (!isZero)
+    bool isFloatingPoint = !s.list.empty() && std::holds_alternative<double>(s.list.front());
+    if (!isZero || isFloatingPoint)
         m_codeStream << "    .data" << std::endl;
     else
         m_codeStream << "    .bss" << std::endl;
@@ -311,7 +312,6 @@ void ASMPrinter::operator()(const StaticVariable &s)
     m_codeStream << formatLabel(s.name) << ":" << std::endl;
 
     for (auto &i : s.list) {
-        // TODO: Create a function to avoid duplication of this condition
         if (auto z = std::get_if<ZeroBytes>(&i))
             m_codeStream << "    .zero " << z->bytes << std::endl;
         else
@@ -355,8 +355,8 @@ std::string ASMPrinter::ToText(std::list<TopLevel> instructions)
     for (auto &i: instructions)
         std::visit(*this, i);
 
-    // Disallow executable stack
 #ifdef __linux__
+    // Disallow executable stack
     m_codeStream << std::endl << ".section .note.GNU-stack,\"\",@progbits" << std::endl;
 #endif
 

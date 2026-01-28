@@ -58,9 +58,9 @@ static std::unique_ptr<Expression> explicitCast(
     if (from_type == to_type)
         return expr;
     return std::make_unique<Expression>(CastExpression{
-        .type = to_type,
         .expr = std::move(expr),
         .inner_type = from_type,
+        .type = to_type
     });
 }
 
