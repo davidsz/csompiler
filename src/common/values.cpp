@@ -54,35 +54,15 @@ Type getType(const ConstantValue &v)
         ret.t = BasicType::ULong;
     else if (std::holds_alternative<double>(v))
         ret.t = BasicType::Double;
+    else if (std::holds_alternative<char>(v))
+        ret.t = BasicType::Char;
+    else if (std::holds_alternative<unsigned char>(v))
+        ret.t = BasicType::UChar;
     else if (std::holds_alternative<ZeroBytes>(v))
         assert(false);
     else
         assert(false);
     return ret;
-}
-
-bool fitsLongWord(const ConstantValue &v)
-{
-    if (std::holds_alternative<int>(v) ||
-        std::holds_alternative<uint32_t>(v)) {
-        return true;
-    } else if (std::holds_alternative<long>(v)
-        || std::holds_alternative<uint64_t>(v)
-        || std::holds_alternative<double>(v)) {
-        return false;
-    }
-    return false;
-}
-
-uint64_t forceLong(const ConstantValue &v)
-{
-    return std::visit([&](auto value) -> uint64_t {
-        using T = decltype(value);
-        if constexpr (std::is_same_v<T, ZeroBytes>)
-            return 0;
-        else
-            return static_cast<uint64_t>(value);
-    }, v);
 }
 
 bool isPositiveZero(const ConstantValue &v) {
@@ -121,6 +101,11 @@ ConstantValue ConvertValue(const ConstantValue &v, const Type &to_type)
                 return static_cast<unsigned long>(x);
             case BasicType::Double:
                 return static_cast<double>(x);
+            case BasicType::Char:
+            case BasicType::SChar:
+                return static_cast<char>(x);
+            case BasicType::UChar:
+                return static_cast<unsigned char>(x);
             default:
                 return static_cast<int>(x);
             }
@@ -149,6 +134,11 @@ ConstantValue MakeConstantValue(long value, BasicType type)
         return static_cast<uint64_t>(value);
     case BasicType::Double:
         return static_cast<double>(value);
+    case BasicType::Char:
+    case BasicType::SChar:
+        return static_cast<char>(value);
+    case BasicType::UChar:
+        return static_cast<unsigned char>(value);
     }
     return static_cast<int>(value);
 }

@@ -226,6 +226,12 @@ Type TypeChecker::operator()(ConstantExpression &c)
     return c.type;
 }
 
+Type TypeChecker::operator()(StringExpression &)
+{
+    // TODO
+    return Type{ BasicType::Char };
+}
+
 Type TypeChecker::operator()(VariableExpression &v)
 {
     if (const SymbolEntry *entry = m_symbolTable->get(v.identifier)) {

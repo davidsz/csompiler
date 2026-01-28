@@ -210,7 +210,10 @@ Expression ASTBuilder::ParsePrimaryExpression()
         return expr;
     }
 
-    assert(next->type() == TokenType::NumericLiteral);
+    if (next->type() == TokenType::StringLiteral)
+        return ParseStringExpression();
+
+    assert(next->type() == TokenType::NumericLiteral || next->type() == TokenType::CharLiteral);
     return ParseConstantExpression();
 }
 
@@ -231,9 +234,23 @@ Expression ASTBuilder::ParseFunctionCall()
     return ret;
 }
 
+Expression ASTBuilder::ParseStringExpression()
+{
+    LOG("ParseStringExpression");
+    std::string literal = Consume(TokenType::StringLiteral);
+    // Merge consecutive string literals ("foo" "bar" -> "foobar")
+    while (Peek()->type() == TokenType::StringLiteral)
+        literal += Consume(TokenType::StringLiteral);
+    return StringExpression{ literal };
+}
+
 Expression ASTBuilder::ParseConstantExpression()
 {
     LOG("ParseConstantExpression");
+    auto next = Peek();
+    if (next->type() == TokenType::CharLiteral)
+        return ConstantExpression{ Consume(TokenType::CharLiteral)[0], Type{ BasicType::Int } };
+
     std::string literal = Consume(TokenType::NumericLiteral);
     // Parse suffixes
     // TODO: Maybe make different token types for different literals to skip this part here

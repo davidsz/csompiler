@@ -77,6 +77,9 @@ namespace parser {
     X(ConstantExpression, \
         ConstantValue value; \
         Type type = Type{};) \
+    X(StringExpression, \
+        std::string value; \
+        Type type = Type{};) \
     X(VariableExpression, \
         std::string identifier; \
         Type type = Type{};) \

@@ -15,9 +15,10 @@ class TACBuilder : public parser::IASTVisitor<tac::ExpResult> {
 public:
     TACBuilder(std::shared_ptr<SymbolTable> symbolTable);
 
-    ExpResult operator()(const parser::ConstantExpression &n) override;
+    ExpResult operator()(const parser::ConstantExpression &c) override;
+    ExpResult operator()(const parser::StringExpression &s) override;
     ExpResult operator()(const parser::VariableExpression &v) override;
-    ExpResult operator()(const parser::CastExpression &v) override;
+    ExpResult operator()(const parser::CastExpression &c) override;
     ExpResult operator()(const parser::UnaryExpression &u) override;
     ExpResult operator()(const parser::BinaryExpression &b) override;
     ExpResult operator()(const parser::AssignmentExpression &a) override;

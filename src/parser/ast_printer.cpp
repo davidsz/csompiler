@@ -10,6 +10,13 @@ void ASTPrinter::operator()(const ConstantExpression &e)
     std::cout << e.type << std::endl;
 }
 
+void ASTPrinter::operator()(const StringExpression &s)
+{
+    pad();
+    std::cout << "StringExpression(" << s.value << ") ";
+    std::cout << s.type << std::endl;
+}
+
 void ASTPrinter::operator()(const VariableExpression &v)
 {
     pad();

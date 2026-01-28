@@ -157,6 +157,12 @@ ExpResult TACBuilder::operator()(const parser::ConstantExpression &n)
     return PlainOperand{ Constant{ n.value } };
 }
 
+ExpResult TACBuilder::operator()(const parser::StringExpression &)
+{
+    // TODO
+    return PlainOperand{ };
+}
+
 ExpResult TACBuilder::operator()(const parser::VariableExpression &v)
 {
     return PlainOperand{ Variant{ v.identifier } };

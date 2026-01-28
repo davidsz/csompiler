@@ -660,7 +660,7 @@ Operand ASMBuilder::operator()(const tac::Constant &c)
         // and avoid duplications
         return Data{ AddConstant(c.value, GenerateTempVariableName()) };
     }
-    return Imm{ forceLong(c.value) };
+    return Imm{ getAs<uint64_t>(c.value) };
 }
 
 Operand ASMBuilder::operator()(const tac::Variant &v)

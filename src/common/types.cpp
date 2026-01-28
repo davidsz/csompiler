@@ -39,6 +39,12 @@ static std::string toString(BasicType type)
         return "unsigned long";
     case BasicType::Double:
         return "double";
+    case BasicType::Char:
+        return "char";
+    case BasicType::SChar:
+        return "signed char";
+    case BasicType::UChar:
+        return "unsigned char";
     default:
         return "unknown";
     }
@@ -66,6 +72,18 @@ std::optional<Type> DetermineType(const std::set<std::string> &type_specifiers)
 {
     if (type_specifiers.empty())
         return std::nullopt;
+
+    if (type_specifiers.contains("char")) {
+        if (type_specifiers.size() == 1)
+            return Type { BasicType::Char };
+        else if (type_specifiers.size() == 2 && type_specifiers.contains("unsigned"))
+            return Type { BasicType::UChar };
+        else if (type_specifiers.size() == 2 && type_specifiers.contains("signed"))
+            return Type { BasicType::SChar };
+        else
+            return std::nullopt;
+    }
+
     if (type_specifiers.contains("signed") && type_specifiers.contains("unsigned"))
         return std::nullopt;
     if (type_specifiers.contains("double") && type_specifiers.size() > 1)
@@ -172,6 +190,9 @@ bool Type::isInteger() const
     case BasicType::UInt:
     case BasicType::Long:
     case BasicType::ULong:
+    case BasicType::Char:
+    case BasicType::SChar:
+    case BasicType::UChar:
         return true;
     case BasicType::Double:
     default:
@@ -188,9 +209,12 @@ bool Type::isSigned() const
     case BasicType::Int:
     case BasicType::Long:
     case BasicType::Double:
+    case BasicType::Char:
+    case BasicType::SChar:
         return true;
     case BasicType::UInt:
     case BasicType::ULong:
+    case BasicType::UChar:
     default:
         return false;
     }
@@ -207,6 +231,9 @@ bool Type::isArithmetic() const
     case BasicType::UInt:
     case BasicType::ULong:
     case BasicType::Double:
+    case BasicType::Char:
+    case BasicType::SChar:
+    case BasicType::UChar:
         return true;
     default:
         return false;
@@ -228,6 +255,10 @@ int Type::size() const
     if (!basic_type)
         return 0;
     switch (*basic_type) {
+    case BasicType::Char:
+    case BasicType::SChar:
+    case BasicType::UChar:
+        return 1;
     case BasicType::Int:
     case BasicType::UInt:
         return 4;
@@ -249,33 +280,37 @@ int Type::alignment() const
         return size;
 }
 
- WordType Type::wordType() const
- {
-     if (std::get_if<PointerType>(&t))
-         return Quadword;
-     const BasicType *basic_type = std::get_if<BasicType>(&t);
-     assert(basic_type);
-     switch (*basic_type) {
-     case BasicType::Int:
-     case BasicType::UInt:
-         return Longword;
-     case BasicType::Long:
-     case BasicType::ULong:
+WordType Type::wordType() const
+{
+    if (std::get_if<PointerType>(&t))
         return Quadword;
-     case BasicType::Double:
-         return Doubleword;
-     default:
-         return Longword;
-     }
- }
+    const BasicType *basic_type = std::get_if<BasicType>(&t);
+    assert(basic_type);
+    switch (*basic_type) {
+    case BasicType::Char:
+    case BasicType::SChar:
+    case BasicType::UChar:
+        assert(false);
+    case BasicType::Int:
+    case BasicType::UInt:
+        return Longword;
+    case BasicType::Long:
+    case BasicType::ULong:
+    return Quadword;
+    case BasicType::Double:
+        return Doubleword;
+    default:
+        return Longword;
+    }
+}
 
- Type Type::storedType() const
- {
-     if (auto a = std::get_if<ArrayType>(&t))
-         return a->element->storedType();
-     else
-         return *this;
- }
+Type Type::storedType() const
+{
+    if (auto a = std::get_if<ArrayType>(&t))
+        return a->element->storedType();
+    else
+        return *this;
+}
 
 std::ostream &operator<<(std::ostream &os, const Type &type)
 {

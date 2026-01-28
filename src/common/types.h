@@ -13,7 +13,8 @@
     X("long") \
     X("signed") \
     X("unsigned") \
-    X("double")
+    X("double") \
+    X("char")
 
 #define STORAGE_CLASS_LIST(X) \
     X(StorageStatic, "static") \
@@ -74,6 +75,9 @@ enum BasicType {
     UInt,
     ULong,
     Double,
+    Char,
+    SChar,
+    UChar
 };
 
 struct FunctionType {

@@ -7,9 +7,10 @@
 namespace parser {
 
 struct TypeChecker : public IASTMutatingVisitor<Type> {
-    Type operator()(ConstantExpression &n) override;
+    Type operator()(ConstantExpression &c) override;
+    Type operator()(StringExpression &s) override;
     Type operator()(VariableExpression &v) override;
-    Type operator()(CastExpression &v) override;
+    Type operator()(CastExpression &c) override;
     Type operator()(UnaryExpression &u) override;
     Type operator()(BinaryExpression &b) override;
     Type operator()(AssignmentExpression &a) override;

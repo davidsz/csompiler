@@ -68,6 +68,10 @@ void SemanticAnalyzer::operator()(ConstantExpression &)
 {
 }
 
+void SemanticAnalyzer::operator()(StringExpression &)
+{
+}
+
 void SemanticAnalyzer::operator()(VariableExpression &v)
 {
     if (m_currentStage > IDENTIFIER_RESOLUTION)

@@ -30,6 +30,7 @@ private:
     Expression ParsePostfixExpression();
     Expression ParsePrimaryExpression();
     Expression ParseFunctionCall();
+    Expression ParseStringExpression();
     Expression ParseConstantExpression();
     uint64_t ParsePositiveInteger();
 

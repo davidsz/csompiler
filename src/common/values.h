@@ -9,15 +9,12 @@ struct ZeroBytes{
     auto operator<=>(const ZeroBytes &) const = default;
 };
 using ConstantValue = std::variant<
-    int, long, uint32_t, uint64_t, double, ZeroBytes
+    int, long, uint32_t, uint64_t, double, char, unsigned char, ZeroBytes
 >;
 
 std::string toString(const ConstantValue &v);
 std::string toLabel(const ConstantValue &v);
 Type getType(const ConstantValue &v);
-bool fitsLongWord(const ConstantValue &v);
-// TODO: Replace it by getAs<long>()
-uint64_t forceLong(const ConstantValue &v);
 bool isPositiveZero(const ConstantValue &v);
 
 template <typename T>
