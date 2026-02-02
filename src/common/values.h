@@ -39,6 +39,7 @@ std::string toString(const ConstantValue &v);
 std::string toLabel(const ConstantValue &v);
 Type getType(const ConstantValue &v);
 bool isPositiveZero(const ConstantValue &v);
+size_t byteSizeOf(const ConstantValue &v);
 
 // TODO: Implement a real getAs with pointer return
 template <typename T>

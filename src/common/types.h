@@ -124,6 +124,7 @@ struct Type {
     bool isArithmetic() const;
     bool isCharacter() const;
     bool isInitialized() const;
+    // TODO: Use size_t instead of int
     int size() const;
     int alignment() const;
     WordType wordType() const;

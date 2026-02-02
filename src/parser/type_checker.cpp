@@ -127,103 +127,91 @@ static std::optional<Type> getCommonPointerType(
     return std::nullopt;
 }
 
-std::unique_ptr<Initializer>
-TypeChecker::AddMissingInitializers(std::unique_ptr<Initializer> init, const Type &type)
+static size_t byteSizeOf(const std::vector<ConstantValue> &v)
 {
-    const ArrayType *array_type = type.getAs<ArrayType>();
-    // We don't add missing initializers (missing characters) for strings.
-    // TODO: Do the same for other types, eliminate AddMissingInitializers completely.
-    const bool is_string = array_type && array_type->element->isCharacter();
-
-    if (!init) {
-        if (array_type && !is_string) {
-            CompoundInit compound_init;
-            compound_init.type = type;
-            compound_init.list.reserve(array_type->count);
-            init = std::make_unique<Initializer>(std::move(compound_init));
-        } else
-            init = std::make_unique<Initializer>(SingleInit{});
-    }
-
-    if (SingleInit *single_init = std::get_if<SingleInit>(init.get())) {
-        if (!single_init->expr) {
-            single_init->expr = std::make_unique<Expression>(ConstantExpression{
-                .value = MakeConstantValue(0, type),
-                .type = type
-            });
-        }
-        return init;
-    }
-
-    CompoundInit *compound_init = std::get_if<CompoundInit>(init.get());
-    assert(compound_init && array_type);
-    if (compound_init->list.size() > array_type->count)
-        Abort("Too many initializers for the array.");
-
-    // Iterate through exisiting nested initializers
-    for (size_t i = 0; i < compound_init->list.size(); i++) {
-        compound_init->list[i] = AddMissingInitializers(
-            std::move(compound_init->list[i]),
-            *array_type->element
-        );
-    }
-    // Pad missing elements with zero-initializers
-    // TODO: "If a static array is only partially initialized,
-    // we’ll use ZeroInit to pad out any uninitialized elements."
-    while (compound_init->list.size() < array_type->count) {
-        compound_init->list.push_back(
-            AddMissingInitializers(nullptr, *array_type->element)
-        );
-    }
-    return init;
+    size_t sum = 0;
+    for (auto &c : v)
+        sum += byteSizeOf(c);
+    return sum;
 }
 
 std::vector<ConstantValue>
-TypeChecker::ToConstantValueList(Initializer &init, const Type &type)
+TypeChecker::ToConstantValueList(const Initializer *init, const Type &type)
 {
-    const ArrayType *array_type = type.getAs<ArrayType>();
-    if (!array_type && std::holds_alternative<CompoundInit>(init))
-        Abort("Scalar types can't have a compound initializer.");
-
     std::vector<ConstantValue> ret;
-    if (SingleInit *single = std::get_if<SingleInit>(&init)) {
-        // Strings
-        if (array_type && array_type->element->isCharacter()) {
-            if (!single->expr)
-                ret.push_back(ZeroBytes{ array_type->count });
-            else if (auto s = std::get_if<StringExpression>(single->expr.get())) {
-                const std::string &init_value = s->value;
-                if (init_value.length() > array_type->count)
-                    Abort("Too many characters in string literal");
-                size_t remaining_bytes = array_type->count - init_value.length();
-                ret.push_back(StringInit{ s->value, remaining_bytes > 0 });
-                ret.push_back(ZeroBytes{ remaining_bytes - 1 });
-            } else {
-                std::cout << type << std::endl;
+
+    // Initializing a scalar type
+    const ArrayType *array_type = type.getAs<ArrayType>();
+    if (!array_type) {
+        if (!init) {
+            ret.push_back(MakeConstantValue(0, type));
+            return ret;
+        }
+        if (const SingleInit *single = std::get_if<SingleInit>(init)) {
+            assert(single->expr);
+            if (auto c = std::get_if<ConstantExpression>(single->expr.get()))
+                ret.push_back(ConvertValue(c->value, type));
+            else
                 Abort("Initializer is not a constant expression.");
+            return ret;
+        }
+        Abort("Scalar types can't have compound initializers.");
+    }
+
+    // Initializing an array type
+    size_t final_size = static_cast<size_t>(type.size());
+    if (!init) {
+        ret.push_back(ZeroBytes{ final_size });
+        return ret;
+    }
+
+    size_t element_count = array_type->count;
+    const Type &element_type = *array_type->element;
+    if (const SingleInit *single = std::get_if<SingleInit>(init)) {
+        // Character array initialized by a single string literal
+        if (element_type.isCharacter()) {
+            if (!single->expr) {
+                ret.push_back(ZeroBytes{ element_count });
+                return ret;
             }
+
+            auto string_expr = std::get_if<StringExpression>(single->expr.get());
+            if (!string_expr)
+                Abort("Invalid string initializer.");
+            size_t string_length = string_expr->value.size();
+            if (string_length > element_count)
+                Abort("Too many characters in string literal.");
+
+            ret.push_back(StringInit{ string_expr->value, true });
+            if (element_count > string_length + 1)
+                ret.push_back(ZeroBytes{ element_count - string_length - 1 });
             return ret;
         }
 
-        // Other non-string values
-        if (!single->expr)
-            ret.push_back(MakeConstantValue(0, type));
-        else if (auto c = std::get_if<ConstantExpression>(single->expr.get()))
-            ret.push_back(ConvertValue(c->value, type));
-        else
-            Abort("Initializer is not a constant expression.");
-    } else if (CompoundInit *compound = std::get_if<CompoundInit>(&init)) {
-        assert(array_type);
-        if (array_type->count < compound->list.size())
-            Abort("Too long compound initializer for the given type.");
-        for (auto &i : compound->list) {
-            auto values = ToConstantValueList(*i, *array_type->element);
-            ret.insert(ret.end(),
-                        std::make_move_iterator(values.begin()),
-                        std::make_move_iterator(values.end()));
-        }
-    } else
-        assert(false);
+        // It's not allowed in other cases
+        Abort("Array type can't be initialized by a scalar value");
+        return ret;
+    }
+
+    // Initializing an array by a compound initializer
+    const CompoundInit *compound = std::get_if<CompoundInit>(init);
+    assert(compound);
+
+    if (array_type->count < compound->list.size())
+        Abort("Too long compound initializer for the given type.");
+
+    for (auto &element : compound->list) {
+        auto values = ToConstantValueList(element.get(), element_type);
+        ret.insert(ret.end(),
+            std::make_move_iterator(values.begin()),
+            std::make_move_iterator(values.end()));
+    }
+
+    // Pad the missing bytes
+    size_t current_size = byteSizeOf(ret);
+    if (current_size < final_size)
+        ret.push_back(ZeroBytes{ final_size - current_size });
+
     return ret;
 }
 
@@ -789,10 +777,8 @@ Type TypeChecker::operator()(VariableDeclaration &v)
                 init = Tentative{};
         } else if (v.type.isPointer())
             init = InitializeStaticPointer(v.init.get(), v.type);
-        else {
-            v.init = AddMissingInitializers(std::move(v.init), v.type);
-            init = Initial{ ToConstantValueList(*v.init, v.type) };
-        }
+        else
+            init = Initial{ ToConstantValueList(v.init.get(), v.type) };
 
         // std::visit() v.init only after adjusting and compile-time processing
         // to avoid CastExpression wrappers on ConstantExpressions
@@ -848,9 +834,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
                 // It doesn't matter if we have an initializer or not; we adjust it
                 // if any part is missing and calculate the values in build time,
                 // because it has static storage.
-                v.init = AddMissingInitializers(std::move(v.init), v.type);
-                // TODO: Optimize by placing one ZeroBytes instead of many zeros.
-                init = Initial{ ToConstantValueList(*v.init, v.type) };
+                init = Initial{ ToConstantValueList(v.init.get(), v.type) };
             }
 
             // std::visit() v.init only after adjusting and compile-time processing
@@ -870,9 +854,10 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             m_symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
                 .type = IdentifierAttributes::Local
             });
-            v.init = AddMissingInitializers(std::move(v.init), v.type);
-            m_fileScope = false;
-            std::visit(*this, *v.init);
+            if (v.init) {
+                m_fileScope = false;
+                std::visit(*this, *v.init);
+            }
         }
     }
     return Type{ std::monostate() };

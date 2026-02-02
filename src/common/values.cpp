@@ -81,6 +81,19 @@ bool isPositiveZero(const ConstantValue &v) {
     }, v);
 }
 
+size_t byteSizeOf(const ConstantValue &c)
+{
+    return std::visit([](auto &&v) -> size_t {
+        using V = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<V, ZeroBytes>)
+            return v.bytes;
+        else if constexpr (std::is_same_v<V, StringInit>)
+            return v.text.size() + (v.null_terminated ? 1 : 0);
+        else
+            return sizeof(V);
+    }, c);
+}
+
 ConstantValue ConvertValue(const ConstantValue &v, const Type &to_type)
 {
     return std::visit([&](const auto &x) -> ConstantValue {

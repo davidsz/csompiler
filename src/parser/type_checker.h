@@ -48,10 +48,7 @@ struct TypeChecker : public IASTMutatingVisitor<Type> {
 
 private:
     Type VisitAndConvert(std::unique_ptr<Expression> &expr);
-    std::unique_ptr<Initializer>
-        AddMissingInitializers(std::unique_ptr<Initializer> init, const Type &type);
-    std::vector<ConstantValue> ToConstantValueList(Initializer &init, const Type &type);
-
+    std::vector<ConstantValue> ToConstantValueList(const Initializer *init, const Type &type);
     InitialValue InitializeStaticPointer(const Initializer *init, const Type &type);
 
     std::shared_ptr<SymbolTable> m_symbolTable = std::make_shared<SymbolTable>();

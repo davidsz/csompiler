@@ -25,7 +25,7 @@ struct IdentifierAttributes {
     bool defined = false;
     bool global = false;
     InitialValue init = NoInitializer{};
-    ConstantValue static_init;
+    ConstantValue static_init{};
 };
 
 struct SymbolEntry {

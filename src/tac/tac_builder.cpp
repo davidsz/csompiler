@@ -122,20 +122,103 @@ TACBuilder::LHSInfo TACBuilder::AnalyzeLHS(const parser::Expression &expr)
     assert(false);
 }
 
-void TACBuilder::EmitRuntimeCompoundInit(
-    const parser::Initializer &init,
+void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, int &offset)
+{
+    if (const ArrayType *array = type.getAs<ArrayType>()) {
+        for (size_t i = 0; i < array->count; i++)
+            EmitZeroInit(*array->element, base, offset);
+        return;
+    }
+
+    m_instructions.push_back(CopyToOffset{
+        Constant{ MakeConstantValue(0, type) },
+        base,
+        offset
+    });
+    offset += type.storedType().size();
+}
+
+void TACBuilder::EmitRuntimeInit(
+    const parser::Initializer *init,
     const std::string &base,
-    int type_size,
+    const Type &type,
     int &offset)
 {
-    if (auto single = std::get_if<parser::SingleInit>(&init)) {
-        Value v = VisitAndConvert(*single->expr);
-        m_instructions.push_back(CopyToOffset{ v, base, offset });
-        offset += type_size;
-    } else if (auto compound = std::get_if<parser::CompoundInit>(&init)) {
-        for (auto &elem : compound->list)
-            EmitRuntimeCompoundInit(*elem, base, type_size, offset);
+    assert(init);
+
+    if (const ArrayType *array_type = type.getAs<ArrayType>()) {
+        const Type &element_type = *array_type->element;
+
+        // Scalar initializer for an array type
+        if (/*auto single = */std::get_if<parser::SingleInit>(init)) {
+            // TODO: Strings are not yet implemented in TAC
+            /*
+            // Initializing an array by a single string literal
+            if (element_type.isCharacter()) {
+                auto str = std::get_if<parser::StringExpression>(single->expr.get());
+                assert(str);
+                const std::string &text = str->text;
+                int element_size = element_type.storedType().size();
+
+                int i = 0;
+                for (; i < (int)text.size(); i++) {
+                    m_instructions.push_back(
+                        CopyToOffset{
+                            Immediate{ (int)text[i] },
+                            base,
+                            offset
+                        });
+                    offset += element_size;
+                }
+
+                // Null terminator
+                m_instructions.push_back(
+                    CopyToOffset{ Immediate{0}, base, offset });
+                offset += element_size;
+                ++i;
+
+                // Pad with zeros
+                for (; i < array_type->count; i++) {
+                    m_instructions.push_back(
+                        CopyToOffset{ Immediate{0}, base, offset });
+                    offset += element_size;
+                }
+                return;
+            }
+            */
+            assert(false);
+        }
+
+        // Compound initializer for an array type
+        auto compound = std::get_if<parser::CompoundInit>(init);
+        assert(compound);
+
+        size_t initialized_count = 0;
+        for (auto &elem : compound->list) {
+            EmitRuntimeInit(elem.get(), base, element_type, offset);
+            initialized_count++;
+        }
+
+        // Pad remaining elements
+        for (; initialized_count < array_type->count; initialized_count++) {
+            EmitZeroInit(element_type, base, offset);
+        }
+        return;
     }
+
+    // Single initializer for a scalar type
+    if (auto single = std::get_if<parser::SingleInit>(init)) {
+        if (!single->expr)
+            EmitZeroInit(type, base, offset);
+        else {
+            Value v = VisitAndConvert(*single->expr);
+            m_instructions.push_back(CopyToOffset{ v, base, offset });
+            offset += type.storedType().size();
+        }
+        return;
+    }
+
+    assert(false);
 }
 
 Type TACBuilder::GetType(const Value &value)
@@ -716,11 +799,8 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
         assert(!initial);
         // Having no initializer in the entry means it should be computed in runtime
         // e.g.: initializers with automatic storage duration (in block scopes)
-        const ArrayType *arr_type = entry->type.getAs<ArrayType>();
-        assert(arr_type);
-        int type_size = arr_type->element->storedType().size();
         int offset = 0;
-        EmitRuntimeCompoundInit(*v.init, v.identifier, type_size, offset);
+        EmitRuntimeInit(v.init.get(), v.identifier, entry->type, offset);
         return std::monostate();
     }
     assert(false);

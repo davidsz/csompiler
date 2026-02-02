@@ -85,10 +85,11 @@ private:
     };
     LHSInfo AnalyzeLHS(const parser::Expression &expr);
 
-    void EmitRuntimeCompoundInit(
-        const parser::Initializer &init,
+    void EmitZeroInit(const Type &type, const std::string &base, int &offset);
+    void EmitRuntimeInit(
+        const parser::Initializer *init,
         const std::string &base,
-        int type_size,
+        const Type &type,
         int &offset
     );
 
