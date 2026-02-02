@@ -698,7 +698,7 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
     if (entry->attrs.type == IdentifierAttributes::Static)
         return std::monostate();
 
-    // We discard declarations, but we handle their init expressions
+    // We discard declarations, but we handle initializations
     if (!v.init)
         return std::monostate();
 
@@ -710,40 +710,17 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
 
     if (std::holds_alternative<parser::CompoundInit>(*v.init)) {
         auto initial = std::get_if<Initial>(&entry->attrs.init);
-        // Having no initializer in the entry means it should be computed in runtime.
-        // e.g.: initializers with automatic storage duration (in block scopes)
-        if (!initial) {
-            const ArrayType *arr_type = entry->type.getAs<ArrayType>();
-            assert(arr_type);
-            int type_size = arr_type->element->storedType().size();
-            int offset = 0;
-            EmitRuntimeCompoundInit(*v.init, v.identifier, type_size, offset);
-            return std::monostate();
-        }
-
         // Having initializers in the entry means the type checker already converted
-        // it into a list of constant values, because it was possible,
-        // e.g.: file scope and static initializers
+        // it into a list of constant values, because it was possible, e.g. for file
+        // scope and static initializers. We already early-outed for this case.
+        assert(!initial);
+        // Having no initializer in the entry means it should be computed in runtime
+        // e.g.: initializers with automatic storage duration (in block scopes)
+        const ArrayType *arr_type = entry->type.getAs<ArrayType>();
+        assert(arr_type);
+        int type_size = arr_type->element->storedType().size();
         int offset = 0;
-        int incr = entry->type.storedType().size();
-        for (const ConstantValue &cv : initial->list) {
-            std::visit([&](auto &val) {
-                using T = std::decay_t<decltype(val)>;
-                if constexpr (std::is_same_v<T, ZeroBytes>) {
-                    // Only static variables will have ZeroBytes values,
-                    // and we already early-returned when processing those.
-                    assert(false);
-                } else {
-                    auto copy = CopyToOffset{
-                        .src = Constant{ val },
-                        .dst_identifier = v.identifier,
-                        .offset = offset
-                    };
-                    m_instructions.push_back(copy);
-                    offset += incr;
-                }
-            }, cv);
-        }
+        EmitRuntimeCompoundInit(*v.init, v.identifier, type_size, offset);
         return std::monostate();
     }
     assert(false);

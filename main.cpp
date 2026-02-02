@@ -112,7 +112,7 @@ int main(int argc, char **argv)
         return parser_result.return_code;
     }
 
-#if 0
+#if 1
     std::cout << std::endl << "AST:" << std::endl;
     parser::ASTPrinter astPrinter;
     astPrinter.print(parser_result.root);

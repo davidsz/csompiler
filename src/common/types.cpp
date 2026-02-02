@@ -240,6 +240,26 @@ bool Type::isArithmetic() const
     }
 }
 
+bool Type::isCharacter() const
+{
+    const BasicType *basic_type = std::get_if<BasicType>(&t);
+    if (!basic_type)
+        return false;
+    switch (*basic_type) {
+    case BasicType::Char:
+    case BasicType::SChar:
+    case BasicType::UChar:
+        return true;
+    case BasicType::Int:
+    case BasicType::Long:
+    case BasicType::UInt:
+    case BasicType::ULong:
+    case BasicType::Double:
+    default:
+        return false;
+    }
+}
+
 bool Type::isInitialized() const
 {
     return !std::holds_alternative<std::monostate>(t);

@@ -52,6 +52,8 @@ private:
         AddMissingInitializers(std::unique_ptr<Initializer> init, const Type &type);
     std::vector<ConstantValue> ToConstantValueList(Initializer &init, const Type &type);
 
+    InitialValue InitializeStaticPointer(const Initializer *init, const Type &type);
+
     std::shared_ptr<SymbolTable> m_symbolTable = std::make_shared<SymbolTable>();
     bool m_fileScope = false;
     bool m_forLoopInitializer = false;

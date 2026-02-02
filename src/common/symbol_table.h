@@ -16,14 +16,16 @@ using InitialValue = std::variant<Tentative, NoInitializer, Initial>;
 // Attributes of the symbols
 struct IdentifierAttributes {
     enum AttrType {
-        Function,
-        Static,
-        Local
+        Function,   // Funtion entry (defined, global)
+        Static,     // Static variable (init, global)
+        Local,      // Local variable
+        Constant,   // Constant string (static_init)
     };
     AttrType type = Local;
     bool defined = false;
     bool global = false;
     InitialValue init = NoInitializer{};
+    ConstantValue static_init;
 };
 
 struct SymbolEntry {

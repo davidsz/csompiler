@@ -1,4 +1,5 @@
 #include "type_checker.h"
+#include "common/labeling.h"
 #include <cassert>
 #include <format>
 
@@ -15,13 +16,20 @@ struct TypeError : public std::runtime_error
 static Type getCommonType(const Type &first, const Type &second)
 {
     assert(first.isInitialized() && second.isInitialized());
-    if (first == second)
-        return first;
-    if (first.isBasic(Double) || second.isBasic(Double))
+
+    Type lhs = first.isCharacter() ? Type{ BasicType::Int } : first;
+    Type rhs = second.isCharacter() ? Type{ BasicType::Int } : second;
+
+    if (lhs == rhs)
+        return lhs;
+
+    if (lhs.isBasic(BasicType::Double) || rhs.isBasic(BasicType::Double))
         return Type{ BasicType::Double };
-    if (first.size() == second.size())
-        return first.isSigned() ? second : first;
-    return first.size() > second.size() ? first : second;
+
+    if (lhs.size() == rhs.size())
+        return lhs.isSigned() ? rhs : lhs;
+
+    return lhs.size() > rhs.size() ? lhs : rhs;
 }
 
 // It must be a constant literal, it must be
@@ -39,13 +47,6 @@ static bool isNullPointerExpression(const Expression &expr)
                 return false;
         }, c->value);
     }
-    return false;
-}
-
-static bool isNullPointerInit(const Initializer &init)
-{
-    if (const SingleInit *s = std::get_if<SingleInit>(&init))
-        return isNullPointerExpression(*s->expr);
     return false;
 }
 
@@ -106,7 +107,8 @@ static bool isLvalue(const Expression &expr, const Type &type)
     }
     return std::holds_alternative<VariableExpression>(expr)
         || std::holds_alternative<DereferenceExpression>(expr)
-        || std::holds_alternative<SubscriptExpression>(expr);
+        || std::holds_alternative<SubscriptExpression>(expr)
+        || std::holds_alternative<StringExpression>(expr);
 }
 
 static std::optional<Type> getCommonPointerType(
@@ -128,8 +130,13 @@ static std::optional<Type> getCommonPointerType(
 std::unique_ptr<Initializer>
 TypeChecker::AddMissingInitializers(std::unique_ptr<Initializer> init, const Type &type)
 {
+    const ArrayType *array_type = type.getAs<ArrayType>();
+    // We don't add missing initializers (missing characters) for strings.
+    // TODO: Do the same for other types, eliminate AddMissingInitializers completely.
+    const bool is_string = array_type && array_type->element->isCharacter();
+
     if (!init) {
-        if (const ArrayType *array_type = type.getAs<ArrayType>()) {
+        if (array_type && !is_string) {
             CompoundInit compound_init;
             compound_init.type = type;
             compound_init.list.reserve(array_type->count);
@@ -149,7 +156,6 @@ TypeChecker::AddMissingInitializers(std::unique_ptr<Initializer> init, const Typ
     }
 
     CompoundInit *compound_init = std::get_if<CompoundInit>(init.get());
-    const ArrayType *array_type = type.getAs<ArrayType>();
     assert(compound_init && array_type);
     if (compound_init->list.size() > array_type->count)
         Abort("Too many initializers for the array.");
@@ -175,11 +181,31 @@ TypeChecker::AddMissingInitializers(std::unique_ptr<Initializer> init, const Typ
 std::vector<ConstantValue>
 TypeChecker::ToConstantValueList(Initializer &init, const Type &type)
 {
-    if (!type.isArray() && std::holds_alternative<CompoundInit>(init))
+    const ArrayType *array_type = type.getAs<ArrayType>();
+    if (!array_type && std::holds_alternative<CompoundInit>(init))
         Abort("Scalar types can't have a compound initializer.");
 
     std::vector<ConstantValue> ret;
     if (SingleInit *single = std::get_if<SingleInit>(&init)) {
+        // Strings
+        if (array_type && array_type->element->isCharacter()) {
+            if (!single->expr)
+                ret.push_back(ZeroBytes{ array_type->count });
+            else if (auto s = std::get_if<StringExpression>(single->expr.get())) {
+                const std::string &init_value = s->value;
+                if (init_value.length() > array_type->count)
+                    Abort("Too many characters in string literal");
+                size_t remaining_bytes = array_type->count - init_value.length();
+                ret.push_back(StringInit{ s->value, remaining_bytes > 0 });
+                ret.push_back(ZeroBytes{ remaining_bytes - 1 });
+            } else {
+                std::cout << type << std::endl;
+                Abort("Initializer is not a constant expression.");
+            }
+            return ret;
+        }
+
+        // Other non-string values
         if (!single->expr)
             ret.push_back(MakeConstantValue(0, type));
         else if (auto c = std::get_if<ConstantExpression>(single->expr.get()))
@@ -187,7 +213,6 @@ TypeChecker::ToConstantValueList(Initializer &init, const Type &type)
         else
             Abort("Initializer is not a constant expression.");
     } else if (CompoundInit *compound = std::get_if<CompoundInit>(&init)) {
-        const ArrayType *array_type = type.getAs<ArrayType>();
         assert(array_type);
         if (array_type->count < compound->list.size())
             Abort("Too long compound initializer for the given type.");
@@ -226,10 +251,12 @@ Type TypeChecker::operator()(ConstantExpression &c)
     return c.type;
 }
 
-Type TypeChecker::operator()(StringExpression &)
+Type TypeChecker::operator()(StringExpression &s)
 {
-    // TODO
-    return Type{ BasicType::Char };
+    return Type{ ArrayType{
+        .element = std::make_shared<Type>(BasicType::Char),
+        .count = s.value.size() + 1
+    } };
 }
 
 Type TypeChecker::operator()(VariableExpression &v)
@@ -268,6 +295,9 @@ Type TypeChecker::operator()(UnaryExpression &u)
         Abort("Can't apply complement on a pointer type.");
     if (type.isPointer() && u.op == UnaryOperator::Negate)
         Abort("Can't negate a pointer type.");
+
+    if (type.isCharacter())
+        u.expr = explicitCast(std::move(u.expr), type, Type{ BasicType::Int });
 
     if (u.op == UnaryOperator::Not)
         u.type = Type{ BasicType::Int };
@@ -757,13 +787,9 @@ Type TypeChecker::operator()(VariableDeclaration &v)
                 init = NoInitializer{};
             else
                 init = Tentative{};
-        } else if (v.type.isPointer()) {
-            if (!isNullPointerInit(*v.init))
-                Abort(std::format("Trying to initialize pointer '{}' with a non-null constant", v.identifier));
-            Initial initial{};
-            initial.list.push_back(MakeConstantValue(0, ULong));
-            init = std::move(initial);
-        } else {
+        } else if (v.type.isPointer())
+            init = InitializeStaticPointer(v.init.get(), v.type);
+        else {
             v.init = AddMissingInitializers(std::move(v.init), v.type);
             init = Initial{ ToConstantValueList(*v.init, v.type) };
         }
@@ -816,18 +842,14 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             }
         } else if (v.storage == StorageStatic) {
             InitialValue init = NoInitializer{};
-            if (v.type.isPointer()) {
-                if (v.init && !isNullPointerInit(*v.init))
-                    Abort(std::format("Trying to initialize pointer '{}' with a non-null constant", v.identifier));
-                Initial initial{};
-                initial.list.push_back(MakeConstantValue(0, ULong));
-                init = std::move(initial);
-            } else {
+            if (v.type.isPointer())
+                init = InitializeStaticPointer(v.init.get(), v.type);
+            else {
                 // It doesn't matter if we have an initializer or not; we adjust it
                 // if any part is missing and calculate the values in build time,
                 // because it has static storage.
-                // TODO: Optimize by placing one ZeroBytes instead of many zeros.
                 v.init = AddMissingInitializers(std::move(v.init), v.type);
+                // TODO: Optimize by placing one ZeroBytes instead of many zeros.
                 init = Initial{ ToConstantValueList(*v.init, v.type) };
             }
 
@@ -842,7 +864,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
                 .init = init
             });
         } else {
-            // Automatic storage duration; handle the initializer in TAC
+            // Automatic storage duration; will handle the initializer in TAC.
             // Insert into the table first, because a variable can be used
             // in its own initializer. (int a = a = 5;)
             m_symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
@@ -859,9 +881,25 @@ Type TypeChecker::operator()(VariableDeclaration &v)
 Type TypeChecker::operator()(SingleInit &s)
 {
     assert(m_targetTypeForInitializer.isInitialized());
+
+    // When a string literal is used to initialize an array, we’ll type check it differently.
+    if (m_targetTypeForInitializer.isArray() && std::holds_alternative<StringExpression>(*s.expr)) {
+        const ArrayType *target_array = m_targetTypeForInitializer.getAs<ArrayType>();
+        if (!target_array->element->isCharacter())
+            Abort("Can't initialize a non-character type with a string literal");
+        const StringExpression *string_expr = std::get_if<parser::StringExpression>(s.expr.get());
+        if (string_expr->value.length() > target_array->count) {
+            Abort(std::format("Too many characters in string literal ({} vs {})",
+                target_array->count, string_expr->value.length()));
+        }
+        s.type = m_targetTypeForInitializer;
+        return s.type;
+    }
+
     Type targetType = m_targetTypeForInitializer;
     Type type = VisitAndConvert(s.expr);
     m_targetTypeForInitializer = targetType;
+
     if (!(s.expr = convertByAssignment(std::move(s.expr), type, m_targetTypeForInitializer)))
         Abort(std::format("Can't convert initializer from {} to {}.",
             type.toString(), m_targetTypeForInitializer.toString()));
@@ -915,6 +953,48 @@ void TypeChecker::Abort(std::string_view message)
 {
     throw TypeError(
         std::format("[Type error] {}", message));
+}
+
+InitialValue TypeChecker::InitializeStaticPointer(
+    const Initializer *init,
+    const Type &variable_type)
+{
+    if (!init)
+        return Initial{ { MakeConstantValue(0, ULong) } };
+
+    const PointerType *pointer_type = variable_type.getAs<PointerType>();
+    assert(pointer_type);
+    const SingleInit *single_init = std::get_if<SingleInit>(init);
+    if (!single_init)
+        Abort("Can't initialize a pointer with a compound initializer");
+
+    // Null-pointer initializer
+    // static int *numbers = 0;
+    if (std::holds_alternative<ConstantExpression>(*single_init->expr)) {
+        if (!isNullPointerExpression(*single_init->expr))
+            Abort("Can't initialize a pointer with a non-null integer");
+        return Initial{ { MakeConstantValue(0, ULong) } };
+    }
+
+    // String literal initializer
+    // char *message = "Hello!";
+    if (auto string_expr = std::get_if<StringExpression>(single_init->expr.get())) {
+        if (!pointer_type->referenced->isCharacter())
+            Abort("String literal initialization expect char pointer type");
+        // Put the string constant into the symbol table and later initialize
+        // the pointer from the address of this.
+        std::string constant_name = MakeNameUnique("string");
+        Type expr_type = std::visit(*this, *single_init->expr);
+        m_symbolTable->insert(constant_name, expr_type, IdentifierAttributes{
+            .type = IdentifierAttributes::Static,
+            .static_init = StringInit{ string_expr->value, true }
+        });
+        // Return the initializer of the pointer
+        return Initial{ { PointerInit{ constant_name } } };
+    }
+
+    Abort("Unsupported pointer initialization");
+    return NoInitializer{};
 }
 
 }; // namespace parser

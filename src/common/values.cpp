@@ -18,6 +18,10 @@ std::string toString(const ConstantValue &v)
             return std::string(buf.data(), ptr);
         } else if constexpr (std::is_same_v<T, ZeroBytes>)
             return std::format("ZeroBytes[{}]", x.bytes);
+        else if constexpr (std::is_same_v<T, StringInit>)
+            return std::format("StringInit[{}]", x.text);
+        else if constexpr (std::is_same_v<T, PointerInit>)
+            return std::format("PointerInit[{}]", x.name);
         else
             return std::to_string(x);
     }, v);
@@ -33,7 +37,7 @@ std::string toLabel(const ConstantValue &v)
                 return std::format("_{}", std::to_string(x));
             }
             return std::to_string(x);
-        } else if constexpr (std::is_same_v<T, ZeroBytes>) {
+        } else if constexpr (is_custom_constant_type_v<T>) {
             assert(false);
             return "";
         } else
@@ -58,8 +62,6 @@ Type getType(const ConstantValue &v)
         ret.t = BasicType::Char;
     else if (std::holds_alternative<unsigned char>(v))
         ret.t = BasicType::UChar;
-    else if (std::holds_alternative<ZeroBytes>(v))
-        assert(false);
     else
         assert(false);
     return ret;
@@ -82,8 +84,8 @@ bool isPositiveZero(const ConstantValue &v) {
 ConstantValue ConvertValue(const ConstantValue &v, const Type &to_type)
 {
     return std::visit([&](const auto &x) -> ConstantValue {
-        using X = std::decay_t<decltype(x)>;
-        if constexpr (std::is_same_v<X, ZeroBytes>) {
+        using T = std::decay_t<decltype(x)>;
+        if constexpr (is_custom_constant_type_v<T>) {
             assert(false);
             return x;
         } else {

@@ -263,12 +263,12 @@ void ASTPrinter::operator()(const FunctionDeclaration &f)
     shift_tab();
 }
 
-void ASTPrinter::operator()(const VariableDeclaration &d)
+void ASTPrinter::operator()(const VariableDeclaration &v)
 {
-    pad(); std::cout << "VariableDeclaration(" << d.identifier << ")" << std::endl;
-    if (d.init.get() != 0) {
+    pad(); std::cout << "VariableDeclaration(" << v.identifier << ") " << v.type << std::endl;
+    if (v.init) {
         pad(); std::cout << "Init: " << std::endl;
-        tab(); std::visit(*this, *d.init); shift_tab();
+        tab(); std::visit(*this, *v.init); shift_tab();
     }
 }
 

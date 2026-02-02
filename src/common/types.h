@@ -122,6 +122,7 @@ struct Type {
     bool isInteger() const;
     bool isSigned() const;
     bool isArithmetic() const;
+    bool isCharacter() const;
     bool isInitialized() const;
     int size() const;
     int alignment() const;

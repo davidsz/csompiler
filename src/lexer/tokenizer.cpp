@@ -280,9 +280,11 @@ Token Tokenizer::MakeStringLiteral()
             AbortAtPosition("Newlines are not allowed in string literals");
             break;
         }
-        if (next == '\\' && !decode_escape(Step(), next)) {
-            AbortAtPosition("Invalid escape sequence");
-            break;
+        if (next == '\\') {
+            if (!decode_escape(Step(), next)) {
+                AbortAtPosition("Invalid escape sequence");
+                break;
+            }
         }
         literal += next;
     } while (true);
@@ -305,9 +307,10 @@ Token Tokenizer::MakeCharLiteral()
     next = Step();
     if (next == '\'')
         AbortAtPosition("Empty char literal");
-    if (next == '\\' && !decode_escape(Step(), value))
-        AbortAtPosition("Invalid escape sequence");
-    else
+    if (next == '\\') {
+        if (!decode_escape(Step(), value))
+            AbortAtPosition("Invalid escape sequence");
+    } else
         value = next;
 
     if (Step() != '\'')
