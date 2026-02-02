@@ -748,6 +748,12 @@ Operand ASMBuilder::operator()(const tac::StaticVariable &s)
     return std::monostate();
 }
 
+Operand ASMBuilder::operator()(const tac::StaticConstant &)
+{
+    // TODO
+    return std::monostate();
+}
+
 std::list<TopLevel> ASMBuilder::ConvertTopLevel(const std::vector<tac::TopLevel> instructions)
 {
     m_topLevel.clear();

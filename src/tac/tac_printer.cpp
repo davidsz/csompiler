@@ -237,6 +237,15 @@ void TACPrinter::operator()(const tac::StaticVariable &s)
     pad(); std::cout << "}" << std::endl;
 }
 
+void TACPrinter::operator()(const tac::StaticConstant &s)
+{
+    pad(); std::cout << " StaticVariable(" << s.name << ") {" << std::endl;
+    tab();
+    pad(); std::cout << toString(s.static_init) << std::endl;
+    shift_tab();
+    pad(); std::cout << "}" << std::endl;
+}
+
 void TACPrinter::print(std::vector<TopLevel> instructions) {
     for (auto &i : instructions)
         std::visit(*this, i);

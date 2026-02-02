@@ -95,7 +95,11 @@ namespace tac {
         std::string name; \
         Type type = Type{}; \
         bool global; \
-        std::vector<ConstantValue> list;)
+        std::vector<ConstantValue> list;) \
+    X(StaticConstant, \
+        std::string name; \
+        Type type; \
+        ConstantValue static_init;)
 
 DEFINE_NODES_WITH_COMMON_VARIANT(Value, TAC_VALUE_TYPE_LIST);
 DEFINE_NODES_WITH_COMMON_VARIANT(Instruction, TAC_INSTRUCTION_LIST);

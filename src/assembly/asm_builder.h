@@ -38,6 +38,7 @@ public:
     Operand operator()(const tac::CopyToOffset &) override;
     Operand operator()(const tac::FunctionDefinition &) override;
     Operand operator()(const tac::StaticVariable &) override;
+    Operand operator()(const tac::StaticConstant &) override;
     Operand operator()(std::monostate) override {
         assert(false);
         return std::monostate();

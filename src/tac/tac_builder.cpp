@@ -138,7 +138,7 @@ void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, int &of
     offset += type.storedType().size();
 }
 
-void TACBuilder::EmitRuntimeInit(
+void TACBuilder::EmitRuntimeCompoundInit(
     const parser::Initializer *init,
     const std::string &base,
     const Type &type,
@@ -150,21 +150,21 @@ void TACBuilder::EmitRuntimeInit(
         const Type &element_type = *array_type->element;
 
         // Scalar initializer for an array type
-        if (/*auto single = */std::get_if<parser::SingleInit>(init)) {
-            // TODO: Strings are not yet implemented in TAC
-            /*
+        if (auto single = std::get_if<parser::SingleInit>(init)) {
             // Initializing an array by a single string literal
             if (element_type.isCharacter()) {
                 auto str = std::get_if<parser::StringExpression>(single->expr.get());
                 assert(str);
-                const std::string &text = str->text;
-                int element_size = element_type.storedType().size();
+                const std::string &text = str->value;
+                // int element_size = element_type.storedType().size();
+                int element_size = 1;
 
-                int i = 0;
-                for (; i < (int)text.size(); i++) {
+                size_t i = 0;
+                for (; i < text.size(); i++) {
+                    // TODO: Optimize
                     m_instructions.push_back(
                         CopyToOffset{
-                            Immediate{ (int)text[i] },
+                            Constant{ MakeConstantValue(text[i], Type{ BasicType::Char }) },
                             base,
                             offset
                         });
@@ -172,20 +172,26 @@ void TACBuilder::EmitRuntimeInit(
                 }
 
                 // Null terminator
-                m_instructions.push_back(
-                    CopyToOffset{ Immediate{0}, base, offset });
+                m_instructions.push_back(CopyToOffset{
+                    Constant{ MakeConstantValue(0, Type{ BasicType::Char }) },
+                    base,
+                    offset
+                });
                 offset += element_size;
-                ++i;
+                i++;
 
                 // Pad with zeros
                 for (; i < array_type->count; i++) {
-                    m_instructions.push_back(
-                        CopyToOffset{ Immediate{0}, base, offset });
+                    m_instructions.push_back(CopyToOffset{
+                        Constant{ MakeConstantValue(0, Type{ BasicType::Char }) },
+                        base,
+                        offset
+                    });
                     offset += element_size;
                 }
                 return;
             }
-            */
+            // Not allowed in other cases
             assert(false);
         }
 
@@ -195,7 +201,7 @@ void TACBuilder::EmitRuntimeInit(
 
         size_t initialized_count = 0;
         for (auto &elem : compound->list) {
-            EmitRuntimeInit(elem.get(), base, element_type, offset);
+            EmitRuntimeCompoundInit(elem.get(), base, element_type, offset);
             initialized_count++;
         }
 
@@ -240,10 +246,21 @@ ExpResult TACBuilder::operator()(const parser::ConstantExpression &n)
     return PlainOperand{ Constant{ n.value } };
 }
 
-ExpResult TACBuilder::operator()(const parser::StringExpression &)
+ExpResult TACBuilder::operator()(const parser::StringExpression &s)
 {
-    // TODO
-    return PlainOperand{ };
+    std::string name = MakeNameUnique("string");
+    m_symbolTable->insert(
+        name,
+        Type { ArrayType{
+            .element = std::make_shared<Type>(BasicType::Char),
+            .count = s.value.size()
+        } },
+        IdentifierAttributes{
+            .type = IdentifierAttributes::Constant,
+            .static_init = StringInit{ s.value, true }
+        }
+    );
+    return PlainOperand{ Variant{ name } };
 }
 
 ExpResult TACBuilder::operator()(const parser::VariableExpression &v)
@@ -800,7 +817,7 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
         // Having no initializer in the entry means it should be computed in runtime
         // e.g.: initializers with automatic storage duration (in block scopes)
         int offset = 0;
-        EmitRuntimeInit(v.init.get(), v.identifier, entry->type, offset);
+        EmitRuntimeCompoundInit(v.init.get(), v.identifier, entry->type, offset);
         return std::monostate();
     }
     assert(false);
@@ -873,6 +890,12 @@ void TACBuilder::ProcessStaticSymbols()
                     .list = initial->list
                 });
             }
+        } else if (entry.attrs.type == IdentifierAttributes::Constant) {
+            m_topLevel.push_back(StaticConstant{
+                .name = name,
+                .type = entry.type,
+                .static_init = entry.attrs.static_init
+            });
         }
     }
 }
