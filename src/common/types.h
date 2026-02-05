@@ -35,6 +35,7 @@ bool IsStorageOrTypeSpecifier(const std::string &type);
 struct AssemblyType;
 
 enum WordType {
+    Byte,
     Longword,
     Quadword,
     Doubleword

@@ -490,7 +490,9 @@ Operand ASMBuilder::operator()(const tac::SignExtend &s)
 {
     m_instructions.push_back(Movsx{
         std::visit(*this, s.src),
-        std::visit(*this, s.dst)
+        std::visit(*this, s.dst),
+        GetWordType(s.src),
+        GetWordType(s.dst)
     });
     return std::monostate();
 }
@@ -500,7 +502,7 @@ Operand ASMBuilder::operator()(const tac::Truncate &t)
     m_instructions.push_back(Mov{
         std::visit(*this, t.src),
         std::visit(*this, t.dst),
-        WordType::Longword
+        GetWordType(t.dst)
     });
     return std::monostate();
 }
@@ -509,19 +511,28 @@ Operand ASMBuilder::operator()(const tac::ZeroExtend &z)
 {
     m_instructions.push_back(MovZeroExtend{
         std::visit(*this, z.src),
-        std::visit(*this, z.dst)
+        std::visit(*this, z.dst),
+        GetWordType(z.src),
+        GetWordType(z.dst)
     });
     return std::monostate();
 }
 
 Operand ASMBuilder::operator()(const tac::DoubleToInt &d)
 {
+    Operand src = std::visit(*this, d.src);
+    Operand dst = std::visit(*this, d.dst);
+    WordType dst_type = GetWordType(d.dst);
+
+    if (dst_type == Byte) {
+        Comment(m_instructions, "Double to signed char");
+        m_instructions.push_back(Cvttsd2si{ src, Reg{ AX, 4 }, Longword });
+        m_instructions.push_back(Mov{ Reg{ AX, 1 }, dst, Byte });
+        return std::monostate();
+    }
+
     Comment(m_instructions, "Double to signed integer");
-    m_instructions.push_back(Cvttsd2si{
-        std::visit(*this, d.src),
-        std::visit(*this, d.dst),
-        GetWordType(d.dst)
-    });
+    m_instructions.push_back(Cvttsd2si{ src, dst, dst_type });
     return std::monostate();
 }
 
@@ -534,9 +545,12 @@ Operand ASMBuilder::operator()(const tac::DoubleToUInt &d)
         Comment(m_instructions, "Double to UInt");
         m_instructions.push_back(Cvttsd2si{ src, Reg{ AX, 8 }, Quadword });
         m_instructions.push_back(Mov{ Reg{ AX, 4 }, dst, Longword });
+    } else if (basicType == UChar) {
+        Comment(m_instructions, "Double to UChar");
+        m_instructions.push_back(Cvttsd2si{ src, Reg{ AX, 4 }, Longword });
+        m_instructions.push_back(Mov{ Reg{ AX, 1 }, dst, Byte });
     } else if (basicType == ULong) {
         Comment(m_instructions, "Double to ULong");
-
         std::string upper_bound = AddConstant(
             ConstantValue{ 9223372036854775808.0 },
             MakeNameUnique("double_upper_bound")
@@ -561,12 +575,19 @@ Operand ASMBuilder::operator()(const tac::DoubleToUInt &d)
 
 Operand ASMBuilder::operator()(const tac::IntToDouble &i)
 {
+    Operand src = std::visit(*this, i.src);
+    Operand dst = std::visit(*this, i.dst);
+    WordType src_type = GetWordType(i.src);
+
+    if (src_type == Byte) {
+        Comment(m_instructions, "Char to double");
+        m_instructions.push_back(Movsx{ src, Reg{ AX, 4 }, Byte, Longword });
+        m_instructions.push_back(Cvtsi2sd{ Reg{ AX, 4 }, dst, Longword });
+        return std::monostate();
+    }
+
     Comment(m_instructions, "Signed integer to double");
-    m_instructions.push_back(Cvtsi2sd{
-        std::visit(*this, i.src),
-        std::visit(*this, i.dst),
-        GetWordType(i.src)
-    });
+    m_instructions.push_back(Cvtsi2sd{ src, dst, src_type });
     return std::monostate();
 }
 
@@ -577,8 +598,12 @@ Operand ASMBuilder::operator()(const tac::UIntToDouble &u)
     BasicType basicType = GetBasicType(u.src);
     if (basicType == UInt) {
         Comment(m_instructions, "UInt to Double");
-        m_instructions.push_back(MovZeroExtend{ src, Reg{ AX, 8 } });
+        m_instructions.push_back(MovZeroExtend{ src, Reg{ AX, 8 }, Longword, Quadword });
         m_instructions.push_back(Cvtsi2sd{ Reg{ AX, 8 }, dst, Quadword });
+    } else if (basicType == UChar) {
+        Comment(m_instructions, "UChar to Double");
+        m_instructions.push_back(MovZeroExtend{ src, Reg{ AX, 4 }, Byte, Longword });
+        m_instructions.push_back(Cvtsi2sd{ Reg{ AX, 4 }, dst, Longword });
     } else if (basicType == ULong) {
         Comment(m_instructions, "ULong to Double");
         std::string oor_label = MakeNameUnique("out_of_range");
@@ -748,9 +773,13 @@ Operand ASMBuilder::operator()(const tac::StaticVariable &s)
     return std::monostate();
 }
 
-Operand ASMBuilder::operator()(const tac::StaticConstant &)
+Operand ASMBuilder::operator()(const tac::StaticConstant &s)
 {
-    // TODO
+    m_topLevel.push_back(StaticConstant{
+        .name = s.name,
+        .init = s.static_init,
+        .alignment = s.type.alignment()
+    });
     return std::monostate();
 }
 

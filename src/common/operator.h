@@ -79,6 +79,7 @@ std::string_view toString(UnaryOperator op);
 std::string toString(ASMUnaryOperator op, WordType type);
 std::string toString(ASMBinaryOperator op, WordType type);
 std::string AddSuffix(std::string_view instruction, WordType type);
+std::string AddSuffices(std::string_view instruction, WordType s, WordType d);
 
 bool isBinaryOperator(std::string_view op);
 bool isUnaryOperator(std::string_view op);

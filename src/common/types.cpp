@@ -120,12 +120,15 @@ int AssemblyType::size() const
     auto w = std::get_if<WordType>(&t);
     assert(w);
     switch (*w) {
+    case WordType::Byte:
+        return 1;
     case WordType::Longword:
         return 4;
     case WordType::Quadword:
     case WordType::Doubleword:
         return 8;
     default:
+        assert(false);
         return 1;
     }
 }
@@ -302,24 +305,29 @@ int Type::alignment() const
 
 WordType Type::wordType() const
 {
-    if (std::get_if<PointerType>(&t))
+    if (std::holds_alternative<PointerType>(t))
         return Quadword;
+    if (const ArrayType *array_type = std::get_if<ArrayType>(&t)) {
+        assert(array_type->element->isCharacter());
+        return Byte;
+    }
     const BasicType *basic_type = std::get_if<BasicType>(&t);
     assert(basic_type);
     switch (*basic_type) {
     case BasicType::Char:
     case BasicType::SChar:
     case BasicType::UChar:
-        assert(false);
+        return Byte;
     case BasicType::Int:
     case BasicType::UInt:
         return Longword;
     case BasicType::Long:
     case BasicType::ULong:
-    return Quadword;
+        return Quadword;
     case BasicType::Double:
         return Doubleword;
     default:
+        assert(false);
         return Longword;
     }
 }
@@ -365,6 +373,8 @@ std::string Type::toString() const
 uint8_t GetBytesOfWordType(WordType type)
 {
     switch (type) {
+    case WordType::Byte:
+        return 1;
     case WordType::Longword:
         return 4;
     case WordType::Quadword:

@@ -16,6 +16,17 @@ static const std::unordered_map<std::string_view, UnaryOperator> s_unary_map = {
 #undef ADD_TO_MAP
 };
 
+static std::string toSuffix(WordType type)
+{
+    switch (type) {
+    case Byte:       return "b";
+    case Longword:   return "l";
+    case Quadword:   return "q";
+    case Doubleword: return "sd";
+    default: assert(false); return "";
+    }
+}
+
 BinaryOperator toBinaryOperator(std::string_view s)
 {
     if (auto it = s_binary_map.find(s); it != s_binary_map.end())
@@ -80,12 +91,12 @@ std::string toString(ASMBinaryOperator op, WordType type)
 
 std::string AddSuffix(std::string_view instruction, WordType type)
 {
-    switch (type) {
-    case Longword:   return std::format("{}l", instruction);
-    case Quadword:   return std::format("{}q", instruction);
-    case Doubleword: return std::format("{}sd", instruction);
-    default: assert(false); return "";
-    }
+    return std::format("{}{}", instruction, toSuffix(type));
+}
+
+std::string AddSuffices(std::string_view instruction, WordType s, WordType d)
+{
+    return std::format("{}{}{}", instruction, toSuffix(s), toSuffix(d));
 }
 
 ASMUnaryOperator toASMUnaryOperator(UnaryOperator op)

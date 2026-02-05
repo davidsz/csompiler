@@ -62,10 +62,14 @@ namespace assembly {
         WordType type;) \
     X(Movsx, \
         Operand src; \
-        Operand dst;) \
+        Operand dst; \
+        WordType src_type; \
+        WordType dst_type;) \
     X(MovZeroExtend, \
         Operand src; \
-        Operand dst;) \
+        Operand dst; \
+        WordType src_type; \
+        WordType dst_type;) \
     X(Lea, \
         Operand src; \
         Operand dst;) \

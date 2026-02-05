@@ -29,8 +29,9 @@ ASMSymbolTable::ASMSymbolTable(
                 .type = AssemblyType{
                     ByteArray{ entry.type.size(), entry.type.alignment() }
                 },
-                .is_static = entry.attrs.type == IdentifierAttributes::Static,
-                .is_constant = false
+                .is_static = entry.attrs.type == IdentifierAttributes::Static
+                    || entry.attrs.type == IdentifierAttributes::Constant,
+                .is_constant = entry.attrs.type == IdentifierAttributes::Constant
             });
         } else
             assert(false);

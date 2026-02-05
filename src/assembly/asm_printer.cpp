@@ -4,14 +4,53 @@
 
 namespace assembly {
 
-static std::string getInitializer(WordType type)
+static std::string escapeString(std::string_view in)
 {
-    switch (type) {
-    case Longword:   return ".long";
-    case Quadword:   return ".quad";
-    case Doubleword: return ".double";
-    default: assert(false); return "ERROR";
+    std::string out;
+    out.reserve(in.size());
+    for (char c : in) {
+        switch (c) {
+        case '\"': out += "\\\""; break;
+        case '\\': out += "\\\\"; break;
+        case '\n': out += "\\n";  break;
+        default:   out += c;      break;
+        }
     }
+    return out;
+}
+
+static std::string buildInitializer(const ConstantValue &init)
+{
+    // Custom types
+    if (const ZeroBytes *zero = std::get_if<ZeroBytes>(&init))
+        return std::format("    .zero {}", zero->bytes);
+
+    if (const StringInit *string = std::get_if<StringInit>(&init)) {
+        if (string->null_terminated)
+            return std::format("    .asciz \"{}\"", escapeString(string->text));
+        else
+            return std::format("    .ascii \"{}\"", escapeString(string->text));
+    }
+
+    if (const PointerInit *pointer = std::get_if<PointerInit>(&init))
+        return std::format("    .quad {}", pointer->name);
+
+    // Atomic types
+    // TODO: Rename getType() to represent that it only supports atomic types
+    Type type = getType(init);
+    std::string initializer;
+    if (isPositiveZero(init))
+        return std::format("    .zero {}", type.size());
+    else {
+        switch (type.wordType()) {
+        case Byte:       initializer = "    .byte ";   break;
+        case Longword:   initializer = "    .long ";   break;
+        case Quadword:   initializer = "    .quad ";   break;
+        case Doubleword: initializer = "    .double "; break;
+        default:         assert(false);
+        }
+    }
+    return std::format("{} {}", initializer, toString(init));
 }
 
 static std::string formatLabel(std::string_view name)
@@ -106,7 +145,7 @@ void ASMPrinter::operator()(const Memory &m)
 
 void ASMPrinter::operator()(const Data &d)
 {
-    // TODO: Append L?
+    // TODO: Append L prefix to floating point and string constants?
     m_codeStream << formatLabel(d.name) << "(%rip)";
 }
 
@@ -134,19 +173,20 @@ void ASMPrinter::operator()(const Mov &m)
 
 void ASMPrinter::operator()(const Movsx &m)
 {
-    // The MovsX instruction takes suffixes for both its source
-    // and destination operand sizes.
-    m_codeStream << "    movslq ";
+    m_codeStream << "    " << AddSuffices("movs", m.src_type, m.dst_type) << " ";
     std::visit(*this, m.src);
     m_codeStream << ", ";
     std::visit(*this, m.dst);
     m_codeStream << std::endl;
 }
 
-void ASMPrinter::operator()(const MovZeroExtend &)
+void ASMPrinter::operator()(const MovZeroExtend &m)
 {
-    // Replaced during instruction fixup
-    assert(false);
+    m_codeStream << "    " << AddSuffices("movz", m.src_type, m.dst_type) << " ";
+    std::visit(*this, m.src);
+    m_codeStream << ", ";
+    std::visit(*this, m.dst);
+    m_codeStream << std::endl;
 }
 
 void ASMPrinter::operator()(const Lea &l)
@@ -230,10 +270,8 @@ void ASMPrinter::operator()(const Cmp &c)
 {
     if (c.type == Doubleword)
         m_codeStream << "    comisd ";
-    else if (c.type == Longword || c.type == Quadword)
-        m_codeStream << "    " << AddSuffix("cmp", c.type) << " ";
     else
-        assert(false);
+        m_codeStream << "    " << AddSuffix("cmp", c.type) << " ";
     std::visit(*this, c.lhs);
     m_codeStream << ", ";
     std::visit(*this, c.rhs);
@@ -311,32 +349,26 @@ void ASMPrinter::operator()(const StaticVariable &s)
 
     m_codeStream << formatLabel(s.name) << ":" << std::endl;
 
-    for (auto &i : s.list) {
-        if (auto z = std::get_if<ZeroBytes>(&i))
-            m_codeStream << "    .zero " << z->bytes << std::endl;
-        else
-            m_codeStream << "    " << getInitializer(getType(i).wordType()) << " " << toString(i) << std::endl;
-    }
+    for (auto &i : s.list)
+        m_codeStream << buildInitializer(i) << std::endl;
+
     m_codeStream << std::endl;
 }
 
 void ASMPrinter::operator()(const StaticConstant &s)
 {
 #ifdef __APPLE__
-    m_codeStream << "    .literal" << s.alignment << std::endl;
-    m_codeStream << "    .balign " << s.alignment << std::endl;
+    if (std::holds_alternative<StringInit>(s.init))
+        m_codeStream << "    .cstring" << std::endl;
+    else
+        m_codeStream << "    .literal" << s.alignment << std::endl;
 #else
     m_codeStream << "    .section .rodata" << std::endl;
-    m_codeStream << "    .balign " << s.alignment << std::endl;
 #endif
+    m_codeStream << "    .balign " << s.alignment << std::endl;
 
     m_codeStream << formatLabel(s.name) << ":" << std::endl;
-
-    Type type = getType(s.init);
-    if (isPositiveZero(s.init))
-        m_codeStream << "    .zero " << type.size() << std::endl;
-    else
-        m_codeStream << "    " << getInitializer(type.wordType()) << " " << toString(s.init) << std::endl;
+    m_codeStream << buildInitializer(s.init) << std::endl;
 
 #ifdef __APPLE__
     if (s.alignment == 16)
