@@ -138,7 +138,7 @@ void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, int &of
     offset += type.storedType().size();
 }
 
-void TACBuilder::EmitRuntimeCompoundInit(
+void TACBuilder::EmitRuntimeInit(
     const parser::Initializer *init,
     const std::string &base,
     const Type &type,
@@ -201,7 +201,7 @@ void TACBuilder::EmitRuntimeCompoundInit(
 
         size_t initialized_count = 0;
         for (auto &elem : compound->list) {
-            EmitRuntimeCompoundInit(elem.get(), base, element_type, offset);
+            EmitRuntimeInit(elem.get(), base, element_type, offset);
             initialized_count++;
         }
 
@@ -802,25 +802,8 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
     if (!v.init)
         return std::monostate();
 
-    if (auto single_init = std::get_if<parser::SingleInit>(v.init.get())) {
-        Value result = VisitAndConvert(*single_init->expr);
-        m_instructions.push_back(Copy{ result, Variant{ v.identifier } });
-        return std::monostate();
-    }
-
-    if (std::holds_alternative<parser::CompoundInit>(*v.init)) {
-        auto initial = std::get_if<Initial>(&entry->attrs.init);
-        // Having initializers in the entry means the type checker already converted
-        // it into a list of constant values, because it was possible, e.g. for file
-        // scope and static initializers. We already early-outed for this case.
-        assert(!initial);
-        // Having no initializer in the entry means it should be computed in runtime
-        // e.g.: initializers with automatic storage duration (in block scopes)
-        int offset = 0;
-        EmitRuntimeCompoundInit(v.init.get(), v.identifier, entry->type, offset);
-        return std::monostate();
-    }
-    assert(false);
+    int offset = 0;
+    EmitRuntimeInit(v.init.get(), v.identifier, entry->type, offset);
     return std::monostate();
 }
 

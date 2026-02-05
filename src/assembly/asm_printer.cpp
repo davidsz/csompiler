@@ -1,5 +1,6 @@
 #include "asm_printer.h"
 #include <algorithm>
+#include <format>
 #include <cassert>
 
 namespace assembly {

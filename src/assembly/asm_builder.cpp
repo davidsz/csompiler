@@ -62,9 +62,9 @@ BasicType ASMBuilder::GetBasicType(const tac::Value &value)
 
 WordType ASMBuilder::GetWordType(const tac::Value &value)
 {
-    if (auto c = std::get_if<tac::Constant>(&value)) {
+    if (auto c = std::get_if<tac::Constant>(&value))
         return getType(c->value).wordType();
-    } else if (auto v = std::get_if<tac::Variant>(&value)) {
+    else if (auto v = std::get_if<tac::Variant>(&value)) {
         const SymbolEntry *entry = m_symbolTable->get(v->name);
         assert(entry);
         return entry->type.wordType();
@@ -162,7 +162,7 @@ Operand ASMBuilder::operator()(const tac::Unary &u)
     ASMUnaryOperator op = toASMUnaryOperator(u.op);
     assert(op != Unknown_AU);
     m_instructions.push_back(Mov{ src, dst, srcType });
-    m_instructions.push_back(Unary{ op, dst, srcType });
+    m_instructions.push_back(Unary{ op, dst, dstType });
     return std::monostate();
 }
 
@@ -445,7 +445,11 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
             || arg_type == WordType::Doubleword)
             m_instructions.push_back(Push{ asm_arg });
         else {
-            m_instructions.push_back(Mov{ asm_arg, Reg{ AX, 4 }, arg_type });
+            m_instructions.push_back(Mov{
+                asm_arg,
+                Reg{ AX, GetBytesOfWordType(arg_type) },
+                arg_type
+            });
             m_instructions.push_back(Push{ Reg{ AX, 8 } });
         }
     }

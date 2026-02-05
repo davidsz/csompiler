@@ -297,10 +297,13 @@ int Type::size() const
 int Type::alignment() const
 {
     int size = this->size();
+    if (size > 16)
+        return 16;
     if (auto array_type = std::get_if<ArrayType>(&t)) {
-        return size > 16 ? 16 : array_type->element->size();
-    } else
-        return size;
+        int element_size = array_type->element->size();
+        return element_size % 2 ? element_size + 1 : element_size;
+    }
+    return size;
 }
 
 WordType Type::wordType() const

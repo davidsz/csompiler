@@ -241,10 +241,11 @@ Type TypeChecker::operator()(ConstantExpression &c)
 
 Type TypeChecker::operator()(StringExpression &s)
 {
-    return Type{ ArrayType{
+    s.type = Type{ ArrayType{
         .element = std::make_shared<Type>(BasicType::Char),
         .count = s.value.size() + 1
     } };
+    return s.type;
 }
 
 Type TypeChecker::operator()(VariableExpression &v)
@@ -284,8 +285,11 @@ Type TypeChecker::operator()(UnaryExpression &u)
     if (type.isPointer() && u.op == UnaryOperator::Negate)
         Abort("Can't negate a pointer type.");
 
-    if (type.isCharacter())
+    if (type.isCharacter()) {
         u.expr = explicitCast(std::move(u.expr), type, Type{ BasicType::Int });
+        u.type = Type{ BasicType::Int };
+        return u.type;
+    }
 
     if (u.op == UnaryOperator::Not)
         u.type = Type{ BasicType::Int };
@@ -869,6 +873,7 @@ Type TypeChecker::operator()(SingleInit &s)
 
     // When a string literal is used to initialize an array, we’ll type check it differently.
     if (m_targetTypeForInitializer.isArray() && std::holds_alternative<StringExpression>(*s.expr)) {
+        std::visit(*this, *s.expr);
         const ArrayType *target_array = m_targetTypeForInitializer.getAs<ArrayType>();
         if (!target_array->element->isCharacter())
             Abort("Can't initialize a non-character type with a string literal");

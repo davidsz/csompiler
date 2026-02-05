@@ -186,6 +186,7 @@ static std::list<Instruction>::iterator postprocessMovsx(std::list<Instruction> 
     auto &obj = std::get<Movsx>(*it);
 
     // MOVSLQ's source register always 4 bytes, the destination is 8 bytes
+    /*
     if (auto r = std::get_if<Reg>(&obj.src)) {
         Movsx new_movsx = obj;
         new_movsx.src = Reg{ r->reg, 4 };
@@ -196,15 +197,23 @@ static std::list<Instruction>::iterator postprocessMovsx(std::list<Instruction> 
         new_movsx.dst = Reg{ r->reg, 8 };
         *it = new_movsx;
     }
+    */
 
     // MOVSX instruction can't use memory address as destination
     // or an immediate value as a source
     if (std::holds_alternative<Imm>(obj.src) || isMemoryAddress(obj.dst)) {
         auto current = obj;
+        uint8_t src_bytes = GetBytesOfWordType(current.src_type);
+        uint8_t dst_bytes = GetBytesOfWordType(current.dst_type);
         it = asmList.erase(it);
-        it = asmList.emplace(it, Mov{current.src, Reg{ R10, 8 }, Quadword });
-        it = asmList.emplace(std::next(it), Movsx{ Reg{ R10, 4 }, Reg{ R11, 8 }, Longword, Quadword });
-        it = asmList.emplace(std::next(it), Mov{ Reg{ R11, 8 }, current.dst, Quadword });
+        it = asmList.emplace(it, Mov{ current.src, Reg{ R10, src_bytes }, current.src_type });
+        it = asmList.emplace(std::next(it), Movsx{
+            Reg{ R10, src_bytes },
+            Reg{ R11, dst_bytes },
+            current.src_type,
+            current.dst_type
+        });
+        it = asmList.emplace(std::next(it), Mov{ Reg{ R11, dst_bytes }, current.dst, current.dst_type });
     }
 
     return std::next(it);
@@ -227,12 +236,12 @@ static std::list<Instruction>::iterator postprocessMovZeroExtend(std::list<Instr
 
     if (obj.src_type == Longword) {
         if (auto r = std::get_if<Reg>(&obj.dst)) {
-            *it = Mov{ obj.src, Reg{ r->reg, 4 }, WordType::Longword };
+            *it = Mov{ obj.src, Reg{ r->reg, 4 }, Longword };
         } else if (isMemoryAddress(obj.dst)) {
             auto current = obj;
             it = asmList.erase(it);
-            it = asmList.emplace(it, Mov{current.src, Reg{R11, 4}, WordType::Longword});
-            it = asmList.emplace(std::next(it), Mov{Reg{R11, 8}, current.dst, WordType::Quadword});
+            it = asmList.emplace(it, Mov{ current.src, Reg{ R11, 4 }, Longword });
+            it = asmList.emplace(std::next(it), Mov{ Reg{ R11, 8 }, current.dst, Quadword });
         }
         return std::next(it);
     }
