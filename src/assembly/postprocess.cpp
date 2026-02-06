@@ -229,8 +229,8 @@ static std::list<Instruction>::iterator postprocessMovZeroExtend(std::list<Instr
         uint8_t dst_bytes = GetBytesOfWordType(current.dst_type);
         it = asmList.erase(it);
         it = asmList.emplace(it, Mov{current.src, Reg{ R10, 1 }, Byte});
-        it = asmList.emplace(std::next(it), MovZeroExtend{ Reg{ R10, 1 }, Reg{ R11, dst_bytes }, Byte, obj.dst_type });
-        it = asmList.emplace(std::next(it), Mov{ Reg{ R11, dst_bytes }, current.dst, obj.dst_type });
+        it = asmList.emplace(std::next(it), MovZeroExtend{ Reg{ R10, 1 }, Reg{ R11, dst_bytes }, Byte, current.dst_type });
+        it = asmList.emplace(std::next(it), Mov{ Reg{ R11, dst_bytes }, current.dst, current.dst_type });
         return std::next(it);
     }
 

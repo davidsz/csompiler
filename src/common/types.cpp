@@ -384,6 +384,7 @@ uint8_t GetBytesOfWordType(WordType type)
     case WordType::Doubleword:
         return 8;
     default:
+        assert(false);
         return 1;
     }
 }
