@@ -185,20 +185,6 @@ static std::list<Instruction>::iterator postprocessMovsx(std::list<Instruction> 
 {
     auto &obj = std::get<Movsx>(*it);
 
-    // MOVSLQ's source register always 4 bytes, the destination is 8 bytes
-    /*
-    if (auto r = std::get_if<Reg>(&obj.src)) {
-        Movsx new_movsx = obj;
-        new_movsx.src = Reg{ r->reg, 4 };
-        *it = new_movsx;
-    }
-    if (auto r = std::get_if<Reg>(&obj.dst)) {
-        Movsx new_movsx = obj;
-        new_movsx.dst = Reg{ r->reg, 8 };
-        *it = new_movsx;
-    }
-    */
-
     // MOVSX instruction can't use memory address as destination
     // or an immediate value as a source
     if (std::holds_alternative<Imm>(obj.src) || isMemoryAddress(obj.dst)) {

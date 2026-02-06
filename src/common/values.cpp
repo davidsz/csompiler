@@ -130,10 +130,11 @@ ConstantValue ConvertValue(const ConstantValue &v, const Type &to_type)
 
 ConstantValue MakeConstantValue(long value, const Type &type)
 {
-    const BasicType *basic_type = type.getAs<BasicType>();
-    if (!basic_type)
-        return static_cast<int>(value);
-    return MakeConstantValue(value, *basic_type);
+    if (const BasicType *basic_type = type.getAs<BasicType>())
+        return MakeConstantValue(value, *basic_type);
+    if (type.isPointer())
+        return MakeConstantValue(value, ULong);
+    assert(false);
 }
 
 ConstantValue MakeConstantValue(long value, BasicType type)

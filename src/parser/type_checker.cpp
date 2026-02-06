@@ -182,7 +182,7 @@ TypeChecker::ToConstantValueList(const Initializer *init, const Type &type)
             if (string_length > element_count)
                 Abort("Too many characters in string literal.");
 
-            ret.push_back(StringInit{ string_expr->value, true });
+            ret.push_back(StringInit{ string_expr->value, string_length < element_count });
             if (element_count > string_length + 1)
                 ret.push_back(ZeroBytes{ element_count - string_length - 1 });
             return ret;

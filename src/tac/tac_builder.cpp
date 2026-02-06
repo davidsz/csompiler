@@ -156,9 +156,6 @@ void TACBuilder::EmitRuntimeInit(
                 auto str = std::get_if<parser::StringExpression>(single->expr.get());
                 assert(str);
                 const std::string &text = str->value;
-                // int element_size = element_type.storedType().size();
-                int element_size = 1;
-
                 size_t i = 0;
                 for (; i < text.size(); i++) {
                     // TODO: Optimize
@@ -168,26 +165,17 @@ void TACBuilder::EmitRuntimeInit(
                             base,
                             offset
                         });
-                    offset += element_size;
+                    offset++;
                 }
 
-                // Null terminator
-                m_instructions.push_back(CopyToOffset{
-                    Constant{ MakeConstantValue(0, Type{ BasicType::Char }) },
-                    base,
-                    offset
-                });
-                offset += element_size;
-                i++;
-
-                // Pad with zeros
+                // Null terminator and padding with zeros (if possible)
                 for (; i < array_type->count; i++) {
                     m_instructions.push_back(CopyToOffset{
                         Constant{ MakeConstantValue(0, Type{ BasicType::Char }) },
                         base,
                         offset
                     });
-                    offset += element_size;
+                    offset++;
                 }
                 return;
             }

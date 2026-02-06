@@ -249,7 +249,7 @@ Expression ASTBuilder::ParseConstantExpression()
     LOG("ParseConstantExpression");
     auto next = Peek();
     if (next->type() == TokenType::CharLiteral)
-        return ConstantExpression{ Consume(TokenType::CharLiteral)[0], Type{ BasicType::Int } };
+        return ConstantExpression{ (int)(Consume(TokenType::CharLiteral)[0]), Type{ BasicType::Int } };
 
     std::string literal = Consume(TokenType::NumericLiteral);
     // Parse suffixes
