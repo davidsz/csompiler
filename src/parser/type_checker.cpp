@@ -285,7 +285,9 @@ Type TypeChecker::operator()(UnaryExpression &u)
     if (type.isPointer() && u.op == UnaryOperator::Negate)
         Abort("Can't negate a pointer type.");
 
-    if (type.isCharacter()) {
+    // This is not necessarily correct; ++ and -- should be integer promoted,
+    // but we avoid that in order to keep the one byte representation.
+    if (type.isCharacter() && !canBePostfix(u.op)) {
         Type promotedType = type.promotedType();
         u.expr = explicitCast(std::move(u.expr), type, promotedType);
         u.type = promotedType;
@@ -396,9 +398,10 @@ Type TypeChecker::operator()(BinaryExpression &b)
     if (b.op == LeftShift || b.op == RightShift) {
         if (left_type.isPointer() || right_type.isPointer())
             Abort("Operand of bitshifts can't be pointers.");
-        // The right operand of shift operators need an integer promotion
+        Type promoted_left = left_type.promotedType();
+        b.lhs = explicitCast(std::move(b.lhs), left_type, promoted_left);
         b.rhs = explicitCast(std::move(b.rhs), right_type, right_type.promotedType());
-        b.type = left_type;
+        b.type = promoted_left;
         return b.type;
     }
 
