@@ -343,6 +343,28 @@ Type Type::storedType() const
         return *this;
 }
 
+Type Type::promotedType() const
+{
+    if (isPointer())
+        return *this;
+    const BasicType *basic_type = std::get_if<BasicType>(&t);
+    assert(basic_type);
+    switch (*basic_type) {
+    case BasicType::Int:
+    case BasicType::UInt:
+    case BasicType::Long:
+    case BasicType::ULong:
+        return *this;
+    case BasicType::Char:
+    case BasicType::SChar:
+    case BasicType::UChar:
+        return Type{ BasicType::Int };
+    case BasicType::Double:
+    default:
+        return *this;
+    }
+}
+
 std::ostream &operator<<(std::ostream &os, const Type &type)
 {
     std::visit([&](auto &obj) {

@@ -130,6 +130,7 @@ struct Type {
     int alignment() const;
     WordType wordType() const;
     Type storedType() const;
+    Type promotedType() const;
 
     friend bool operator==(const Type &a, const Type &b) {
         return a.t == b.t;

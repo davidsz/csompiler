@@ -286,8 +286,9 @@ Type TypeChecker::operator()(UnaryExpression &u)
         Abort("Can't negate a pointer type.");
 
     if (type.isCharacter()) {
-        u.expr = explicitCast(std::move(u.expr), type, Type{ BasicType::Int });
-        u.type = Type{ BasicType::Int };
+        Type promotedType = type.promotedType();
+        u.expr = explicitCast(std::move(u.expr), type, promotedType);
+        u.type = promotedType;
         return u.type;
     }
 
@@ -396,7 +397,7 @@ Type TypeChecker::operator()(BinaryExpression &b)
         if (left_type.isPointer() || right_type.isPointer())
             Abort("Operand of bitshifts can't be pointers.");
         // The right operand of shift operators need an integer promotion
-        b.rhs = explicitCast(std::move(b.rhs), right_type, Type{ BasicType::Int });
+        b.rhs = explicitCast(std::move(b.rhs), right_type, right_type.promotedType());
         b.type = left_type;
         return b.type;
     }
@@ -470,7 +471,7 @@ Type TypeChecker::operator()(CompoundAssignmentExpression &c)
 
     if (c.op == BinaryOperator::AssignLShift || c.op == BinaryOperator::AssignRShift) {
         // The right operand of shift operators needs an integer promotion
-        c.rhs = explicitCast(std::move(c.rhs), right_type, Type{ BasicType::Int });
+        c.rhs = explicitCast(std::move(c.rhs), right_type, right_type.promotedType());
         c.inner_type = left_type;
         c.type = left_type;
         return c.type;
@@ -665,12 +666,16 @@ Type TypeChecker::operator()(ForStatement &f)
 
 Type TypeChecker::operator()(SwitchStatement &s)
 {
-    m_switches.push_back(&s);
-    s.type = VisitAndConvert(s.condition);
-
-    if (s.type.isBasic(Double) || s.type.isPointer())
+    Type type = VisitAndConvert(s.condition);
+    if (type.isBasic(Double) || type.isPointer())
         Abort("The type of a switch statement has to be az integer.");
 
+    // Integer promotion of the controlling expression
+    Type promotedType = type.promotedType();
+    s.condition = explicitCast(std::move(s.condition), type, promotedType);
+    s.type = promotedType;
+
+    m_switches.push_back(&s);
     std::visit(*this, *s.body);
     m_switches.pop_back();
     return Type{ std::monostate() };
@@ -685,10 +690,9 @@ Type TypeChecker::operator()(CaseStatement &c)
 
     if (auto expr = std::get_if<ConstantExpression>(c.condition.get())) {
         SwitchStatement *s = m_switches.back();
-        // We use the converted value to create the label
-        auto value = ConvertValue(expr->value, s->type);
-        c.label = std::format("case_{}_{}", s->label, toLabel(value));
-        auto [it, inserted] = s->cases.insert(value);
+        expr->value = ConvertValue(expr->value, s->type);
+        c.label = std::format("case_{}_{}", s->label, toLabel(expr->value));
+        auto [it, inserted] = s->cases.insert(expr->value);
         if (!inserted)
             Abort("Duplicate case in switch");
     }
