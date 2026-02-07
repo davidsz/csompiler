@@ -148,39 +148,55 @@ void TACBuilder::EmitRuntimeInit(
 
     if (const ArrayType *array_type = type.getAs<ArrayType>()) {
         const Type &element_type = *array_type->element;
-
         // Scalar initializer for an array type
         if (auto single = std::get_if<parser::SingleInit>(init)) {
-            // Initializing an array by a single string literal
-            if (element_type.isCharacter()) {
-                auto str = std::get_if<parser::StringExpression>(single->expr.get());
-                assert(str);
-                const std::string &text = str->value;
-                size_t i = 0;
-                for (; i < text.size(); i++) {
-                    // TODO: Optimize
-                    m_instructions.push_back(
-                        CopyToOffset{
-                            Constant{ MakeConstantValue(text[i], Type{ BasicType::Char }) },
-                            base,
-                            offset
-                        });
-                    offset++;
-                }
-
-                // Null terminator and padding with zeros (if possible)
-                for (; i < array_type->count; i++) {
-                    m_instructions.push_back(CopyToOffset{
-                        Constant{ MakeConstantValue(0, Type{ BasicType::Char }) },
+            // Initializing an array by a string literal
+            // (the only case where allowed to initialize an array with a single init)
+            assert(element_type.isCharacter());
+            auto str = std::get_if<parser::StringExpression>(single->expr.get());
+            assert(str);
+            const std::string &text = str->value;
+            size_t i = 0;
+            // Optimization: pack the characters into 4-byte chunks if possible
+            while (i + 4 <= text.size() && offset % 4 == 0) {
+                const char *p = &text[i];
+                // std::string uses signed chars; we have to cast to uint8_t first
+                // to avoid sign extension
+                uint32_t v = uint32_t(uint8_t(p[0])) |
+                             uint32_t(uint8_t(p[1]) <<  8) |
+                             uint32_t(uint8_t(p[2]) << 16) |
+                             uint32_t(uint8_t(p[3]) << 24);
+                m_instructions.push_back(
+                    CopyToOffset{
+                        Constant{ MakeConstantValue(v, Type{ BasicType::UInt }) },
                         base,
                         offset
                     });
-                    offset++;
-                }
-                return;
+                i += 4;
+                offset += 4;
             }
-            // Not allowed in other cases
-            assert(false);
+
+            // Copy the rest of the string one by one
+            for (; i < text.size(); i++) {
+                m_instructions.push_back(
+                    CopyToOffset{
+                        Constant{ MakeConstantValue(text[i], Type{ BasicType::Char }) },
+                        base,
+                        offset
+                    });
+                offset++;
+            }
+
+            // Null terminator and padding with zeros (if possible)
+            for (; i < array_type->count; i++) {
+                m_instructions.push_back(CopyToOffset{
+                    Constant{ MakeConstantValue(0, Type{ BasicType::Char }) },
+                    base,
+                    offset
+                });
+                offset++;
+            }
+            return;
         }
 
         // Compound initializer for an array type
@@ -194,9 +210,8 @@ void TACBuilder::EmitRuntimeInit(
         }
 
         // Pad remaining elements
-        for (; initialized_count < array_type->count; initialized_count++) {
+        for (; initialized_count < array_type->count; initialized_count++)
             EmitZeroInit(element_type, base, offset);
-        }
         return;
     }
 
