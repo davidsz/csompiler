@@ -121,10 +121,30 @@ void ASTPrinter::operator()(const SubscriptExpression &s)
     pad(); std::cout << ") " << std::endl;
 }
 
+void ASTPrinter::operator()(const SizeOfExpression &s)
+{
+    pad(); std::cout << "SizeOfExpression( " << s.type << std::endl;
+    tab();
+    std::visit(*this, *s.expr);
+    shift_tab();
+    pad(); std::cout << ") " << std::endl;
+}
+
+void ASTPrinter::operator()(const SizeOfTypeExpression &s)
+{
+    pad(); std::cout << "SizeOfTypeExpression( " << s.type << std::endl;
+    tab();
+    pad(); std::cout << s.operand << std::endl;
+    shift_tab();
+    pad(); std::cout << ") " << std::endl;
+}
+
 void ASTPrinter::operator()(const ReturnStatement &r)
 {
     pad(); std::cout << "Return" << std::endl;
-    tab(); std::visit(*this, *r.expr); shift_tab();
+    if (r.expr) {
+        tab(); std::visit(*this, *r.expr); shift_tab();
+    }
 }
 
 void ASTPrinter::operator()(const IfStatement &i)

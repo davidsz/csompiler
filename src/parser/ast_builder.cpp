@@ -147,6 +147,33 @@ Expression ASTBuilder::ParseUnaryExpression()
             return UnaryExpression{ op, UE(expr), false };
     }
 
+    // sizeof
+    if (next->type() == TokenType::Keyword && next->value() == "sizeof") {
+        Consume(TokenType::Keyword, "sizeof");
+        Expression ret;
+        next = Peek();
+        if (next->type() == TokenType::Punctator && next->value() == "(") {
+            Consume(TokenType::Punctator, "(");
+            if (IsTypeSpecifier(Peek()->value())) {
+                Type base_type = ParseTypes();
+                AbstractDeclarator declarator = ParseAbstractDeclarator();
+                ret = SizeOfTypeExpression{
+                    .operand = ProcessAbstractDeclarator(declarator, base_type)
+                };
+            } else {
+                ret = SizeOfExpression{
+                    .expr = unique_expression(ParseExpression(0))
+                };
+            }
+            Consume(TokenType::Punctator, ")");
+        } else {
+            ret = SizeOfExpression{
+                .expr = unique_expression(ParseUnaryExpression())
+            };
+        }
+        return ret;
+    }
+
     // Cast expression
     if (next->type() == TokenType::Punctator && next->value() == "("
         && Peek(1)->type() == TokenType::Keyword) {
@@ -332,7 +359,9 @@ Statement ASTBuilder::ParseReturn()
     LOG("ParseReturn");
     Consume(TokenType::Keyword, "return");
     auto ret = ReturnStatement{};
-    ret.expr = unique_expression(ParseExpression(0));
+    auto next = Peek();
+    if (next->type() != TokenType::Punctator || next->value() != ";")
+        ret.expr = unique_expression(ParseExpression(0));
     Consume(TokenType::Punctator, ";");
     return ret;
 }
@@ -447,7 +476,7 @@ Statement ASTBuilder::ParseFor()
 
     // Update
     next = Peek();
-    if (next->type() != TokenType::Punctator)
+    if (next->value() != ")")
         ret.update = unique_expression(ParseExpression(0));
     Consume(TokenType::Punctator, ")");
 

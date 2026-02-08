@@ -73,6 +73,12 @@ std::optional<Type> DetermineType(const std::set<std::string> &type_specifiers)
     if (type_specifiers.empty())
         return std::nullopt;
 
+    if (type_specifiers.contains("void")) {
+        if (type_specifiers.size() != 1)
+            return std::nullopt;
+        return Type { VoidType{} };
+    }
+
     if (type_specifiers.contains("char")) {
         if (type_specifiers.size() == 1)
             return Type { BasicType::Char };
@@ -161,6 +167,11 @@ bool ArrayType::operator==(const ArrayType &other) const
     return *element == *other.element && count == other.count;
 }
 
+bool VoidType::operator==(const VoidType &) const
+{
+    return true;
+}
+
 bool Type::isBasic(BasicType type) const
 {
     if (auto p = std::get_if<BasicType>(&t))
@@ -176,6 +187,11 @@ bool Type::isFunction() const
 bool Type::isPointer() const
 {
     return std::holds_alternative<PointerType>(t);
+}
+
+bool Type::isVoid() const
+{
+    return std::holds_alternative<VoidType>(t);
 }
 
 bool Type::isArray() const
@@ -382,6 +398,8 @@ std::ostream &operator<<(std::ostream &os, const Type &type)
                 os << " [decayed]";
         } else if constexpr (std::is_same_v<T, ArrayType>)
             os << "ArrayType(" << *obj.element << ")[" << obj.count << "]";
+        else if constexpr (std::is_same_v<T, VoidType>)
+            os << "VoidType";
         else
             os << "typeless";
     }, type.t);

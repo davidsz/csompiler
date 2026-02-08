@@ -32,6 +32,8 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
     void operator()(DereferenceExpression &d) override;
     void operator()(AddressOfExpression &a) override;
     void operator()(SubscriptExpression &s) override;
+    void operator()(SizeOfExpression &s) override;
+    void operator()(SizeOfTypeExpression &s) override;
     void operator()(ReturnStatement &r) override;
     void operator()(IfStatement &i) override;
     void operator()(GotoStatement &g) override;

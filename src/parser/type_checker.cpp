@@ -569,6 +569,16 @@ Type TypeChecker::operator()(SubscriptExpression &s)
     return s.type;
 }
 
+Type TypeChecker::operator()(SizeOfExpression &)
+{
+    return Type{ BasicType::Long };
+}
+
+Type TypeChecker::operator()(SizeOfTypeExpression &)
+{
+    return Type{ BasicType::Long };
+}
+
 Type TypeChecker::operator()(ReturnStatement &r)
 {
     Type ret_type = VisitAndConvert(r.expr);

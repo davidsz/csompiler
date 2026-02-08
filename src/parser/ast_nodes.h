@@ -125,6 +125,12 @@ namespace parser {
     X(SubscriptExpression, \
         std::unique_ptr<Expression> pointer; \
         std::unique_ptr<Expression> index; \
+        Type type = Type{};) \
+    X(SizeOfExpression, \
+        std::unique_ptr<Expression> expr; \
+        Type type = Type{};) \
+    X(SizeOfTypeExpression, \
+        Type operand; \
         Type type = Type{};)
 
 #define AST_INITIALIZER_LIST(X) \

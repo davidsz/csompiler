@@ -28,6 +28,8 @@ public:
     ExpResult operator()(const parser::DereferenceExpression &d) override;
     ExpResult operator()(const parser::AddressOfExpression &a) override;
     ExpResult operator()(const parser::SubscriptExpression &s) override;
+    ExpResult operator()(const parser::SizeOfExpression &s) override;
+    ExpResult operator()(const parser::SizeOfTypeExpression &s) override;
     ExpResult operator()(const parser::ReturnStatement &r) override;
     ExpResult operator()(const parser::IfStatement &i) override;
     ExpResult operator()(const parser::GotoStatement &g) override;

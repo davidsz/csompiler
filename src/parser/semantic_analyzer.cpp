@@ -150,6 +150,14 @@ void SemanticAnalyzer::operator()(SubscriptExpression &s)
     std::visit(*this, *s.index);
 }
 
+void SemanticAnalyzer::operator()(SizeOfExpression &)
+{
+}
+
+void SemanticAnalyzer::operator()(SizeOfTypeExpression &)
+{
+}
+
 void SemanticAnalyzer::operator()(ReturnStatement &r)
 {
     std::visit(*this, *r.expr);

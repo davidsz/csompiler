@@ -603,6 +603,16 @@ ExpResult TACBuilder::operator()(const parser::SubscriptExpression &s)
     return DereferencedPointer{ add_ptr.dst };
 }
 
+ExpResult TACBuilder::operator()(const parser::SizeOfExpression &)
+{
+    return std::monostate();
+}
+
+ExpResult TACBuilder::operator()(const parser::SizeOfTypeExpression &)
+{
+    return std::monostate();
+}
+
 ExpResult TACBuilder::operator()(const parser::ReturnStatement &r)
 {
     auto ret = Return{};

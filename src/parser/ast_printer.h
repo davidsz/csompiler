@@ -23,6 +23,8 @@ struct ASTPrinter : public IASTVisitor<void> {
     void operator()(const DereferenceExpression &d) override;
     void operator()(const AddressOfExpression &a) override;
     void operator()(const SubscriptExpression &s) override;
+    void operator()(const SizeOfExpression &s) override;
+    void operator()(const SizeOfTypeExpression &s) override;
     void operator()(const ReturnStatement &s) override;
     void operator()(const IfStatement &i) override;
     void operator()(const GotoStatement &g) override;

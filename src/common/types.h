@@ -14,7 +14,8 @@
     X("signed") \
     X("unsigned") \
     X("double") \
-    X("char")
+    X("char") \
+    X("void")
 
 #define STORAGE_CLASS_LIST(X) \
     X(StorageStatic, "static") \
@@ -99,12 +100,17 @@ struct ArrayType {
     bool operator==(const ArrayType &other) const;
 };
 
+struct VoidType {
+    bool operator==(const VoidType &other) const;
+};
+
 using TypeInfo = std::variant<
     std::monostate,
     BasicType,
     FunctionType,
     PointerType,
-    ArrayType
+    ArrayType,
+    VoidType
 >;
 
 struct Type {
@@ -119,6 +125,7 @@ struct Type {
     bool isBasic(BasicType type) const;
     bool isFunction() const;
     bool isPointer() const;
+    bool isVoid() const;
     bool isArray() const;
     bool isInteger() const;
     bool isSigned() const;
