@@ -150,8 +150,9 @@ void SemanticAnalyzer::operator()(SubscriptExpression &s)
     std::visit(*this, *s.index);
 }
 
-void SemanticAnalyzer::operator()(SizeOfExpression &)
+void SemanticAnalyzer::operator()(SizeOfExpression &s)
 {
+    std::visit(*this, *s.expr);
 }
 
 void SemanticAnalyzer::operator()(SizeOfTypeExpression &)
@@ -160,7 +161,8 @@ void SemanticAnalyzer::operator()(SizeOfTypeExpression &)
 
 void SemanticAnalyzer::operator()(ReturnStatement &r)
 {
-    std::visit(*this, *r.expr);
+    if (r.expr)
+        std::visit(*this, *r.expr);
 }
 
 void SemanticAnalyzer::operator()(IfStatement &i)

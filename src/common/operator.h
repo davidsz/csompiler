@@ -102,3 +102,4 @@ BinaryOperator compoundToBinary(BinaryOperator op);
 
 BinaryOperator unaryToBinary(UnaryOperator op);
 bool canBePostfix(UnaryOperator op);
+bool isLogical(UnaryOperator op);

@@ -126,8 +126,12 @@ struct Type {
     bool isFunction() const;
     bool isPointer() const;
     bool isVoid() const;
+    bool isVoidPointer() const;
     bool isArray() const;
     bool isInteger() const;
+    bool isComplete() const;
+    bool isCompletePointer() const;
+    bool isScalar() const;
     bool isSigned() const;
     bool isArithmetic() const;
     bool isCharacter() const;

@@ -194,6 +194,13 @@ bool Type::isVoid() const
     return std::holds_alternative<VoidType>(t);
 }
 
+bool Type::isVoidPointer() const
+{
+    if (auto pointer_type = std::get_if<PointerType>(&t))
+        return pointer_type->referenced->isVoid();
+    return false;
+}
+
 bool Type::isArray() const
 {
     return std::holds_alternative<ArrayType>(t);
@@ -217,6 +224,23 @@ bool Type::isInteger() const
     default:
         return false;
     }
+}
+
+bool Type::isComplete() const
+{
+    return !isVoid();
+}
+
+bool Type::isCompletePointer() const
+{
+    if (auto pointer_type = std::get_if<PointerType>(&t))
+        return pointer_type->referenced->isComplete();
+    return false;
+}
+
+bool Type::isScalar() const
+{
+    return !isVoid() && !isArray() && !isFunction();
 }
 
 bool Type::isSigned() const

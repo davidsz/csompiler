@@ -77,6 +77,10 @@ static std::unique_ptr<Expression> convertByAssignment(
         return explicitCast(std::move(expr), from_type, to_type);
     if (isNullPointerExpression(*expr) && to_type.isPointer())
         return explicitCast(std::move(expr), from_type, to_type);
+    if (from_type.isPointer() && to_type.isVoidPointer())
+        return explicitCast(std::move(expr), from_type, to_type);
+    if (from_type.isVoidPointer() && to_type.isPointer())
+        return explicitCast(std::move(expr), from_type, to_type);
     return nullptr;
 }
 
@@ -124,6 +128,10 @@ static std::optional<Type> getCommonPointerType(
         return second_type;
     if (isNullPointerExpression(second_expr))
         return first_type;
+    if (first_type.isVoidPointer() && second_type.isPointer())
+        return first_type;
+    if (first_type.isPointer() && second_type.isVoidPointer())
+        return second_type;
     return std::nullopt;
 }
 
@@ -234,6 +242,21 @@ Type TypeChecker::VisitAndConvert(std::unique_ptr<Expression> &expr)
     return type;
 }
 
+void TypeChecker::ValidateTypeSpecifier(const Type &type)
+{
+    if (auto array_type = type.getAs<ArrayType>()) {
+        if (!array_type->element->isComplete())
+            Abort("Illegal array of incomplete type");
+        ValidateTypeSpecifier(*array_type->element);
+    } else if (auto pointer_type = type.getAs<PointerType>())
+        ValidateTypeSpecifier(*pointer_type->referenced);
+    else if (auto function_type = type.getAs<FunctionType>()) {
+        for (auto &p : function_type->params)
+            ValidateTypeSpecifier(*p);
+        ValidateTypeSpecifier(*function_type->ret);
+    }
+}
+
 Type TypeChecker::operator()(ConstantExpression &c)
 {
     return c.type;
@@ -261,19 +284,26 @@ Type TypeChecker::operator()(VariableExpression &v)
 
 Type TypeChecker::operator()(CastExpression &c)
 {
+    // c.type was already determined in the AST builder
+    ValidateTypeSpecifier(c.type);
     c.inner_type = Type{ VisitAndConvert(c.expr) };
-    // .type is already determined in the AST builder
-    if (c.type.isArray())
-        Abort("Not allowed to cast an expression to an array type.");
+    if (c.type.isVoid())
+        return c.type;
+    if (!c.type.isScalar())
+        Abort("Not allowed to cast an expression to a non-scalar type");
+    if (!c.inner_type.isScalar())
+        Abort("Cannot cast non-scalar expression to scalar type");
     if ((c.inner_type.isPointer() && c.type.isBasic(Double))
         || (c.inner_type.isBasic(Double) && c.type.isPointer()))
-        Abort("Not allowed to cast pointer from/to a floating point type.");
+        Abort("Not allowed to cast pointer from/to a floating point type");
     return c.type;
 }
 
 Type TypeChecker::operator()(UnaryExpression &u)
 {
     Type type = VisitAndConvert(u.expr);
+    if (!type.isScalar())
+        Abort("Unary operators only apply to scalar expressions");
     // canBePostfix also covers the prefix versions of ++ and --
     if (canBePostfix(u.op) && !isLvalue(*u.expr, type))
         Abort("Invalid lvalue in unary expression");
@@ -307,6 +337,8 @@ Type TypeChecker::operator()(BinaryExpression &b)
     Type right_type = VisitAndConvert(b.rhs);
 
     if (b.op == BinaryOperator::And || b.op == BinaryOperator::Or) {
+        if (!left_type.isScalar() || !right_type.isScalar())
+            Abort("Logical operators only apply to scalar expressions");
         // Return value of logical operators can be represented as an integer
         b.type = Type{ BasicType::Int };
         return b.type;
@@ -346,11 +378,11 @@ Type TypeChecker::operator()(BinaryExpression &b)
 
     // Pointer arithmetics
     if (b.op == Add) {
-        if (left_type.isPointer() && right_type.isInteger()) {
+        if (left_type.isCompletePointer() && right_type.isInteger()) {
             b.rhs = explicitCast(std::move(b.rhs), right_type, Type{ BasicType::Long });
             b.type = left_type;
             return b.type;
-        } else if (left_type.isInteger() && right_type.isPointer()) {
+        } else if (left_type.isInteger() && right_type.isCompletePointer()) {
             b.lhs = explicitCast(std::move(b.lhs), left_type, Type{ BasicType::Long });
             b.type = right_type;
             return b.type;
@@ -358,17 +390,18 @@ Type TypeChecker::operator()(BinaryExpression &b)
             Abort("Invalid operands for addition.");
     }
     if (b.op == Subtract) {
-        if (left_type.isPointer() && right_type.isInteger()) {
+        if (left_type.isCompletePointer() && right_type.isInteger()) {
             b.rhs = explicitCast(std::move(b.rhs), right_type, Type{ BasicType::Long });
             b.type = left_type;
             return b.type;
-        } else if (left_type.isPointer() && left_type == right_type) {
+        } else if (left_type.isCompletePointer() && left_type == right_type) {
             // Difference of two pointers: the number of array elements between them
             b.type = Type{ BasicType::Long };  // This would be ptrdiff_t officially
             return b.type;
         } else if (!left_type.isArithmetic() && !right_type.isArithmetic())
             Abort("Invalid operands for subtraction.");
     }
+
     if (b.op == LessThan || b.op == LessOrEqual || b.op == GreaterThan || b.op == GreaterOrEqual) {
         if (left_type.isPointer() && right_type.isPointer()) {
             if (left_type == right_type) {
@@ -377,6 +410,8 @@ Type TypeChecker::operator()(BinaryExpression &b)
             } else
                 Abort("Not allowed operation between different pointer types.");
         }
+        if (!left_type.isArithmetic() || !right_type.isArithmetic())
+            Abort(std::format("Invalid operand types for {} expression", toString(b.op)));
     }
     if (b.op == BinaryOperator::Equal || b.op == BinaryOperator::NotEqual) {
         if (left_type.isPointer() || right_type.isPointer()) {
@@ -389,6 +424,8 @@ Type TypeChecker::operator()(BinaryExpression &b)
             } else
                 Abort("Expressions have incompatible pointer types");
         }
+        if (!left_type.isArithmetic() || !right_type.isArithmetic())
+            Abort(std::format("Invalid operand types for {} expression", toString(b.op)));
     }
     // We already handled all valid pointer arithmetic operations
     if ((left_type.isPointer() && right_type.isArithmetic())
@@ -491,13 +528,21 @@ Type TypeChecker::operator()(CompoundAssignmentExpression &c)
 Type TypeChecker::operator()(ConditionalExpression &c)
 {
     Type condition_type = VisitAndConvert(c.condition);
+    if (!condition_type.isScalar())
+        Abort("Conditional expression must have a scalar type condition");
+
     if (condition_type.isBasic(Double))
         c.condition = notNot(std::move(c.condition));
     Type true_type = VisitAndConvert(c.trueBranch);
     Type false_type = VisitAndConvert(c.falseBranch);
 
     Type common_type;
-    if (true_type.isPointer() || false_type.isPointer()) {
+    if (true_type.isVoid() || false_type.isVoid()) {
+        if (true_type != false_type)
+            Abort("Expressions have incompatible void types");
+        c.type = Type { VoidType{ } };
+        return c.type;
+    } else if (true_type.isPointer() || false_type.isPointer()) {
         if (auto cpt = getCommonPointerType(*c.trueBranch, true_type, *c.falseBranch, false_type))
             common_type = *cpt;
         else
@@ -534,9 +579,11 @@ Type TypeChecker::operator()(FunctionCallExpression &f)
 Type TypeChecker::operator()(DereferenceExpression &d)
 {
     Type type = VisitAndConvert(d.expr);
-    if (PointerType *pointer_type = type.getAs<PointerType>())
+    if (PointerType *pointer_type = type.getAs<PointerType>()) {
+        if (pointer_type->referenced->isVoid())
+            Abort("Can't dereference a void pointer");
         d.type = *pointer_type->referenced;
-    else
+    } else
         Abort("Can't dereference a non-pointer");
     return d.type;
 }
@@ -555,45 +602,57 @@ Type TypeChecker::operator()(SubscriptExpression &s)
     Type base_type = VisitAndConvert(s.pointer);
     Type index_type = VisitAndConvert(s.index);
     Type result_type;
-    if (base_type.isPointer() && index_type.isInteger()) {
+    if (base_type.isCompletePointer() && index_type.isInteger()) {
         // array_name[index]
         result_type = base_type;
         s.index = explicitCast(std::move(s.index), index_type, Type{ BasicType::Long });
-    } else if (base_type.isInteger() && index_type.isPointer()) {
+    } else if (base_type.isInteger() && index_type.isCompletePointer()) {
         // index[array_name]
         result_type = index_type;
         s.pointer = explicitCast(std::move(s.pointer), base_type, Type{ BasicType::Long });
     } else
-        Abort("Subscript expressions must have pointer and integer operands.");
+        Abort("Subscript expressions must have a (complete) pointer and integer operands.");
     s.type = *result_type.getAs<PointerType>()->referenced;
     return s.type;
 }
 
-Type TypeChecker::operator()(SizeOfExpression &)
+Type TypeChecker::operator()(SizeOfExpression &s)
 {
-    return Type{ BasicType::Long };
+    s.type = std::visit(*this, *s.expr);
+    if (!s.type.isComplete())
+        Abort("Can't take the size of an incomplete type");
+    return Type{ BasicType::ULong };
 }
 
-Type TypeChecker::operator()(SizeOfTypeExpression &)
+Type TypeChecker::operator()(SizeOfTypeExpression &s)
 {
-    return Type{ BasicType::Long };
+    ValidateTypeSpecifier(s.operand);
+    if (!s.operand.isComplete())
+        Abort("Can't take the size of an incomplete type");
+    return Type{ BasicType::ULong };
 }
 
 Type TypeChecker::operator()(ReturnStatement &r)
 {
-    Type ret_type = VisitAndConvert(r.expr);
-    r.expr = convertByAssignment(
-        std::move(r.expr),
-        ret_type,
-        *std::get<FunctionType>(m_functionTypeStack.back().t).ret);
-    if (!r.expr)
-        Abort("Can't convert return type");
+    Type function_return_type = *std::get<FunctionType>(m_functionTypeStack.back().t).ret;
+    if (r.expr) {
+        if (function_return_type.isVoid())
+            Abort("Void function can't return a value");
+        Type ret_type = VisitAndConvert(r.expr);
+        if (!(r.expr = convertByAssignment(std::move(r.expr), ret_type, function_return_type)))
+            Abort("Can't convert return type");
+    } else {
+        if (!function_return_type.isVoid())
+            Abort("Function must return a value");
+    }
     return Type{ std::monostate() };
 }
 
 Type TypeChecker::operator()(IfStatement &i)
 {
     Type condition_type = VisitAndConvert(i.condition);
+    if (!condition_type.isScalar())
+        Abort("The if statement should have a scalar condition type");
     if (condition_type.isBasic(Double))
         i.condition = notNot(std::move(i.condition));
     std::visit(*this, *i.trueBranch);
@@ -644,6 +703,8 @@ Type TypeChecker::operator()(ContinueStatement &)
 Type TypeChecker::operator()(WhileStatement &w)
 {
     Type condition_type = VisitAndConvert(w.condition);
+    if (!condition_type.isScalar())
+        Abort("While loop should have a scalar condition type");
     if (condition_type.isBasic(Double))
         w.condition = notNot(std::move(w.condition));
     std::visit(*this, *w.body);
@@ -654,6 +715,8 @@ Type TypeChecker::operator()(DoWhileStatement &d)
 {
     std::visit(*this, *d.body);
     Type condition_type = VisitAndConvert(d.condition);
+    if (!condition_type.isScalar())
+        Abort("Do-while loop should have a scalar condition type");
     if (condition_type.isBasic(Double))
         d.condition = notNot(std::move(d.condition));
     return Type{ std::monostate() };
@@ -668,6 +731,8 @@ Type TypeChecker::operator()(ForStatement &f)
     }
     if (f.condition) {
         Type condition_type = VisitAndConvert(f.condition);
+        if (!condition_type.isScalar())
+            Abort("For loop should have a scalar condition type");
         if (condition_type.isBasic(Double))
             f.condition = notNot(std::move(f.condition));
     }
@@ -721,7 +786,9 @@ Type TypeChecker::operator()(DefaultStatement &d)
 
 Type TypeChecker::operator()(FunctionDeclaration &f)
 {
-    // f.type was already determined the AST build
+    // f.type was already determined during the AST build
+    ValidateTypeSpecifier(f.type);
+
     FunctionType *function_type = f.type.getAs<FunctionType>();
     if (function_type->ret->isArray())
         Abort(std::format("Function '{}' can't return an array", f.name));
@@ -733,14 +800,16 @@ Type TypeChecker::operator()(FunctionDeclaration &f)
     bool is_global = f.storage != StorageStatic;
 
     // Adjust the parameter list to accept arrays as pointers
-    auto params_types = function_type->params;
+    auto param_types = function_type->params;
     std::vector<std::shared_ptr<Type>> adjusted_param_types;
     for (size_t i = 0; i < f.params.size(); i++) {
         Type adjusted_type;
-        if (ArrayType *arr = params_types[i]->getAs<ArrayType>())
+        if (param_types[i]->isVoid())
+            Abort(std::format("Can't declare a parameter of type void in function '{}'", f.name));
+        else if (ArrayType *arr = param_types[i]->getAs<ArrayType>())
             adjusted_type = Type{ PointerType{ .referenced = arr->element, .decayed = true } };
         else
-            adjusted_type = *params_types[i];
+            adjusted_type = *param_types[i];
         adjusted_param_types.push_back(std::make_shared<Type>(adjusted_type));
     }
     function_type->params = std::move(adjusted_param_types);
@@ -782,6 +851,11 @@ Type TypeChecker::operator()(FunctionDeclaration &f)
 
 Type TypeChecker::operator()(VariableDeclaration &v)
 {
+    // v.type was already determined during the AST build
+    if (v.type.isVoid())
+        Abort("Can't declare a variable of type void");
+    ValidateTypeSpecifier(v.type);
+
     if (m_forLoopInitializer && v.storage != StorageDefault)
         Abort("Initializer of a for loop can't have storage specifier");
 

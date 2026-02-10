@@ -255,3 +255,8 @@ bool canBePostfix(UnaryOperator op)
 {
     return op == UnaryOperator::Increment || op == UnaryOperator::Decrement;
 }
+
+bool isLogical(UnaryOperator op)
+{
+    return op == UnaryOperator::Not || op == UnaryOperator::BitwiseComplement;
+}
