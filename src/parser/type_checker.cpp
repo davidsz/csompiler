@@ -304,9 +304,14 @@ Type TypeChecker::operator()(UnaryExpression &u)
     Type type = VisitAndConvert(u.expr);
     if (!type.isScalar())
         Abort("Unary operators only apply to scalar expressions");
-    // canBePostfix also covers the prefix versions of ++ and --
-    if (canBePostfix(u.op) && !isLvalue(*u.expr, type))
-        Abort("Invalid lvalue in unary expression");
+    if (isMutating(u.op)) {
+        if (!isLvalue(*u.expr, type))
+            Abort(std::format("Invalid lvalue in {} unary expression", toString(u.op)));
+        if (PointerType *pointer_type = type.getAs<PointerType>()) {
+            if (!pointer_type->referenced->isComplete())
+                Abort("Incomplete pointer type in unary expression");
+        }
+    }
 
     if (type.isBasic(Double) && u.op == UnaryOperator::BitwiseComplement)
         Abort("The type of a unary bitwise complement operation can't be double.");
@@ -315,9 +320,9 @@ Type TypeChecker::operator()(UnaryExpression &u)
     if (type.isPointer() && u.op == UnaryOperator::Negate)
         Abort("Can't negate a pointer type.");
 
-    // This is not necessarily correct; ++ and -- should be integer promoted,
+    // This is not necessarily correct; ++ and -- also should be integer promoted,
     // but we avoid that in order to keep the one byte representation.
-    if (type.isCharacter() && !canBePostfix(u.op)) {
+    if (type.isCharacter() && !isMutating(u.op)) {
         Type promotedType = type.promotedType();
         u.expr = explicitCast(std::move(u.expr), type, promotedType);
         u.type = promotedType;
@@ -496,6 +501,9 @@ Type TypeChecker::operator()(CompoundAssignmentExpression &c)
             || c.op == BinaryOperator::AssignLShift
             || c.op == BinaryOperator::AssignRShift)
             Abort("The type of the given compound operation can't be a pointer.");
+
+        if (!left_type.isCompletePointer())
+            Abort("The left side of += and -= must be a complete pointer.");
 
         if (!right_type.isInteger())
             Abort("The right side of += and -= must be integer if left is a pointer.");

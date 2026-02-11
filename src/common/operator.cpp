@@ -260,3 +260,8 @@ bool isLogical(UnaryOperator op)
 {
     return op == UnaryOperator::Not || op == UnaryOperator::BitwiseComplement;
 }
+
+bool isMutating(UnaryOperator op)
+{
+    return op == UnaryOperator::Increment || op == UnaryOperator::Decrement;
+}
