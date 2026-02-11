@@ -43,7 +43,7 @@ enum WordType {
 };
 
 struct ByteArray {
-    int size;
+    size_t size;
     int alignment;
 };
 
@@ -136,8 +136,7 @@ struct Type {
     bool isArithmetic() const;
     bool isCharacter() const;
     bool isInitialized() const;
-    // TODO: Use size_t instead of int
-    int size() const;
+    size_t size() const;
     int alignment() const;
     WordType wordType() const;
     Type storedType() const;

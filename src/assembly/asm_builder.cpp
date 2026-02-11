@@ -646,7 +646,7 @@ Operand ASMBuilder::operator()(const tac::AddPtr &a)
     // If the index operand is a constant, we can save an instruction
     // by computing index * scale at compile time.
     if (auto const_index = std::get_if<tac::Constant>(&a.index)) {
-        int offset = castTo<int>(const_index->value) * a.scale;
+        int offset = castTo<int>(const_index->value) * static_cast<int>(a.scale);
         m_instructions.push_back(Mov{ ptr, Reg{ AX, 8 }, Quadword });
         m_instructions.push_back(Lea{ Memory{ AX, offset }, dst });
         return std::monostate();

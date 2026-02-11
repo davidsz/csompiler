@@ -618,10 +618,11 @@ Type TypeChecker::operator()(SubscriptExpression &s)
 
 Type TypeChecker::operator()(SizeOfExpression &s)
 {
-    s.type = std::visit(*this, *s.expr);
-    if (!s.type.isComplete())
+    s.inner_type = std::visit(*this, *s.expr);
+    if (!s.inner_type.isComplete())
         Abort("Can't take the size of an incomplete type");
-    return Type{ BasicType::ULong };
+    s.type = Type{ BasicType::ULong };
+    return s.type;
 }
 
 Type TypeChecker::operator()(SizeOfTypeExpression &s)
@@ -629,7 +630,8 @@ Type TypeChecker::operator()(SizeOfTypeExpression &s)
     ValidateTypeSpecifier(s.operand);
     if (!s.operand.isComplete())
         Abort("Can't take the size of an incomplete type");
-    return Type{ BasicType::ULong };
+    s.type = Type{ BasicType::ULong };
+    return s.type;
 }
 
 Type TypeChecker::operator()(ReturnStatement &r)

@@ -78,7 +78,7 @@ namespace tac {
     X(AddPtr, \
         Value ptr; \
         Value index; \
-        int scale; \
+        size_t scale; \
         Value dst;) \
     X(CopyToOffset, \
         Value src; \

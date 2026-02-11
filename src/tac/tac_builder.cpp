@@ -434,11 +434,13 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
 
                 auto ptr_type = lhs_type.getAs<PointerType>();
                 assert(ptr_type);
-                int elem_size = ptr_type->referenced->size();
+                size_t elem_size = ptr_type->referenced->size();
                 auto result = Binary{
                     .op = BinaryOperator::Divide,
                     .src1 = diff.dst,
-                    .src2 = Constant{ MakeConstantValue(elem_size, Type{ BasicType::Long }) },
+                    .src2 = Constant{
+                        MakeConstantValue(static_cast<long>(elem_size), Type{ BasicType::Long })
+                    },
                     .dst = CreateTemporaryVariable(Type{ BasicType::Long })
                 };
                 m_instructions.push_back(result);
@@ -612,14 +614,14 @@ ExpResult TACBuilder::operator()(const parser::SubscriptExpression &s)
 ExpResult TACBuilder::operator()(const parser::SizeOfExpression &s)
 {
     return PlainOperand{
-        Constant{ MakeConstantValue(s.type.size(), Type{ BasicType::ULong }) }
+        Constant{ MakeConstantValue(static_cast<long>(s.inner_type.size()), Type{ BasicType::ULong }) }
     };
 }
 
 ExpResult TACBuilder::operator()(const parser::SizeOfTypeExpression &s)
 {
     return PlainOperand{
-        Constant{ MakeConstantValue(s.operand.size(), Type{ BasicType::ULong }) }
+        Constant{ MakeConstantValue(static_cast<long>(s.operand.size()), Type{ BasicType::ULong }) }
     };
 }
 

@@ -128,6 +128,7 @@ namespace parser {
         Type type = Type{};) \
     X(SizeOfExpression, \
         std::unique_ptr<Expression> expr; \
+        Type inner_type = Type{}; \
         Type type = Type{};) \
     X(SizeOfTypeExpression, \
         Type operand; \

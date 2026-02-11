@@ -276,7 +276,7 @@ Expression ASTBuilder::ParseConstantExpression()
     LOG("ParseConstantExpression");
     auto next = Peek();
     if (next->type() == TokenType::CharLiteral)
-        return ConstantExpression{ (char)(Consume(TokenType::CharLiteral)[0]), Type{ BasicType::Char } };
+        return ConstantExpression{ (int)(Consume(TokenType::CharLiteral)[0]), Type{ BasicType::Int } };
 
     std::string literal = Consume(TokenType::NumericLiteral);
     // Parse suffixes
@@ -324,8 +324,8 @@ Expression ASTBuilder::ParseConstantExpression()
         long value = std::stol(literal);
         if (hasL)
             return ConstantExpression{ value, Type{ BasicType::Long } };
-        if (value > std::numeric_limits<int>::min() &&
-            value < std::numeric_limits<int>::max()) {
+        if (value >= std::numeric_limits<int>::min() &&
+            value <= std::numeric_limits<int>::max()) {
                 return ConstantExpression{ static_cast<int>(value), Type{ BasicType::Int } };
         }
         return ConstantExpression{ value, Type{ BasicType::Long } };

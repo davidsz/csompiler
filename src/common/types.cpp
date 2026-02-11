@@ -122,7 +122,7 @@ bool AssemblyType::isByteArray() const
 int AssemblyType::size() const
 {
     if (auto b = std::get_if<ByteArray>(&t))
-        return b->size;
+        return static_cast<int>(b->size);
     auto w = std::get_if<WordType>(&t);
     assert(w);
     switch (*w) {
@@ -308,12 +308,12 @@ bool Type::isInitialized() const
     return !std::holds_alternative<std::monostate>(t);
 }
 
-int Type::size() const
+size_t Type::size() const
 {
     if (isPointer())
         return 8;
     if (const ArrayType *arr = std::get_if<ArrayType>(&t))
-        return arr->element->size() * static_cast<int>(arr->count);
+        return arr->element->size() * arr->count;
     const BasicType *basic_type = std::get_if<BasicType>(&t);
     if (!basic_type)
         return 0;
@@ -336,14 +336,14 @@ int Type::size() const
 
 int Type::alignment() const
 {
-    int size = this->size();
+    size_t size = this->size();
     if (size > 16)
         return 16;
     if (auto array_type = std::get_if<ArrayType>(&t)) {
-        int element_size = array_type->element->size();
-        return element_size % 2 ? element_size + 1 : element_size;
+        size_t element_size = array_type->element->size();
+        return static_cast<int>(element_size % 2 ? element_size + 1 : element_size);
     }
-    return size;
+    return static_cast<int>(size);
 }
 
 WordType Type::wordType() const
