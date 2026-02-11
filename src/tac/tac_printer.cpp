@@ -6,7 +6,9 @@ namespace tac {
 void TACPrinter::operator()(const tac::Return &r)
 {
     pad(); std::cout << "Return(" << std::endl;
-    tab(); std::visit(*this, r.val); shift_tab();
+    if (r.val) {
+        tab(); std::visit(*this, *r.val); shift_tab();
+    }
     pad(); std::cout << ")" << std::endl;
 }
 
@@ -111,7 +113,8 @@ void TACPrinter::operator()(const tac::FunctionCall &f)
     tab();
     for (auto &arg : f.args)
         std::visit(*this, arg);
-    std::visit(*this, f.dst);
+    if (f.dst)
+        std::visit(*this, *f.dst);
     shift_tab();
 }
 

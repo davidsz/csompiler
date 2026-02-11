@@ -96,21 +96,26 @@ void ASMBuilder::Comment(std::list<Instruction> &i, const std::string &text)
 
 Operand ASMBuilder::operator()(const tac::Return &r)
 {
-    WordType type = GetWordType(r.val);
+    if (!r.val) {
+        m_instructions.push_back(Ret{ });
+        return std::monostate();
+    }
+
+    WordType type = GetWordType(*r.val);
     if (type == Doubleword) {
         m_instructions.push_back(Mov{
-            std::visit(*this, r.val),
+            std::visit(*this, *r.val),
             Reg{ XMM0, 8 },
             Doubleword
         });
     } else {
         m_instructions.push_back(Mov{
-            std::visit(*this, r.val),
+            std::visit(*this, *r.val),
             Reg{ AX, GetBytesOfWordType(type) },
             type
         });
     }
-    m_instructions.push_back(Ret{});
+    m_instructions.push_back(Ret{ });
     return std::monostate();
 }
 
@@ -469,20 +474,22 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
         });
     }
 
-    // Retrieve the return value
-    WordType return_type = GetWordType(f.dst);
+    // Retrieve the return value if needed
+    if (!f.dst)
+        return std::monostate();
+    WordType return_type = GetWordType(*f.dst);
     if (return_type == Doubleword) {
         Comment(m_instructions, "The return value is in XMM0");
         m_instructions.push_back(Mov{
             Reg{ XMM0, GetBytesOfWordType(return_type) },
-            std::visit(*this, f.dst),
+            std::visit(*this, *f.dst),
             Doubleword
         });
     } else {
         Comment(m_instructions, "The return value is in AX");
         m_instructions.push_back(Mov{
             Reg{ AX, GetBytesOfWordType(return_type) },
-            std::visit(*this, f.dst),
+            std::visit(*this, *f.dst),
             return_type
         });
     }

@@ -274,6 +274,8 @@ ExpResult TACBuilder::operator()(const parser::VariableExpression &v)
 ExpResult TACBuilder::operator()(const parser::CastExpression &c)
 {
     Value result = VisitAndConvert(*c.expr);
+    if (c.type.isVoid())
+        return PlainOperand{ Variant{ "DUMMY" } };
     if (c.type == c.inner_type)
         return PlainOperand{ result };
     return PlainOperand{
@@ -534,17 +536,20 @@ ExpResult TACBuilder::operator()(const parser::ConditionalExpression &c)
 {
     auto label_end = MakeNameUnique("end");
     auto label_false_branch = MakeNameUnique("false_branch");
-    Value result = CreateTemporaryVariable(c.type);
+    Value result = c.type.isVoid() ? Variant{ "DUMMY" } : CreateTemporaryVariable(c.type);
 
     Value condition = VisitAndConvert(*c.condition);
     m_instructions.push_back(JumpIfZero{ condition, label_false_branch });
+
     Value true_branch_value = VisitAndConvert(*c.trueBranch);
-    m_instructions.push_back(Copy{ true_branch_value, result });
+    if (!c.type.isVoid())
+        m_instructions.push_back(Copy{ true_branch_value, result });
     m_instructions.push_back(Jump{ label_end });
 
     m_instructions.push_back(Label{ label_false_branch });
     Value false_branch_value = VisitAndConvert(*c.falseBranch);
-    m_instructions.push_back(Copy{ false_branch_value, result });
+    if (!c.type.isVoid())
+        m_instructions.push_back(Copy{ false_branch_value, result });
     m_instructions.push_back(Label{ label_end });
 
     return PlainOperand{ result };
@@ -556,9 +561,10 @@ ExpResult TACBuilder::operator()(const parser::FunctionCallExpression &f)
     ret.identifier = f.identifier;
     for (auto &a : f.args)
         ret.args.push_back(VisitAndConvert(*a));
-    ret.dst = CreateTemporaryVariable(f.type);
+    if (!f.type.isVoid())
+        ret.dst = CreateTemporaryVariable(f.type);
     m_instructions.push_back(ret);
-    return PlainOperand{ ret.dst };
+    return PlainOperand{ ret.dst ? *ret.dst : Variant{ "DUMMY" } };
 }
 
 ExpResult TACBuilder::operator()(const parser::DereferenceExpression &d)
@@ -603,20 +609,25 @@ ExpResult TACBuilder::operator()(const parser::SubscriptExpression &s)
     return DereferencedPointer{ add_ptr.dst };
 }
 
-ExpResult TACBuilder::operator()(const parser::SizeOfExpression &)
+ExpResult TACBuilder::operator()(const parser::SizeOfExpression &s)
 {
-    return std::monostate();
+    return PlainOperand{
+        Constant{ MakeConstantValue(s.type.size(), Type{ BasicType::ULong }) }
+    };
 }
 
-ExpResult TACBuilder::operator()(const parser::SizeOfTypeExpression &)
+ExpResult TACBuilder::operator()(const parser::SizeOfTypeExpression &s)
 {
-    return std::monostate();
+    return PlainOperand{
+        Constant{ MakeConstantValue(s.operand.size(), Type{ BasicType::ULong }) }
+    };
 }
 
 ExpResult TACBuilder::operator()(const parser::ReturnStatement &r)
 {
     auto ret = Return{};
-    ret.val = VisitAndConvert(*r.expr);
+    if (r.expr)
+        ret.val = VisitAndConvert(*r.expr);
     m_instructions.push_back(ret);
     return std::monostate();
 }
@@ -792,7 +803,10 @@ ExpResult TACBuilder::operator()(const parser::FunctionDeclaration &f)
         // and will be optimised out in later stages.
         const FunctionType *type = f.type.getAs<FunctionType>();
         assert(type);
-        func.inst.push_back(Return{ Constant{ MakeConstantValue(0, *(type->ret)) } });
+        if (type->ret->isVoid())
+            func.inst.push_back(Return{ });
+        else
+            func.inst.push_back(Return{ Constant{ MakeConstantValue(0, *(type->ret)) } });
     }
 
     if (const SymbolEntry *entry = m_symbolTable->get(f.name))

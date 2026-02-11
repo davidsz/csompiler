@@ -18,7 +18,7 @@ namespace tac {
 
 #define TAC_INSTRUCTION_LIST(X) \
     X(Return, \
-        Value val;) \
+        std::optional<Value> val;) \
     X(Unary, \
         UnaryOperator op; \
         Value src; \
@@ -53,7 +53,7 @@ namespace tac {
     X(FunctionCall, \
         std::string identifier; \
         std::vector<Value> args; \
-        Value dst;) \
+        std::optional<Value> dst;) \
     X(SignExtend, \
         Value src; \
         Value dst;) \
