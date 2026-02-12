@@ -119,11 +119,11 @@ char Tokenizer::Step()
     return ret;
 }
 
-char Tokenizer::PeekNextChar()
+char Tokenizer::PeekNextChar(size_t i)
 {
-    if (m_string.length() == m_pos - 1)
+    if (m_string.length() == m_pos + i - 1)
         return 0;
-    return m_string[m_pos];
+    return m_string[m_pos + i];
 }
 
 char Tokenizer::PreviousChar()
@@ -175,11 +175,11 @@ Token Tokenizer::MakeNumericLiteral()
             literal += ParseExponent();
             next = PeekNextChar();
             if (is_numeric_suffix(next))
-                literal += ParseNumericSuffixes(/* after_exponent */ true);
+                literal += ParseNumericSuffixes(dot_count, /* after_exponent */ true);
             break;
         }
         if (is_numeric_suffix(next)) {
-            literal += ParseNumericSuffixes(/* after_exponent */ false);
+            literal += ParseNumericSuffixes(dot_count, /* after_exponent */ false);
             break;
         }
         break;
@@ -193,7 +193,7 @@ Token Tokenizer::MakeNumericLiteral()
     return CreateToken(Token::NumericLiteral, literal);
 }
 
-std::string Tokenizer::ParseNumericSuffixes(bool after_exponent)
+std::string Tokenizer::ParseNumericSuffixes(bool is_fractional, bool after_exponent)
 {
     char next = PeekNextChar();
     assert(is_numeric_suffix(next));
@@ -204,6 +204,8 @@ std::string Tokenizer::ParseNumericSuffixes(bool after_exponent)
     while (true) {
         next = PeekNextChar();
         if (next == 'l' || next == 'L') {
+            if (is_fractional)
+                AbortAtPosition("Fractional numeric literals can't have a L suffix.");
             if (++l_count > 1)
                 AbortAtPosition("This implementation supports only one L suffix in numeric literals.");
             suffixes += next;
@@ -211,6 +213,8 @@ std::string Tokenizer::ParseNumericSuffixes(bool after_exponent)
             continue;
         }
         if (next == 'u' || next == 'U') {
+            if (is_fractional)
+                AbortAtPosition("Fractional numeric literals can't have a U suffix.");
             if (++u_count > 1)
                 AbortAtPosition("Numeric literals can have only one U suffix.");
             if (after_exponent)
@@ -350,6 +354,7 @@ Token Tokenizer::MakeOperator(char first)
         case '-':
             if (next == '-') { Step(); return CreateToken(Token::Operator, "--"); }
             if (next == '=') { Step(); return CreateToken(Token::Operator, "-="); }
+            if (next == '>') { Step(); return CreateToken(Token::Operator, "->"); }
             break;
         case '+':
             if (next == '+') { Step(); return CreateToken(Token::Operator, "++"); }
@@ -438,7 +443,9 @@ std::optional<Token> Tokenizer::NextToken()
             continue;
         }
 
-        if (std::isdigit(c) || c == '.')
+        if (std::isdigit(c))
+            return MakeNumericLiteral();
+        if (c == '.' && std::isdigit(PeekNextChar(1)))
             return MakeNumericLiteral();
 
         if (c == '"')

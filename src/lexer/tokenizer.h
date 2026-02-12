@@ -21,7 +21,7 @@ public:
 
 private:
     char Step();
-    char PeekNextChar();
+    char PeekNextChar(size_t i = 0);
     char PreviousChar();
 
     void AbortAtPosition(std::string_view);
@@ -30,7 +30,7 @@ private:
     void SkipWhitespace();
     void SkipComment();
     Token MakeNumericLiteral();
-    std::string ParseNumericSuffixes(bool after_exponent);
+    std::string ParseNumericSuffixes(bool is_fractional, bool after_exponent);
     std::string ParseExponent();
     Token MakeStringLiteral();
     Token MakeCharLiteral();
