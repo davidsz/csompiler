@@ -73,7 +73,7 @@ private:
         AbstractArrayDeclarator
     >;
 
-    Declaration ParseDeclaration(bool allow_function = true);
+    Declaration ParseDeclaration(bool only_variable = false);
     Declarator ParseDeclarator();
     std::tuple<std::string, Type, std::vector<std::string>>
         ProcessDeclarator(const Declarator &, const Type &);

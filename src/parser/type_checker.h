@@ -22,6 +22,8 @@ struct TypeChecker : public IASTMutatingVisitor<Type> {
     Type operator()(SubscriptExpression &s) override;
     Type operator()(SizeOfExpression &s) override;
     Type operator()(SizeOfTypeExpression &s) override;
+    Type operator()(DotExpression &d) override;
+    Type operator()(ArrowExpression &a) override;
     Type operator()(ReturnStatement &r) override;
     Type operator()(IfStatement &i) override;
     Type operator()(GotoStatement &g) override;
@@ -39,6 +41,7 @@ struct TypeChecker : public IASTMutatingVisitor<Type> {
     Type operator()(DefaultStatement &d) override;
     Type operator()(FunctionDeclaration &f) override;
     Type operator()(VariableDeclaration &v) override;
+    Type operator()(StructDeclaration &s) override;
     Type operator()(SingleInit &s) override;
     Type operator()(CompoundInit &c) override;
     Type operator()(std::monostate) override;

@@ -25,6 +25,8 @@ struct ASTPrinter : public IASTVisitor<void> {
     void operator()(const SubscriptExpression &s) override;
     void operator()(const SizeOfExpression &s) override;
     void operator()(const SizeOfTypeExpression &s) override;
+    void operator()(const DotExpression &d) override;
+    void operator()(const ArrowExpression &a) override;
     void operator()(const ReturnStatement &s) override;
     void operator()(const IfStatement &i) override;
     void operator()(const GotoStatement &g) override;
@@ -42,6 +44,7 @@ struct ASTPrinter : public IASTVisitor<void> {
     void operator()(const DefaultStatement &d) override;
     void operator()(const FunctionDeclaration &f) override;
     void operator()(const VariableDeclaration &v) override;
+    void operator()(const StructDeclaration &s) override;
     void operator()(const SingleInit &s) override;
     void operator()(const CompoundInit &c) override;
     void operator()(std::monostate) override {}

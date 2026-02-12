@@ -625,6 +625,18 @@ ExpResult TACBuilder::operator()(const parser::SizeOfTypeExpression &s)
     };
 }
 
+ExpResult TACBuilder::operator()(const parser::DotExpression &)
+{
+    // TODO
+    return std::monostate();
+}
+
+ExpResult TACBuilder::operator()(const parser::ArrowExpression &)
+{
+    // TODO
+    return std::monostate();
+}
+
 ExpResult TACBuilder::operator()(const parser::ReturnStatement &r)
 {
     auto ret = Return{};
@@ -833,6 +845,12 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
 
     size_t offset = 0;
     EmitRuntimeInit(v.init.get(), v.identifier, entry->type, offset);
+    return std::monostate();
+}
+
+ExpResult TACBuilder::operator()(const parser::StructDeclaration &)
+{
+    // TODO
     return std::monostate();
 }
 

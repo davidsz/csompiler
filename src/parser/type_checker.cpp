@@ -642,6 +642,18 @@ Type TypeChecker::operator()(SizeOfTypeExpression &s)
     return s.type;
 }
 
+Type TypeChecker::operator()(DotExpression &)
+{
+    // TODO
+    return Type{ std::monostate() };
+}
+
+Type TypeChecker::operator()(ArrowExpression &)
+{
+    // TODO
+    return Type{ std::monostate() };
+}
+
 Type TypeChecker::operator()(ReturnStatement &r)
 {
     Type function_return_type = *std::get<FunctionType>(m_functionTypeStack.back().t).ret;
@@ -965,6 +977,12 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             }
         }
     }
+    return Type{ std::monostate() };
+}
+
+Type TypeChecker::operator()(StructDeclaration &)
+{
+    // TODO
     return Type{ std::monostate() };
 }
 

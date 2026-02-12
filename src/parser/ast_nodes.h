@@ -22,6 +22,14 @@ namespace parser {
         Type type; \
         std::string identifier; \
         std::unique_ptr<Initializer> init;) \
+    X(StructDeclaration, \
+        std::string tag; \
+        std::vector<MemberDeclaration> members;)
+
+struct MemberDeclaration {
+    Type type;
+    std::string name;
+};
 
 #define AST_STATEMENT_LIST(X) \
     X(ReturnStatement, \
@@ -132,6 +140,14 @@ namespace parser {
         Type type = Type{};) \
     X(SizeOfTypeExpression, \
         Type operand; \
+        Type type = Type{};) \
+    X(DotExpression, \
+        std::unique_ptr<Expression> expr; \
+        std::string identifier; \
+        Type type = Type{};) \
+    X(ArrowExpression, \
+        std::unique_ptr<Expression> expr; \
+        std::string identifier; \
         Type type = Type{};)
 
 #define AST_INITIALIZER_LIST(X) \

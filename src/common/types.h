@@ -104,6 +104,11 @@ struct VoidType {
     bool operator==(const VoidType &other) const;
 };
 
+struct StructType {
+    std::string tag;
+    bool operator==(const StructType &other) const;
+};
+
 using TypeInfo = std::variant<
     std::monostate,
     BasicType,

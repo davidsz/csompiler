@@ -159,6 +159,16 @@ void SemanticAnalyzer::operator()(SizeOfTypeExpression &)
 {
 }
 
+void SemanticAnalyzer::operator()(DotExpression &d)
+{
+    std::visit(*this, *d.expr);
+}
+
+void SemanticAnalyzer::operator()(ArrowExpression &a)
+{
+    std::visit(*this, *a.expr);
+}
+
 void SemanticAnalyzer::operator()(ReturnStatement &r)
 {
     if (r.expr)
@@ -440,6 +450,11 @@ void SemanticAnalyzer::operator()(VariableDeclaration &v)
 
     if (v.init)
         std::visit(*this, *v.init);
+}
+
+void SemanticAnalyzer::operator()(StructDeclaration &)
+{
+    // TODO
 }
 
 void SemanticAnalyzer::operator()(SingleInit &s)

@@ -139,6 +139,26 @@ void ASTPrinter::operator()(const SizeOfTypeExpression &s)
     pad(); std::cout << ") " << std::endl;
 }
 
+void ASTPrinter::operator()(const DotExpression &d)
+{
+    pad(); std::cout << "DotExpression( " << d.type << std::endl;
+    tab();
+    std::visit(*this, *d.expr);
+    pad(); std::cout << "identifier: " << d.identifier << std::endl;
+    shift_tab();
+    pad(); std::cout << ") " << std::endl;
+}
+
+void ASTPrinter::operator()(const ArrowExpression &a)
+{
+    pad(); std::cout << "ArrowExpression( " << a.type << std::endl;
+    tab();
+    std::visit(*this, *a.expr);
+    pad(); std::cout << "identifier: " << a.identifier << std::endl;
+    shift_tab();
+    pad(); std::cout << ") " << std::endl;
+}
+
 void ASTPrinter::operator()(const ReturnStatement &r)
 {
     pad(); std::cout << "Return" << std::endl;
@@ -290,6 +310,13 @@ void ASTPrinter::operator()(const VariableDeclaration &v)
         pad(); std::cout << "Init: " << std::endl;
         tab(); std::visit(*this, *v.init); shift_tab();
     }
+}
+
+void ASTPrinter::operator()(const StructDeclaration &s)
+{
+    pad(); std::cout << "StructDeclaration(" << s.tag << ") " << std::endl;
+    for (auto &member : s.members)
+        std::cout << member.type << " " << member.name << std::endl;
 }
 
 void ASTPrinter::operator()(const SingleInit &s)

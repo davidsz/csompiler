@@ -461,7 +461,7 @@ Statement ASTBuilder::ParseFor()
         Consume(TokenType::Punctator, ";");
     } else if (next->type() == TokenType::Keyword) {
         ret.init = std::make_unique<ForInit>(
-            to_for_init(ParseDeclaration(/* allow_function */ false)));
+            to_for_init(ParseDeclaration(/* only_variable */ true)));
     } else {
         ret.init = std::make_unique<ForInit>(
             to_for_init(ParseExpression(0)));
@@ -534,7 +534,7 @@ BlockItem ASTBuilder::ParseBlockItem()
 {
     LOG("ParseBlockItem");
     auto next = Peek();
-    if (IsStorageOrTypeSpecifier(next->value()))
+    if (IsStorageOrTypeSpecifier(next->value()) || next->value() == "struct")
         return to_block_item(ParseDeclaration());
     else
         return to_block_item(ParseStatement());
@@ -590,18 +590,47 @@ Statement ASTBuilder::ParseStatement()
     return Statement(ExpressionStatement{ UE(expr) });
 }
 
-Declaration ASTBuilder::ParseDeclaration(bool allow_function)
+Declaration ASTBuilder::ParseDeclaration(bool only_variable)
 {
     LOG("ParseDeclaration");
-    auto [storage, type] = ParseTypeSpecifierList();
+    auto next = Peek();
 
+    if (next->type() == TokenType::Keyword && next->value() == "struct") {
+        if (only_variable)
+            Abort("Struct declaration is not allowed");
+        Consume(TokenType::Keyword, "struct");
+        auto decl = StructDeclaration{};
+        decl.tag = Consume(TokenType::Identifier);
+        next = Peek();
+        if (next->type() == TokenType::Punctator && next->value() == "{") {
+            Consume(TokenType::Punctator, "{");
+            do {
+                // No storage classes and don't accept function declarations for now
+                Type base_type = ParseTypes();
+                Declarator declarator = ParseDeclarator();
+                LOG("ParseDeclarator END");
+                const auto &[identifier, derived_type, _] = ProcessDeclarator(declarator, base_type);
+                if (derived_type.isFunction())
+                    Abort("Function declaration is not allowed in struct");
+                decl.members.push_back(MemberDeclaration{
+                    .type = derived_type,
+                    .name = identifier
+                });
+                next = Peek();
+            } while (next->value() != "}");
+            Consume(TokenType::Punctator, "}");
+        }
+        Consume(TokenType::Punctator, ";");
+        return decl;
+    }
+
+    auto [storage, type] = ParseTypeSpecifierList();
     Declarator declarator = ParseDeclarator();
     LOG("ParseDeclarator END");
     const auto &[identifier, derived_type, param_names] = ProcessDeclarator(declarator, type);
 
-    auto next = Peek();
     if (derived_type.isFunction()) {
-        if (!allow_function)
+        if (only_variable)
             Abort("Function declaration is not allowed");
         // Function declaration
         auto func = FunctionDeclaration{};

@@ -30,6 +30,8 @@ public:
     ExpResult operator()(const parser::SubscriptExpression &s) override;
     ExpResult operator()(const parser::SizeOfExpression &s) override;
     ExpResult operator()(const parser::SizeOfTypeExpression &s) override;
+    ExpResult operator()(const parser::DotExpression &d) override;
+    ExpResult operator()(const parser::ArrowExpression &a) override;
     ExpResult operator()(const parser::ReturnStatement &r) override;
     ExpResult operator()(const parser::IfStatement &i) override;
     ExpResult operator()(const parser::GotoStatement &g) override;
@@ -47,6 +49,7 @@ public:
     ExpResult operator()(const parser::DefaultStatement &d) override;
     ExpResult operator()(const parser::FunctionDeclaration &f) override;
     ExpResult operator()(const parser::VariableDeclaration &v) override;
+    ExpResult operator()(const parser::StructDeclaration &s) override;
     ExpResult operator()(const parser::SingleInit &s) override;
     ExpResult operator()(const parser::CompoundInit &c) override;
     ExpResult operator()(std::monostate) override;

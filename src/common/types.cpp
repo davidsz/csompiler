@@ -172,6 +172,11 @@ bool VoidType::operator==(const VoidType &) const
     return true;
 }
 
+bool StructType::operator==(const StructType &other) const
+{
+    return tag == other.tag;
+}
+
 bool Type::isBasic(BasicType type) const
 {
     if (auto p = std::get_if<BasicType>(&t))
@@ -424,6 +429,8 @@ std::ostream &operator<<(std::ostream &os, const Type &type)
             os << "ArrayType(" << *obj.element << ")[" << obj.count << "]";
         else if constexpr (std::is_same_v<T, VoidType>)
             os << "VoidType";
+        else if constexpr (std::is_same_v<T, StructType>)
+            os << "StructType(" << *obj.tag << ")";
         else
             os << "typeless";
     }, type.t);
