@@ -167,7 +167,7 @@ TypeChecker::ToConstantValueList(const Initializer *init, const Type &type)
     }
 
     // Initializing an array type
-    size_t final_size = static_cast<size_t>(type.size());
+    size_t final_size = type.size();
     if (!init) {
         ret.push_back(ZeroBytes{ final_size });
         return ret;

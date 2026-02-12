@@ -122,7 +122,7 @@ TACBuilder::LHSInfo TACBuilder::AnalyzeLHS(const parser::Expression &expr)
     assert(false);
 }
 
-void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, int &offset)
+void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, size_t &offset)
 {
     if (const ArrayType *array = type.getAs<ArrayType>()) {
         for (size_t i = 0; i < array->count; i++)
@@ -133,7 +133,7 @@ void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, int &of
     m_instructions.push_back(CopyToOffset{
         Constant{ MakeConstantValue(0, type) },
         base,
-        offset
+        static_cast<int>(offset)
     });
     offset += type.storedType().size();
 }
@@ -142,7 +142,7 @@ void TACBuilder::EmitRuntimeInit(
     const parser::Initializer *init,
     const std::string &base,
     const Type &type,
-    int &offset)
+    size_t &offset)
 {
     assert(init);
 
@@ -170,7 +170,7 @@ void TACBuilder::EmitRuntimeInit(
                     CopyToOffset{
                         Constant{ MakeConstantValue(v, Type{ BasicType::UInt }) },
                         base,
-                        offset
+                        static_cast<int>(offset)
                     });
                 i += 4;
                 offset += 4;
@@ -182,7 +182,7 @@ void TACBuilder::EmitRuntimeInit(
                     CopyToOffset{
                         Constant{ MakeConstantValue(text[i], Type{ BasicType::Char }) },
                         base,
-                        offset
+                        static_cast<int>(offset)
                     });
                 offset++;
             }
@@ -192,7 +192,7 @@ void TACBuilder::EmitRuntimeInit(
                 m_instructions.push_back(CopyToOffset{
                     Constant{ MakeConstantValue(0, Type{ BasicType::Char }) },
                     base,
-                    offset
+                    static_cast<int>(offset)
                 });
                 offset++;
             }
@@ -221,7 +221,7 @@ void TACBuilder::EmitRuntimeInit(
             EmitZeroInit(type, base, offset);
         else {
             Value v = VisitAndConvert(*single->expr);
-            m_instructions.push_back(CopyToOffset{ v, base, offset });
+            m_instructions.push_back(CopyToOffset{ v, base, static_cast<int>(offset) });
             offset += type.storedType().size();
         }
         return;
@@ -831,7 +831,7 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
     if (!v.init)
         return std::monostate();
 
-    int offset = 0;
+    size_t offset = 0;
     EmitRuntimeInit(v.init.get(), v.identifier, entry->type, offset);
     return std::monostate();
 }
@@ -885,7 +885,7 @@ void TACBuilder::ProcessStaticSymbols()
             if (std::holds_alternative<Tentative>(entry.attrs.init)) {
                 std::vector<ConstantValue> initializer;
                 if (entry.type.isArray())
-                    initializer.push_back(ZeroBytes{ static_cast<size_t>(entry.type.size()) });
+                    initializer.push_back(ZeroBytes{ entry.type.size() });
                 else
                     initializer.push_back(MakeConstantValue(0, entry.type));
                 m_topLevel.push_back(StaticVariable{

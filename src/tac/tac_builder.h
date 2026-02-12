@@ -87,12 +87,12 @@ private:
     };
     LHSInfo AnalyzeLHS(const parser::Expression &expr);
 
-    void EmitZeroInit(const Type &type, const std::string &base, int &offset);
+    void EmitZeroInit(const Type &type, const std::string &base, size_t &offset);
     void EmitRuntimeInit(
         const parser::Initializer *init,
         const std::string &base,
         const Type &type,
-        int &offset
+        size_t &offset
     );
 
     std::vector<TopLevel> m_topLevel;
