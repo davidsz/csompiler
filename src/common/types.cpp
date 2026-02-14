@@ -430,7 +430,7 @@ std::ostream &operator<<(std::ostream &os, const Type &type)
         else if constexpr (std::is_same_v<T, VoidType>)
             os << "VoidType";
         else if constexpr (std::is_same_v<T, StructType>)
-            os << "StructType(" << *obj.tag << ")";
+            os << "StructType(" << obj.tag << ")";
         else
             os << "typeless";
     }, type.t);

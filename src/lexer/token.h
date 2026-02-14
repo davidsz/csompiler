@@ -30,6 +30,14 @@ public:
     std::string value() const { return m_value; }
     void setValue(const std::string &value) { m_value = value; }
 
+    bool isIdentifier() const { return m_type == Identifier; }
+    bool isKeyword() const { return m_type == Keyword; }
+    bool isOperator() const { return m_type == Operator; }
+    bool isPunctator() const { return m_type == Punctator; }
+    bool isNumericLiteral() const { return m_type == NumericLiteral; }
+    bool isStringLiteral() const { return m_type == StringLiteral; }
+    bool isCharLiteral() const { return m_type == CharLiteral; }
+
     friend std::ostream &operator<<(std::ostream &os, const Token &t);
 
 private:

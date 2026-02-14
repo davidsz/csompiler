@@ -15,7 +15,8 @@
     X("unsigned") \
     X("double") \
     X("char") \
-    X("void")
+    X("void") \
+    X("struct")
 
 #define STORAGE_CLASS_LIST(X) \
     X(StorageStatic, "static") \
@@ -115,7 +116,8 @@ using TypeInfo = std::variant<
     FunctionType,
     PointerType,
     ArrayType,
-    VoidType
+    VoidType,
+    StructType
 >;
 
 struct Type {

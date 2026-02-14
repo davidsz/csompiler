@@ -133,7 +133,7 @@ Expression ASTBuilder::ParseUnaryExpression()
     auto next = Peek();
 
     // Prefix unary expressions (right-associative)
-    if (next->type() == TokenType::Operator && isUnaryOperator(next->value())) {
+    if (next->isOperator() && isUnaryOperator(next->value())) {
         LOG("Prefix Unary Expression");
         UnaryOperator op = toUnaryOperator(Consume(TokenType::Operator));
         auto expr = ParseExpression(getPrecedence(op) + 1);
@@ -148,11 +148,11 @@ Expression ASTBuilder::ParseUnaryExpression()
     }
 
     // sizeof
-    if (next->type() == TokenType::Keyword && next->value() == "sizeof") {
+    if (next->isKeyword() && next->value() == "sizeof") {
         Consume(TokenType::Keyword, "sizeof");
         Expression ret;
         next = Peek();
-        if (next->type() == TokenType::Punctator && next->value() == "(") {
+        if (next->isPunctator() && next->value() == "(") {
             Consume(TokenType::Punctator, "(");
             if (IsTypeSpecifier(Peek()->value())) {
                 Type base_type = ParseTypes();
@@ -175,8 +175,7 @@ Expression ASTBuilder::ParseUnaryExpression()
     }
 
     // Cast expression
-    if (next->type() == TokenType::Punctator && next->value() == "("
-        && Peek(1)->type() == TokenType::Keyword) {
+    if (next->isPunctator() && next->value() == "(" && Peek(1)->isKeyword()) {
         LOG("CastExpression");
         Consume(TokenType::Punctator, "(");
         auto ret = CastExpression{};
@@ -202,7 +201,15 @@ Expression ASTBuilder::ParsePostfixExpression()
             LOG("Postfix Unary Operator");
             Consume(TokenType::Operator);
             expr = UnaryExpression{ unop, UE(expr), true };
-        } else if (next->type() == TokenType::Punctator && next->value() == "[") {
+        } else if (next->isOperator() && next->value() == ".") {
+            LOG("DotExpression");
+            Consume(TokenType::Operator);
+            expr = DotExpression{ UE(expr), Consume(TokenType::Identifier) };
+        } else if (next->isOperator() && next->value() == "->") {
+            LOG("ArrowExpression");
+            Consume(TokenType::Operator);
+            expr = ArrowExpression{ UE(expr), Consume(TokenType::Identifier) };
+        } else if (next->isPunctator() && next->value() == "[") {
             LOG("SubscriptExpression");
             Consume(TokenType::Punctator, "[");
             expr = SubscriptExpression{
@@ -221,15 +228,15 @@ Expression ASTBuilder::ParsePrimaryExpression()
     LOG("ParsePrimaryExpression");
     auto next = Peek();
 
-    if (next->type() == TokenType::Identifier) {
+    if (next->isIdentifier()) {
         next = Peek(1);
-        if (next->type() == TokenType::Punctator && next->value() == "(")
+        if (next->isPunctator() && next->value() == "(")
             return ParseFunctionCall();
         LOG("VariableExpression");
         return VariableExpression{ Consume(TokenType::Identifier) };
     }
 
-    if (next->type() == TokenType::Punctator && next->value() == "(") {
+    if (next->isPunctator() && next->value() == "(") {
         LOG("( Expression )");
         Consume(TokenType::Punctator, "(");
         auto expr = ParseExpression(0);
@@ -237,10 +244,10 @@ Expression ASTBuilder::ParsePrimaryExpression()
         return expr;
     }
 
-    if (next->type() == TokenType::StringLiteral)
+    if (next->isStringLiteral())
         return ParseStringExpression();
 
-    assert(next->type() == TokenType::NumericLiteral || next->type() == TokenType::CharLiteral);
+    assert(next->isNumericLiteral() || next->isCharLiteral());
     return ParseConstantExpression();
 }
 
@@ -266,7 +273,7 @@ Expression ASTBuilder::ParseStringExpression()
     LOG("ParseStringExpression");
     std::string literal = Consume(TokenType::StringLiteral);
     // Merge consecutive string literals ("foo" "bar" -> "foobar")
-    while (Peek()->type() == TokenType::StringLiteral)
+    while (Peek()->isStringLiteral())
         literal += Consume(TokenType::StringLiteral);
     return StringExpression{ literal };
 }
@@ -275,7 +282,7 @@ Expression ASTBuilder::ParseConstantExpression()
 {
     LOG("ParseConstantExpression");
     auto next = Peek();
-    if (next->type() == TokenType::CharLiteral)
+    if (next->isCharLiteral())
         return ConstantExpression{ (int)(Consume(TokenType::CharLiteral)[0]), Type{ BasicType::Int } };
 
     std::string literal = Consume(TokenType::NumericLiteral);
@@ -335,7 +342,7 @@ Expression ASTBuilder::ParseConstantExpression()
 uint64_t ASTBuilder::ParseArrayDimension()
 {
     // Arrays can be indexed by char literals
-    if (Peek()->type() == TokenType::CharLiteral)
+    if (Peek()->isCharLiteral())
         return static_cast<uint64_t>(Consume(TokenType::CharLiteral)[0]);
 
     // Expect a positive integer for array sizes
@@ -377,7 +384,7 @@ Statement ASTBuilder::ParseIf()
     ret.trueBranch = unique_statement(ParseStatement());
 
     auto next = Peek();
-    if (next->type() == TokenType::Keyword && next->value() == "else") {
+    if (next->isKeyword() && next->value() == "else") {
         Consume(TokenType::Keyword, "else");
         ret.falseBranch = unique_statement(ParseStatement());
     }
@@ -457,9 +464,9 @@ Statement ASTBuilder::ParseFor()
 
     // Initializer
     auto next = Peek();
-    if (next->type() == TokenType::Punctator && next->value() == ";") {
+    if (next->isPunctator() && next->value() == ";") {
         Consume(TokenType::Punctator, ";");
-    } else if (next->type() == TokenType::Keyword) {
+    } else if (next->isKeyword()) {
         ret.init = std::make_unique<ForInit>(
             to_for_init(ParseDeclaration(/* only_variable */ true)));
     } else {
@@ -534,7 +541,7 @@ BlockItem ASTBuilder::ParseBlockItem()
 {
     LOG("ParseBlockItem");
     auto next = Peek();
-    if (IsStorageOrTypeSpecifier(next->value()) || next->value() == "struct")
+    if (IsStorageOrTypeSpecifier(next->value()))
         return to_block_item(ParseDeclaration());
     else
         return to_block_item(ParseStatement());
@@ -544,7 +551,7 @@ Statement ASTBuilder::ParseStatement()
 {
     LOG("ParseStatement");
     auto next = Peek();
-    if (next->type() == TokenType::Keyword) {
+    if (next->isKeyword()) {
         if (next->value() == "return")
             return ParseReturn();
         if (next->value() == "if")
@@ -570,7 +577,7 @@ Statement ASTBuilder::ParseStatement()
         Abort("Not implemented yet.", next->line());
     }
 
-    if (next->type() == TokenType::Punctator) {
+    if (next->isPunctator()) {
         if (next->value() == "{")
             return ParseBlock();
         if (next->value() == ";") {
@@ -579,9 +586,9 @@ Statement ASTBuilder::ParseStatement()
         }
     }
 
-    if (next->type() == TokenType::Identifier) {
+    if (next->isIdentifier()) {
         next = Peek(1);
-        if (next->type() == TokenType::Operator && next->value() == ":")
+        if (next->isOperator() && next->value() == ":")
             return ParseLabeledStatement();
     }
 
@@ -595,31 +602,45 @@ Declaration ASTBuilder::ParseDeclaration(bool only_variable)
     LOG("ParseDeclaration");
     auto next = Peek();
 
-    if (next->type() == TokenType::Keyword && next->value() == "struct") {
+    // Struct type declaration; will handle struct type variables below
+    if (next->isKeyword() && next->value() == "struct"
+        && Peek(1)->isIdentifier()
+        && ((Peek(2)->isPunctator() && Peek(2)->value() == "{")
+        || (Peek(2)->isPunctator() && Peek(2)->value() == ";"))) {
         if (only_variable)
             Abort("Struct declaration is not allowed");
         Consume(TokenType::Keyword, "struct");
-        auto decl = StructDeclaration{};
-        decl.tag = Consume(TokenType::Identifier);
+        auto decl = StructDeclaration{
+            .tag = Consume(TokenType::Identifier)
+        };
+
         next = Peek();
-        if (next->type() == TokenType::Punctator && next->value() == "{") {
-            Consume(TokenType::Punctator, "{");
-            do {
-                // No storage classes and don't accept function declarations for now
-                Type base_type = ParseTypes();
-                Declarator declarator = ParseDeclarator();
-                LOG("ParseDeclarator END");
-                const auto &[identifier, derived_type, _] = ProcessDeclarator(declarator, base_type);
-                if (derived_type.isFunction())
-                    Abort("Function declaration is not allowed in struct");
-                decl.members.push_back(MemberDeclaration{
-                    .type = derived_type,
-                    .name = identifier
-                });
-                next = Peek();
-            } while (next->value() != "}");
-            Consume(TokenType::Punctator, "}");
+        // struct s;
+        if (next->isPunctator() && next->value() == ";") {
+            Consume(TokenType::Punctator, ";");
+            return decl;
         }
+
+        // struct s { ... };
+        Consume(TokenType::Punctator, "{");
+        next = Peek();
+        do {
+            // Struct member declarations
+            // No storage classes and don't accept function declarations for now
+            Type base_type = ParseTypes();
+            Declarator declarator = ParseDeclarator();
+            LOG("ParseDeclarator END");
+            const auto &[identifier, derived_type, _] = ProcessDeclarator(declarator, base_type);
+            if (derived_type.isFunction())
+                Abort("Function declaration is not allowed in struct");
+            decl.members.push_back(MemberDeclaration{
+                .type = derived_type,
+                .name = identifier
+            });
+            Consume(TokenType::Punctator, ";");
+            next = Peek();
+        } while (next->value() != "}");
+        Consume(TokenType::Punctator, "}");
         Consume(TokenType::Punctator, ";");
         return decl;
     }
@@ -629,6 +650,7 @@ Declaration ASTBuilder::ParseDeclaration(bool only_variable)
     LOG("ParseDeclarator END");
     const auto &[identifier, derived_type, param_names] = ProcessDeclarator(declarator, type);
 
+    next = Peek();
     if (derived_type.isFunction()) {
         if (only_variable)
             Abort("Function declaration is not allowed");
@@ -638,8 +660,7 @@ Declaration ASTBuilder::ParseDeclaration(bool only_variable)
         func.type = derived_type;
         func.name = std::move(identifier);
         func.params = param_names;
-        next = Peek();
-        if (next->type() == TokenType::Punctator && next->value() == "{")
+        if (next->isPunctator() && next->value() == "{")
             func.body = unique_statement(ParseBlock());
         else
             Consume(TokenType::Punctator, ";");
@@ -650,7 +671,7 @@ Declaration ASTBuilder::ParseDeclaration(bool only_variable)
         decl.storage = storage;
         decl.type = derived_type;
         decl.identifier = std::move(identifier);
-        if (next->type() == TokenType::Punctator && next->value() == ";") {
+        if (next->isPunctator() && next->value() == ";") {
             Consume(TokenType::Punctator, ";");
             return decl;
         }
@@ -668,14 +689,14 @@ Initializer ASTBuilder::ParseInitializer()
     LOG("ParseInitializer");
     Initializer ret;
     auto next = Peek();
-    if (next->type() == TokenType::Punctator && next->value() == "{") {
+    if (next->isPunctator() && next->value() == "{") {
         LOG("CompoundInit");
         CompoundInit init;
         Consume(TokenType::Punctator, "{");
         while (next->value() != "}") {
             init.list.push_back(std::make_unique<Initializer>(ParseInitializer()));
             next = Peek();
-            if (next->type() == TokenType::Operator && next->value() == ",")
+            if (next->isOperator() && next->value() == ",")
                 Consume(TokenType::Operator, ",");
             next = Peek();
         }
@@ -703,7 +724,7 @@ ASTBuilder::Declarator ASTBuilder::ParseDeclarator()
     LOG("ParseDeclarator (recursive)");
     auto next = Peek();
     // <declarator> ::= "*" <declarator> | <direct-declarator>
-    if (next->type() == TokenType::Operator && next->value() == "*") {
+    if (next->isOperator() && next->value() == "*") {
         // "*" <declarator>
         Consume(TokenType::Operator, "*");
         return PointerDeclarator{
@@ -714,7 +735,7 @@ ASTBuilder::Declarator ASTBuilder::ParseDeclarator()
         Declarator direct_declarator;
         // <simple-declarator> ::= <identifier> | "(" <declarator> ")"
         Declarator simple_declarator;
-        if (next->type() == TokenType::Punctator && next->value() == "(") {
+        if (next->isPunctator() && next->value() == "(") {
             Consume(TokenType::Punctator, "(");
             simple_declarator = ParseDeclarator();
             Consume(TokenType::Punctator, ")");
@@ -724,7 +745,7 @@ ASTBuilder::Declarator ASTBuilder::ParseDeclarator()
         }
         next = Peek();
         // <declarator-suffix> ::= <param-list> | { "[" <const> "]" }+
-        if (next->type() == TokenType::Punctator && next->value() == "(") {
+        if (next->isPunctator() && next->value() == "(") {
             // <param-list> ::= "(" "void" ")" | "(" <param> { "," <param> } ")"
             FunctionDeclarator func_declarator;
             func_declarator.inner_declarator = std::make_unique<Declarator>(std::move(simple_declarator));
@@ -745,7 +766,7 @@ ASTBuilder::Declarator ASTBuilder::ParseDeclarator()
             }
             Consume(TokenType::Punctator, ")");
             direct_declarator.emplace<FunctionDeclarator>(std::move(func_declarator));
-        } else if (next->type() == TokenType::Punctator && next->value() == "[") {
+        } else if (next->isPunctator() && next->value() == "[") {
             // { "[" <const> "]" }+
             // E.g.: array[1][2] -> ArrayDeclarator(ArrayDeclarator(ID("array"), 1), 2)
             Declarator outmost_declarator = Declarator{ std::move(simple_declarator) };
@@ -808,19 +829,19 @@ ASTBuilder::AbstractDeclarator ASTBuilder::ParseAbstractDeclarator()
     LOG("ParseAbstractDeclarator (recursive)");
     AbstractDeclarator abstract_declarator;
     auto next = Peek();
-    if (next->type() == TokenType::Operator && next->value() == "*") {
+    if (next->isOperator() && next->value() == "*") {
         // "*" [ <abstract-declarator> ]
         Consume(TokenType::Operator, "*");
         AbstractPointerDeclarator ptr = AbstractPointerDeclarator{};
         ptr.inner_declarator = std::make_unique<AbstractDeclarator>(ParseAbstractDeclarator());
         abstract_declarator.emplace<AbstractPointerDeclarator>(std::move(ptr));
-    } else if (next->type() == TokenType::Punctator && next->value() == "(") {
+    } else if (next->isPunctator() && next->value() == "(") {
         // <direct-abstract-declarator> ::= "(" <abstract-declarator> ")" { "[" <const> "]" }
         Consume(TokenType::Punctator, "(");
         abstract_declarator = ParseAbstractDeclarator();
         Consume(TokenType::Punctator, ")");
         next = Peek();
-        if (next->type() == TokenType::Punctator && next->value() == "[") {
+        if (next->isPunctator() && next->value() == "[") {
             // { "[" <const> "]" } is zero or more [const]
             AbstractDeclarator outmost = AbstractDeclarator{ std::move(abstract_declarator) };
             while (Peek()->value() == "[") {
@@ -833,7 +854,7 @@ ASTBuilder::AbstractDeclarator ASTBuilder::ParseAbstractDeclarator()
             }
             abstract_declarator = std::move(outmost);
         }
-    } else if (next->type() == TokenType::Punctator && next->value() == "[") {
+    } else if (next->isPunctator() && next->value() == "[") {
         // <direct-abstract-declarator> ::= ... | { "[" <const> "]" }+
         AbstractDeclarator outmost;
         outmost.emplace<AbstractBaseDeclarator>();
@@ -870,35 +891,49 @@ Type ASTBuilder::ProcessAbstractDeclarator(const AbstractDeclarator &decl, const
 std::pair<StorageClass, Type> ASTBuilder::ParseTypeSpecifierList()
 {
     LOG("ParseTypeSpecifierList");
+    std::optional<Type> type;
     std::set<std::string> type_specifiers;
     std::vector<StorageClass> storage_classes;
     std::optional<lexer::Token> next;
-    for (next = Peek();
-        next->type() == TokenType::Keyword && IsStorageOrTypeSpecifier(next->value());
-        next = Peek()) {
-        if (IsTypeSpecifier(next->value())) {
-            auto [it, inserted] = type_specifiers.insert(next->value());
-            if (!inserted)
-                Abort(std::format("Duplicated type specifier '{}'", next->value()));
-            Consume(TokenType::Keyword);
-            continue;
-        }
-
+    bool afterStructKeyword = false;
+    while ((next = Peek())) {
         if (auto storage = GetStorageClass(next->value())) {
+            if (afterStructKeyword)
+                Abort("Expected struct tag after 'struct' keyword");
             storage_classes.push_back(*storage);
             Consume(TokenType::Keyword);
             continue;
         }
+        if (next->isKeyword() && IsTypeSpecifier(next->value())) {
+            if (afterStructKeyword)
+                Abort("Expected struct tag after 'struct' keyword");
+            if (next->value() == "struct") {
+                Consume(TokenType::Keyword);
+                afterStructKeyword = true;
+                continue;
+            }
+            auto [it, inserted] = type_specifiers.insert(Consume(TokenType::Keyword));
+            if (!inserted)
+                Abort(std::format("Duplicated type specifier '{}'", next->value()));
+            continue;
+        }
+        if (next->isIdentifier() && afterStructKeyword) {
+            if (!type_specifiers.empty())
+                Abort("Can't use 'struct' with other type specifiers.");
+            type = Type{ StructType{ Consume(TokenType::Identifier) } };
+        }
+        break;
     }
-
-    std::optional<Type> type = DetermineType(type_specifiers);
-    if (!type)
-        Abort("Invalid type specification");
 
     if (storage_classes.size() > 1)
         Abort("Invalid storage class");
     StorageClass storage = storage_classes.empty() ? StorageClass::StorageDefault : storage_classes[0];
 
+    if (type)
+        return std::make_pair(storage, *type);
+    type = DetermineType(type_specifiers);
+    if (!type)
+        Abort("Invalid type specification");
     return std::make_pair(storage, *type);
 }
 
@@ -906,16 +941,29 @@ Type ASTBuilder::ParseTypes()
 {
     LOG("ParseTypes");
     std::set<std::string> type_specifiers;
-    for (std::optional<lexer::Token> next = Peek();
-        next->type() == TokenType::Keyword && IsTypeSpecifier(next->value());
-        next = Peek()) {
-        auto [it, inserted] = type_specifiers.insert(next->value());
-        if (!inserted)
-            Abort(std::format("Duplicated type specifier '{}'", next->value()));
-        Consume(TokenType::Keyword);
-        continue;
+    std::optional<lexer::Token> next;
+    bool afterStructKeyword = false;
+    while ((next = Peek())) {
+        if (next->isKeyword() && IsTypeSpecifier(next->value())) {
+            if (afterStructKeyword)
+                Abort("Expected struct tag after 'struct' keyword");
+            if (next->value() == "struct") {
+                Consume(TokenType::Keyword);
+                afterStructKeyword = true;
+                continue;
+            }
+            auto [it, inserted] = type_specifiers.insert(Consume(TokenType::Keyword));
+            if (!inserted)
+                Abort(std::format("Duplicated type specifier '{}'", next->value()));
+            continue;
+        }
+        if (next->isIdentifier() && afterStructKeyword) {
+            if (!type_specifiers.empty())
+                Abort("Can't use 'struct' with other type specifiers.");
+            return Type{ StructType{ Consume(TokenType::Identifier) } };
+        }
+        break;
     }
-
     std::optional<Type> type = DetermineType(type_specifiers);
     if (!type)
         Abort("Invalid type specification");
