@@ -16,27 +16,62 @@ struct SemanticError : public std::runtime_error
 
 void SemanticAnalyzer::enterScope()
 {
-    m_scopes.emplace_back();
+    m_variableFunctionScopes.emplace_back();
+    m_structureTagScopes.emplace_back();
 }
 
 void SemanticAnalyzer::leaveScope()
 {
-    m_scopes.pop_back();
+    m_variableFunctionScopes.pop_back();
+    m_structureTagScopes.pop_back();
 }
 
 SemanticAnalyzer::Scope &SemanticAnalyzer::currentScope()
 {
-    return m_scopes.back();
+    return m_variableFunctionScopes.back();
 }
 
 SemanticAnalyzer::IdentifierInfo *SemanticAnalyzer::lookupIdentifier(const std::string &name)
 {
-    for (auto scope = m_scopes.rbegin(); scope != m_scopes.rend(); scope++) {
-        auto found = scope->find(name);
-        if (found != scope->end())
+    for (auto s = m_variableFunctionScopes.rbegin(); s != m_variableFunctionScopes.rend(); s++) {
+        auto found = s->find(name);
+        if (found != s->end())
             return &found->second;
     }
     return nullptr;
+}
+
+SemanticAnalyzer::StructTagScope &SemanticAnalyzer::currentStructTagScope()
+{
+    return m_structureTagScopes.back();
+}
+
+std::optional<std::string> SemanticAnalyzer::lookupStructTag(const std::string &name)
+{
+    for (auto s = m_structureTagScopes.rbegin(); s != m_structureTagScopes.rend(); s++) {
+        auto found = s->find(name);
+        if (found != s->end())
+            return found->second;
+    }
+    return std::nullopt;
+}
+
+void SemanticAnalyzer::ValidateTypeSpecifier(Type &type)
+{
+    if (auto struct_type = type.getAs<StructType>()) {
+        if (auto unique_tag = lookupStructTag(struct_type->tag))
+            struct_type->tag = *unique_tag;
+        else
+            Abort(std::format("Undeclared struct type '{}'", struct_type->tag));
+    } else if (auto pointer_type = type.getAs<PointerType>())
+        ValidateTypeSpecifier(*pointer_type->referenced);
+    else if (auto array_type = type.getAs<ArrayType>())
+        ValidateTypeSpecifier(*array_type->element);
+    else if (auto function_type = type.getAs<FunctionType>()) {
+        for (auto &p : function_type->params)
+            ValidateTypeSpecifier(*p);
+        ValidateTypeSpecifier(*function_type->ret);
+    }
 }
 
 std::optional<std::string> SemanticAnalyzer::getInnermostLoopLabel()
@@ -85,6 +120,8 @@ void SemanticAnalyzer::operator()(VariableExpression &v)
 
 void SemanticAnalyzer::operator()(CastExpression &c)
 {
+    // c.type was already determined in the AST builder
+    ValidateTypeSpecifier(c.type);
     std::visit(*this, *c.expr);
 }
 
@@ -155,8 +192,9 @@ void SemanticAnalyzer::operator()(SizeOfExpression &s)
     std::visit(*this, *s.expr);
 }
 
-void SemanticAnalyzer::operator()(SizeOfTypeExpression &)
+void SemanticAnalyzer::operator()(SizeOfTypeExpression &s)
 {
+    ValidateTypeSpecifier(s.operand);
 }
 
 void SemanticAnalyzer::operator()(DotExpression &d)
@@ -369,7 +407,10 @@ void SemanticAnalyzer::operator()(FunctionDeclaration &f)
     m_currentFunction = f.name;
 
     if (m_currentStage == IDENTIFIER_RESOLUTION) {
-        if (m_scopes.size() != 1 && f.body)
+        // f.type was already determined during the AST build
+        ValidateTypeSpecifier(f.type);
+
+        if (m_variableFunctionScopes.size() != 1 && f.body)
             Abort(std::format("Function definition ({}) allowed only in the top level scope.", f.name));
 
         // Resolve the function name first
@@ -414,7 +455,10 @@ void SemanticAnalyzer::operator()(FunctionDeclaration &f)
 void SemanticAnalyzer::operator()(VariableDeclaration &v)
 {
     if (m_currentStage == IDENTIFIER_RESOLUTION) {
-        if (m_scopes.size() == 1) {
+        // v.type was already determined during the AST build
+        ValidateTypeSpecifier(v.type);
+
+        if (m_variableFunctionScopes.size() == 1) {
             // Top level declarations
             currentScope()[v.identifier] = IdentifierInfo {
                 .uniqueName = v.identifier,
@@ -452,9 +496,20 @@ void SemanticAnalyzer::operator()(VariableDeclaration &v)
         std::visit(*this, *v.init);
 }
 
-void SemanticAnalyzer::operator()(StructDeclaration &)
+void SemanticAnalyzer::operator()(StructDeclaration &s)
 {
-    // TODO
+    if (m_currentStage == IDENTIFIER_RESOLUTION) {
+        std::optional<std::string> prev_entry = lookupStructTag(s.tag);
+        if (!prev_entry || currentStructTagScope().find(s.tag) != currentStructTagScope().end()) {
+            std::string unique_tag = MakeNameUnique(s.tag);
+            currentStructTagScope()[s.tag] = unique_tag;
+            s.tag = unique_tag;
+        } else
+            s.tag = *prev_entry;
+
+        for (auto &m : s.members)
+            ValidateTypeSpecifier(m.type);
+    }
 }
 
 void SemanticAnalyzer::operator()(SingleInit &s)
@@ -475,7 +530,7 @@ void SemanticAnalyzer::operator()(std::monostate)
 
 Error SemanticAnalyzer::CheckAndMutate(std::vector<parser::Declaration> &astVector)
 {
-    m_scopes.clear();
+    m_variableFunctionScopes.clear();
     enterScope();
     m_labels.clear();
     m_controlFlowLabels.clear();

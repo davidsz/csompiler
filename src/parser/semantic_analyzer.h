@@ -64,17 +64,28 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
 private:
     Stage m_currentStage = IDENTIFIER_RESOLUTION;
 
-    // Variable and function names mapped to their IdentifierInfo
+    void enterScope();
+    void leaveScope();
+
+    // Variable / function name scopes
     struct IdentifierInfo {
         std::string uniqueName;
         bool hasLinkage;
     };
     using Scope = std::unordered_map<std::string, IdentifierInfo>;
-    std::vector<Scope> m_scopes;
-    void enterScope();
-    void leaveScope();
+    std::vector<Scope> m_variableFunctionScopes;
     Scope &currentScope();
     IdentifierInfo *lookupIdentifier(const std::string &name);
+
+    // Structure tags have different scopes, because they represent types
+    using StructTagScope = std::unordered_map<std::string, std::string>;
+    std::vector<StructTagScope> m_structureTagScopes;
+    StructTagScope &currentStructTagScope();
+    std::optional<std::string> lookupStructTag(const std::string &name);
+
+    // Not the same as TypeChecker::ValidateTypeSpecifier(),
+    // this resolves structure tags
+    void ValidateTypeSpecifier(Type &type);
 
     std::string m_currentFunction = "";
     bool m_parentIsAFunction = false;
