@@ -5,12 +5,14 @@
 #include "constant_map.h"
 #include "tac/tac_visitor.h"
 
+class Context;
+
 namespace assembly {
 
 class ASMBuilder : public tac::ITACVisitor<Operand> {
 public:
     ASMBuilder(
-        std::shared_ptr<SymbolTable> symbolTable,
+        Context *context,
         std::shared_ptr<ConstantMap> constants);
 
     Operand operator()(const tac::Return &) override;
@@ -57,7 +59,8 @@ private:
     bool m_commentsEnabled = true;
     std::list<TopLevel> m_topLevel;
     std::list<Instruction> m_instructions;
-    std::shared_ptr<SymbolTable> m_symbolTable;
+
+    Context *m_context;
     // Keep track of static constants and their IDs to avoid duplications
     std::shared_ptr<ConstantMap> m_constants;
 };

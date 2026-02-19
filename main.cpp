@@ -1,4 +1,5 @@
 #include "assembly/assembly.h"
+#include "common/context.h"
 #include "common/error.h"
 #include "common/types.h"
 #include "lexer/lexer.h"
@@ -90,6 +91,9 @@ int main(int argc, char **argv)
     std::cout << file_content << std::endl;
 #endif
 
+    // Compilation context
+    std::unique_ptr<Context> context = std::make_unique<Context>();
+
     // Lexer
     lexer::Result lexer_result = lexer::tokenize(file_content);
     if (lexer_result.return_code) {
@@ -132,7 +136,7 @@ int main(int argc, char **argv)
     semanticPrinter.print(parser_result.root);
 #endif
 
-    parser::TypeChecker typeChecker;
+    parser::TypeChecker typeChecker(context.get());
     if (Error error = typeChecker.CheckAndMutate(parser_result.root))
         return error;
 
@@ -148,7 +152,7 @@ int main(int argc, char **argv)
     // Intermediate representation
     std::vector<tac::TopLevel> tacVector = tac::from_ast(
         parser_result.root,
-        typeChecker.symbolTable());
+        context.get());
 #if 1
     std::cout << std::endl << "TAC:" << std::endl;
     tac::TACPrinter tacPrinter;
@@ -157,7 +161,7 @@ int main(int argc, char **argv)
 
 #if 0
     std::cout << std::endl << "Symbol table:" << std::endl;
-    typeChecker.symbolTable()->print();
+    context->symbolTable->print();
 #endif
 
     if (has_flag("tacky"))
@@ -166,7 +170,7 @@ int main(int argc, char **argv)
     // Assembly generation
     std::string assemblySource = assembly::from_tac(
         tacVector,
-        typeChecker.symbolTable());
+        context.get());
 #if 1
     std::cout << std::endl << "ASM:" << std::endl;
     std::cout << assemblySource;

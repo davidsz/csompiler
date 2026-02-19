@@ -4,6 +4,8 @@
 #include "constant_map.h"
 #include "common/symbol_table.h"
 
+class Context;
+
 namespace assembly {
 
 struct ObjEntry {
@@ -21,7 +23,7 @@ using ASMSymbolEntry = std::variant<ObjEntry, FunEntry>;
 class ASMSymbolTable {
 public:
     ASMSymbolTable(
-        std::shared_ptr<SymbolTable> symbolTable,
+        Context *context,
         std::shared_ptr<ConstantMap> constants);
     template <typename T> T *getAs(const std::string &name)
     {

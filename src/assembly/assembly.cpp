@@ -9,16 +9,16 @@ namespace assembly {
 
 std::string from_tac(
     std::vector<tac::TopLevel> tacVector,
-    std::shared_ptr<SymbolTable> symbolTable)
+    Context *context)
 {
     // Use one constant dictionary across all ASMBuilders
     std::shared_ptr<ConstantMap> constants = std::make_shared<ConstantMap>();
 
-    ASMBuilder tacToAsm(symbolTable, constants);
+    ASMBuilder tacToAsm(context, constants);
     std::list<TopLevel> asmList = tacToAsm.ConvertTopLevel(tacVector);
 
     std::shared_ptr<ASMSymbolTable> asmSymbolTable =
-        std::make_shared<ASMSymbolTable>(symbolTable, constants);
+        std::make_shared<ASMSymbolTable>(context, constants);
 
     postprocessPseudoRegisters(asmList, asmSymbolTable);
     postprocessInvalidInstructions(asmList);

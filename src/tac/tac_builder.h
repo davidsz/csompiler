@@ -1,9 +1,10 @@
 #pragma once
 
 #include "parser/ast_visitor.h"
-#include "common/symbol_table.h"
 #include "tac_nodes.h"
 #include <vector>
+
+class Context;
 
 namespace tac {
 
@@ -13,7 +14,7 @@ using ExpResult = std::variant<PlainOperand, DereferencedPointer, std::monostate
 
 class TACBuilder : public parser::IASTVisitor<tac::ExpResult> {
 public:
-    TACBuilder(std::shared_ptr<SymbolTable> symbolTable);
+    TACBuilder(Context *context);
 
     ExpResult operator()(const parser::ConstantExpression &c) override;
     ExpResult operator()(const parser::StringExpression &s) override;
@@ -100,7 +101,8 @@ private:
 
     std::vector<TopLevel> m_topLevel;
     std::vector<Instruction> m_instructions;
-    std::shared_ptr<SymbolTable> m_symbolTable;
+
+    Context *m_context;
 };
 
 }; // tac

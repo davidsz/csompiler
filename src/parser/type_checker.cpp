@@ -1,4 +1,5 @@
 #include "type_checker.h"
+#include "common/context.h"
 #include "common/labeling.h"
 #include <cassert>
 #include <format>
@@ -143,6 +144,12 @@ static size_t byteSizeOf(const std::vector<ConstantValue> &v)
     return sum;
 }
 
+TypeChecker::TypeChecker(Context *context)
+    : m_context(context)
+{
+    assert(m_context);
+}
+
 std::vector<ConstantValue>
 TypeChecker::ToConstantValueList(const Initializer *init, const Type &type)
 {
@@ -273,7 +280,7 @@ Type TypeChecker::operator()(StringExpression &s)
 
 Type TypeChecker::operator()(VariableExpression &v)
 {
-    if (const SymbolEntry *entry = m_symbolTable->get(v.identifier)) {
+    if (const SymbolEntry *entry = m_context->symbolTable->get(v.identifier)) {
         if (entry->type.getAs<FunctionType>())
             Abort(std::format("Function name '{}' is used as variable", v.identifier));
         v.type = entry->type;
@@ -566,7 +573,7 @@ Type TypeChecker::operator()(ConditionalExpression &c)
 
 Type TypeChecker::operator()(FunctionCallExpression &f)
 {
-    if (const FunctionType *type = m_symbolTable->getTypeAs<FunctionType>(f.identifier)) {
+    if (const FunctionType *type = m_context->symbolTable->getTypeAs<FunctionType>(f.identifier)) {
         if (type->params.size() != f.args.size())
             Abort(std::format("Function '{}' is called with wrong number of arguments", f.identifier));
 
@@ -836,7 +843,7 @@ Type TypeChecker::operator()(FunctionDeclaration &f)
     }
     function_type->params = std::move(adjusted_param_types);
 
-    if (const SymbolEntry *entry = m_symbolTable->get(f.name)) {
+    if (const SymbolEntry *entry = m_context->symbolTable->get(f.name)) {
         if (entry->type != f.type)
             Abort(std::format("Incompatible function declarations of '{}'", f.name));
         if (entry->attrs.defined && f.body)
@@ -848,7 +855,7 @@ Type TypeChecker::operator()(FunctionDeclaration &f)
     }
 
     // Insert before checking the body to support recursive calls
-    m_symbolTable->insert(f.name, f.type, IdentifierAttributes{
+    m_context->symbolTable->insert(f.name, f.type, IdentifierAttributes{
         .type = IdentifierAttributes::Function,
         .defined = already_defined || (bool)f.body,
         .global = is_global
@@ -857,7 +864,7 @@ Type TypeChecker::operator()(FunctionDeclaration &f)
     if (f.body) {
         // Store the arguments in the symbol table only if the body is present
         for (size_t i = 0; i < f.params.size(); i++) {
-            m_symbolTable->insert(f.params[i], *function_type->params[i], IdentifierAttributes{
+            m_context->symbolTable->insert(f.params[i], *function_type->params[i], IdentifierAttributes{
                 .type = IdentifierAttributes::Local,
                 .defined = false
             });
@@ -904,7 +911,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
 
         bool is_global = (v.storage != StorageStatic);
 
-        if (const SymbolEntry *entry = m_symbolTable->get(v.identifier)) {
+        if (const SymbolEntry *entry = m_context->symbolTable->get(v.identifier)) {
             if (entry->type != v.type)
                 Abort(std::format("'{}' redeclared with different type", v.identifier));
 
@@ -922,7 +929,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
                 init = Tentative{};
         }
 
-        m_symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
+        m_context->symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
             .type = IdentifierAttributes::Static,
             .global = is_global,
             .init = init
@@ -933,11 +940,11 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             if (v.init)
                 Abort(std::format("Initializer on local extern variable '{}'", v.identifier));
 
-            if (const SymbolEntry *entry = m_symbolTable->get(v.identifier)) {
+            if (const SymbolEntry *entry = m_context->symbolTable->get(v.identifier)) {
                 if (entry->type != v.type)
                     Abort(std::format("'{}' redeclared with different type", v.identifier));
             } else {
-                m_symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
+                m_context->symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
                     .type = IdentifierAttributes::Static,
                     .global = true,
                     .init = NoInitializer{}
@@ -959,7 +966,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             if (v.init)
                 std::visit(*this, *v.init);
 
-            m_symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
+            m_context->symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
                 .type = IdentifierAttributes::Static,
                 .global = false,
                 .init = init
@@ -968,7 +975,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
             // Automatic storage duration; will handle the initializer in TAC.
             // Insert into the table first, because a variable can be used
             // in its own initializer. (int a = a = 5;)
-            m_symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
+            m_context->symbolTable->insert(v.identifier, v.type, IdentifierAttributes{
                 .type = IdentifierAttributes::Local
             });
             if (v.init) {
@@ -1094,7 +1101,7 @@ InitialValue TypeChecker::InitializeStaticPointer(
         // the pointer from the address of this.
         std::string constant_name = MakeNameUnique("string");
         Type expr_type = std::visit(*this, *single_init->expr);
-        m_symbolTable->insert(constant_name, expr_type, IdentifierAttributes{
+        m_context->symbolTable->insert(constant_name, expr_type, IdentifierAttributes{
             .type = IdentifierAttributes::Static,
             .static_init = StringInit{ string_expr->value, true }
         });

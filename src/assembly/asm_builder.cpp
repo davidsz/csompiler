@@ -1,4 +1,5 @@
 #include "asm_builder.h"
+#include "common/context.h"
 #include "common/labeling.h"
 #include <format>
 #include <ranges>
@@ -36,10 +37,8 @@ static std::string toConditionCode(BinaryOperator op, bool another)
 }
 DIAG_POP
 
-ASMBuilder::ASMBuilder(
-    std::shared_ptr<SymbolTable> symbolTable,
-    std::shared_ptr<ConstantMap> constants)
-    : m_symbolTable(symbolTable)
+ASMBuilder::ASMBuilder(Context *context, std::shared_ptr<ConstantMap> constants)
+    : m_context(context)
     , m_constants(constants)
 {
 }
@@ -51,7 +50,7 @@ BasicType ASMBuilder::GetBasicType(const tac::Value &value)
         assert(type);
         return *type;
     } else if (auto v = std::get_if<tac::Variant>(&value)) {
-        const BasicType *type = m_symbolTable->getTypeAs<BasicType>(v->name);
+        const BasicType *type = m_context->symbolTable->getTypeAs<BasicType>(v->name);
         assert(type);
         return *type;
     } else {
@@ -65,7 +64,7 @@ WordType ASMBuilder::GetWordType(const tac::Value &value)
     if (auto c = std::get_if<tac::Constant>(&value))
         return getType(c->value).wordType();
     else if (auto v = std::get_if<tac::Variant>(&value)) {
-        const SymbolEntry *entry = m_symbolTable->get(v->name);
+        const SymbolEntry *entry = m_context->symbolTable->get(v->name);
         assert(entry);
         return entry->type.wordType();
     } else {
@@ -79,7 +78,7 @@ bool ASMBuilder::CheckSignedness(const tac::Value &value)
     if (auto c = std::get_if<tac::Constant>(&value)) {
         return getType(c->value).isSigned();
     } else if (auto v = std::get_if<tac::Variant>(&value)) {
-        const SymbolEntry *entry = m_symbolTable->get(v->name);
+        const SymbolEntry *entry = m_context->symbolTable->get(v->name);
         assert(entry);
         return entry->type.isSigned();
     } else {
@@ -701,7 +700,7 @@ Operand ASMBuilder::operator()(const tac::Constant &c)
 
 Operand ASMBuilder::operator()(const tac::Variant &v)
 {
-    if (m_symbolTable->getTypeAs<ArrayType>(v.name))
+    if (m_context->symbolTable->getTypeAs<ArrayType>(v.name))
         return PseudoAggregate{ v.name, 0 };
     else
         return Pseudo{ v.name }; // TODO: Rename to PseudoScalar?
@@ -722,7 +721,7 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     size_t double_c = 0;
     std::vector<std::pair<std::string, WordType>> stack_params;
     for (auto &param : f.params) {
-        WordType type = m_symbolTable->getWordType(param);
+        WordType type = m_context->symbolTable->getWordType(param);
         if (type == Doubleword) {
             if (double_c < 8) {
                 func.instructions.push_back(Mov{
@@ -764,7 +763,7 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
         Comment(func.instructions, "---");
 
     // Body
-    ASMBuilder builder(m_symbolTable, m_constants);
+    ASMBuilder builder(m_context, m_constants);
     auto body_instructions = builder.ConvertInstructions(f.inst);
     std::copy(body_instructions.begin(),
                 body_instructions.end(),

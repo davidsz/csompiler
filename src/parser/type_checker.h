@@ -4,9 +4,14 @@
 #include "common/error.h"
 #include "common/symbol_table.h"
 
+class Context;
+
 namespace parser {
 
-struct TypeChecker : public IASTMutatingVisitor<Type> {
+class TypeChecker : public IASTMutatingVisitor<Type> {
+public:
+    TypeChecker(Context *context);
+
     Type operator()(ConstantExpression &c) override;
     Type operator()(StringExpression &s) override;
     Type operator()(VariableExpression &v) override;
@@ -49,20 +54,19 @@ struct TypeChecker : public IASTMutatingVisitor<Type> {
     Error CheckAndMutate(std::vector<parser::Declaration> &);
     void Abort(std::string_view);
 
-    std::shared_ptr<SymbolTable> symbolTable() { return m_symbolTable; }
-
 private:
     Type VisitAndConvert(std::unique_ptr<Expression> &expr);
     void ValidateTypeSpecifier(const Type &type);
     std::vector<ConstantValue> ToConstantValueList(const Initializer *init, const Type &type);
     InitialValue InitializeStaticPointer(const Initializer *init, const Type &type);
 
-    std::shared_ptr<SymbolTable> m_symbolTable = std::make_shared<SymbolTable>();
     bool m_fileScope = false;
     bool m_forLoopInitializer = false;
     std::vector<Type> m_functionTypeStack;
     std::vector<SwitchStatement *> m_switches;
     Type m_targetTypeForInitializer;
+
+    Context *m_context;
 };
 
 }; // namespace parser

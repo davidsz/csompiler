@@ -1,4 +1,5 @@
 #include "tac_builder.h"
+#include "common/context.h"
 #include "common/labeling.h"
 #include <format>
 
@@ -23,7 +24,7 @@ Type GetExpressionType(parser::Expression &expr)
 Variant TACBuilder::CreateTemporaryVariable(const Type &type)
 {
     Variant var = Variant{ GenerateTempVariableName() };
-    m_symbolTable->insert(var.name, type,
+    m_context->symbolTable->insert(var.name, type,
         IdentifierAttributes{ .type = IdentifierAttributes::Local }
     );
     return var;
@@ -235,7 +236,7 @@ Type TACBuilder::GetType(const Value &value)
     if (auto c = std::get_if<Constant>(&value))
         return getType(c->value);
     else if (auto v = std::get_if<Variant>(&value)) {
-        const SymbolEntry *entry = m_symbolTable->get(v->name);
+        const SymbolEntry *entry = m_context->symbolTable->get(v->name);
         assert(entry);
         return entry->type;
     } else {
@@ -252,7 +253,7 @@ ExpResult TACBuilder::operator()(const parser::ConstantExpression &n)
 ExpResult TACBuilder::operator()(const parser::StringExpression &s)
 {
     std::string name = MakeNameUnique("string");
-    m_symbolTable->insert(
+    m_context->symbolTable->insert(
         name,
         Type { ArrayType{
             .element = std::make_shared<Type>(BasicType::Char),
@@ -810,7 +811,7 @@ ExpResult TACBuilder::operator()(const parser::FunctionDeclaration &f)
     // after semantic analysis and they will be pseudo-registers in ASM.
     func.params = f.params;
     if (auto body = std::get_if<parser::BlockStatement>(f.body.get())) {
-        TACBuilder builder(m_symbolTable);
+        TACBuilder builder(m_context);
         func.inst = builder.ConvertBlock(body->items);
         // Avoid undefined behavior in functions where there is no return.
         // If it already had a return, this extra one won't be executed
@@ -823,7 +824,7 @@ ExpResult TACBuilder::operator()(const parser::FunctionDeclaration &f)
             func.inst.push_back(Return{ Constant{ MakeConstantValue(0, *(type->ret)) } });
     }
 
-    if (const SymbolEntry *entry = m_symbolTable->get(f.name))
+    if (const SymbolEntry *entry = m_context->symbolTable->get(f.name))
         func.global = entry->attrs.global;
 
     m_topLevel.push_back(func);
@@ -832,7 +833,7 @@ ExpResult TACBuilder::operator()(const parser::FunctionDeclaration &f)
 
 ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
 {
-    const SymbolEntry *entry = m_symbolTable->get(v.identifier);
+    const SymbolEntry *entry = m_context->symbolTable->get(v.identifier);
     assert(entry);
 
     // We will move static variable declarations to the top level in a later step
@@ -872,9 +873,10 @@ ExpResult TACBuilder::operator()(std::monostate)
     return std::monostate();
 }
 
-TACBuilder::TACBuilder(std::shared_ptr<SymbolTable> symbolTable)
-    : m_symbolTable(symbolTable)
+TACBuilder::TACBuilder(Context *context)
+    : m_context(context)
 {
+    assert(m_context);
 }
 
 std::vector<TopLevel> TACBuilder::ConvertTopLevel(const std::vector<parser::Declaration> &list)
@@ -898,7 +900,7 @@ std::vector<Instruction> TACBuilder::ConvertBlock(const std::vector<parser::Bloc
 
 void TACBuilder::ProcessStaticSymbols()
 {
-    for (const auto &[name, entry] : m_symbolTable->m_table) {
+    for (const auto &[name, entry] : m_context->symbolTable->m_table) {
         if (entry.attrs.type == IdentifierAttributes::Static) {
             if (std::holds_alternative<Tentative>(entry.attrs.init)) {
                 std::vector<ConstantValue> initializer;

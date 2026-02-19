@@ -1,13 +1,14 @@
 #include "asm_symbol_table.h"
+#include "common/context.h"
 #include <cassert>
 
 namespace assembly {
 
 ASMSymbolTable::ASMSymbolTable(
-    std::shared_ptr<SymbolTable> symbolTable,
+    Context *context,
     std::shared_ptr<ConstantMap> constants)
 {
-    for (const auto &[name, entry] : symbolTable->m_table) {
+    for (const auto &[name, entry] : context->symbolTable->m_table) {
         if (entry.type.getAs<BasicType>()) {
             insert(name, ObjEntry{
                 .type = AssemblyType{ entry.type.wordType() },
