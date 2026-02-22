@@ -821,6 +821,16 @@ Type TypeChecker::operator()(ForStatement &f)
     if (f.init) {
         m_forLoopInitializer = true;
         std::visit(*this, *f.init);
+        // TODO
+        /*
+        std::visit([this](auto &init) {
+            using T = std::decay_t<decltype(init)>;
+            if constexpr (is_expression_v<T>)
+                VisitAndConvert(init);
+            else
+                (*this)(init);
+        }, *f.init);
+        */
         m_forLoopInitializer = false;
     }
     if (f.condition) {
@@ -884,9 +894,10 @@ Type TypeChecker::operator()(FunctionDeclaration &f)
     ValidateTypeSpecifier(f.type);
 
     FunctionType *function_type = f.type.getAs<FunctionType>();
+    if (!function_type->ret->isComplete(m_typeTable) && f.body)
+        Abort(std::format("Defined function '{}' can't return an incomplete type", f.name));
     if (function_type->ret->isArray())
         Abort(std::format("Function '{}' can't return an array", f.name));
-
     if (!m_fileScope && f.storage == StorageStatic)
         Abort(std::format("Function '{}' can't be declared as static in block scope", f.name));
 
@@ -938,9 +949,6 @@ Type TypeChecker::operator()(FunctionDeclaration &f)
                 .defined = false
             });
         }
-        // Return type must be complete when defining a function
-        if (!f.type.isComplete(m_typeTable))
-            Abort("Return type of a function can't be an incomplete type");
         m_fileScope = false;
         m_functionTypeStack.push_back(f.type);
         std::visit(*this, *f.body);
@@ -955,7 +963,9 @@ Type TypeChecker::operator()(VariableDeclaration &v)
     // v.type was already determined during the AST build
     if (v.type.isVoid())
         Abort("Can't declare a variable of type void");
-    if (!v.type.isComplete(m_typeTable) && v.init)
+    // Accept a variable declaration with an incomplete structure type
+    // only if it has the extern storage class and no initializer.
+    if (!v.type.isComplete(m_typeTable) && (v.init || v.storage != StorageExtern))
         Abort("Can't initialize an incomplete variable");
     ValidateTypeSpecifier(v.type);
 
@@ -1149,11 +1159,18 @@ Type TypeChecker::operator()(CompoundInit &c)
         m_targetTypeForInitializer = outer_target;
         c.type = outer_target;
     } else if (const StructType *struct_type = m_targetTypeForInitializer.getAs<StructType>()) {
-        // TODO
         auto entry = m_typeTable->get(struct_type->tag);
         if (c.list.size() > entry->members.size())
             Abort("Too many initializers for the struct.");
-        // c.type =
+
+        Type outer_target = m_targetTypeForInitializer;
+        size_t i = 0;
+        for (auto &member_init : c.list) {
+            m_targetTypeForInitializer = entry->members[i++].type;
+            std::visit(*this, *member_init);
+        }
+        m_targetTypeForInitializer = outer_target;
+        c.type = outer_target;
     } else
         Abort("Can't initialize a scalar object with a compound initializer.");
     return c.type;

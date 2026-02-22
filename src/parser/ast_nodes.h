@@ -208,4 +208,15 @@ inline ForInit to_for_init(T &&expr) {
     }, std::move(expr));
 }
 
+// is_expression trait
+template<typename T>
+struct is_expression : std::false_type {};
+#define MAKE_EXPRESSION_TRAIT(name, members) \
+    template<>                               \
+    struct is_expression<name> : std::true_type {};
+AST_EXPRESSION_LIST(MAKE_EXPRESSION_TRAIT)
+#undef MAKE_EXPRESSION_TRAIT
+template<typename T>
+inline constexpr bool is_expression_v = is_expression<T>::value;
+
 }; // namespace parser
