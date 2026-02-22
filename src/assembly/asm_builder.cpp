@@ -778,7 +778,7 @@ Operand ASMBuilder::operator()(const tac::StaticVariable &s)
         .name = s.name,
         .global = s.global,
         .list = s.list,
-        .alignment = s.type.alignment()
+        .alignment = s.type.alignment(m_context->typeTable.get())
     });
     return std::monostate();
 }
@@ -788,7 +788,7 @@ Operand ASMBuilder::operator()(const tac::StaticConstant &s)
     m_topLevel.push_back(StaticConstant{
         .name = s.name,
         .init = s.static_init,
-        .alignment = s.type.alignment()
+        .alignment = s.type.alignment(m_context->typeTable.get())
     });
     return std::monostate();
 }

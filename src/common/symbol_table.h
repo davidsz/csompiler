@@ -4,6 +4,8 @@
 #include "values.h"
 #include <unordered_map>
 
+class TypeTable;
+
 // Initial value types
 struct Tentative {};
 struct NoInitializer {};
@@ -35,6 +37,8 @@ struct SymbolEntry {
 
 struct SymbolTable {
 public:
+    SymbolTable(TypeTable *typeTable) : m_typeTable(typeTable) {}
+
     bool contains(const std::string &name);
     const SymbolEntry *get(const std::string &name);
     template <typename T> const T *getTypeAs(const std::string &name) {
@@ -53,4 +57,5 @@ public:
     void print();
 
     std::unordered_map<std::string, SymbolEntry> m_table;
+    TypeTable *m_typeTable;
 };

@@ -4,10 +4,12 @@
 #include "asm_symbol_table.h"
 #include <sstream>
 
+class Context;
+
 namespace assembly {
 
 struct ASMPrinter : public IASMVisitor<void> {
-    ASMPrinter(std::shared_ptr<ASMSymbolTable> symbolTable);
+    ASMPrinter(Context *context, std::shared_ptr<ASMSymbolTable> symbolTable);
 
     void operator()(const Reg &) override;
     void operator()(const Imm &) override;
@@ -43,8 +45,12 @@ struct ASMPrinter : public IASMVisitor<void> {
 
     std::string ToText(std::list<TopLevel>);
 
+    std::string BuildInitializer(const ConstantValue &init);
+
     std::ostringstream m_codeStream;
     std::shared_ptr<ASMSymbolTable> m_symbolTable;
+
+    Context *m_context;
 };
 
 }; // assembly

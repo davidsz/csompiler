@@ -3,6 +3,7 @@
 #include "common/labeling.h"
 #include <cassert>
 #include <format>
+#include <unordered_set>
 
 namespace parser {
 
@@ -14,23 +15,9 @@ struct TypeError : public std::runtime_error
     }
 };
 
-static Type getCommonType(const Type &first, const Type &second)
+static size_t roundUp(size_t number, size_t alignment)
 {
-    assert(first.isInitialized() && second.isInitialized());
-
-    Type lhs = first.isCharacter() ? Type{ BasicType::Int } : first;
-    Type rhs = second.isCharacter() ? Type{ BasicType::Int } : second;
-
-    if (lhs == rhs)
-        return lhs;
-
-    if (lhs.isBasic(BasicType::Double) || rhs.isBasic(BasicType::Double))
-        return Type{ BasicType::Double };
-
-    if (lhs.size() == rhs.size())
-        return lhs.isSigned() ? rhs : lhs;
-
-    return lhs.size() > rhs.size() ? lhs : rhs;
+    return (number + alignment - 1) & ~(alignment - 1);
 }
 
 // It must be a constant literal, it must be
@@ -110,10 +97,13 @@ static bool isLvalue(const Expression &expr, const Type &type)
         if (pointer_type->decayed)
             return false;
     }
+    if (const DotExpression *dot = std::get_if<DotExpression>(&expr))
+        return isLvalue(expr, dot->type);
     return std::holds_alternative<VariableExpression>(expr)
         || std::holds_alternative<DereferenceExpression>(expr)
         || std::holds_alternative<SubscriptExpression>(expr)
-        || std::holds_alternative<StringExpression>(expr);
+        || std::holds_alternative<StringExpression>(expr)
+        || std::holds_alternative<ArrowExpression>(expr);
 }
 
 static std::optional<Type> getCommonPointerType(
@@ -146,8 +136,28 @@ static size_t byteSizeOf(const std::vector<ConstantValue> &v)
 
 TypeChecker::TypeChecker(Context *context)
     : m_context(context)
+    , m_typeTable(context->typeTable.get())
 {
     assert(m_context);
+}
+
+Type TypeChecker::GetCommonType(const Type &first, const Type &second)
+{
+    assert(first.isInitialized() && second.isInitialized());
+
+    Type lhs = first.isCharacter() ? Type{ BasicType::Int } : first;
+    Type rhs = second.isCharacter() ? Type{ BasicType::Int } : second;
+
+    if (lhs == rhs)
+        return lhs;
+
+    if (lhs.isBasic(BasicType::Double) || rhs.isBasic(BasicType::Double))
+        return Type{ BasicType::Double };
+
+    if (lhs.size(m_typeTable) == rhs.size(m_typeTable))
+        return lhs.isSigned() ? rhs : lhs;
+
+    return lhs.size(m_typeTable) > rhs.size(m_typeTable) ? lhs : rhs;
 }
 
 std::vector<ConstantValue>
@@ -155,78 +165,107 @@ TypeChecker::ToConstantValueList(const Initializer *init, const Type &type)
 {
     std::vector<ConstantValue> ret;
 
-    // Initializing a scalar type
-    const ArrayType *array_type = type.getAs<ArrayType>();
-    if (!array_type) {
-        if (!init) {
-            ret.push_back(MakeConstantValue(0, type));
-            return ret;
-        }
-        if (const SingleInit *single = std::get_if<SingleInit>(init)) {
-            assert(single->expr);
-            if (auto c = std::get_if<ConstantExpression>(single->expr.get()))
-                ret.push_back(ConvertValue(c->value, type));
-            else
-                Abort("Initializer is not a constant expression.");
-            return ret;
-        }
-        Abort("Scalar types can't have compound initializers.");
-    }
-
-    // Initializing an array type
-    size_t final_size = type.size();
+    // Zero initialization
+    size_t final_size = type.size(m_typeTable);
     if (!init) {
         ret.push_back(ZeroBytes{ final_size });
         return ret;
     }
 
-    size_t element_count = array_type->count;
-    const Type &element_type = *array_type->element;
-    if (const SingleInit *single = std::get_if<SingleInit>(init)) {
-        // Character array initialized by a single string literal
-        if (element_type.isCharacter()) {
-            if (!single->expr) {
-                ret.push_back(ZeroBytes{ element_count });
+    // Array
+    if (const ArrayType *array_type = type.getAs<ArrayType>()) {
+        size_t element_count = array_type->count;
+        const Type &element_type = *array_type->element;
+        if (const SingleInit *single = std::get_if<SingleInit>(init)) {
+            // Character array initialized by a single string literal
+            if (element_type.isCharacter()) {
+                if (!single->expr) {
+                    ret.push_back(ZeroBytes{ element_count });
+                    return ret;
+                }
+
+                auto string_expr = std::get_if<StringExpression>(single->expr.get());
+                if (!string_expr)
+                    Abort("Invalid string initializer.");
+                size_t string_length = string_expr->value.size();
+                if (string_length > element_count)
+                    Abort("Too many characters in string literal.");
+
+                ret.push_back(StringInit{ string_expr->value, string_length < element_count });
+                if (element_count > string_length + 1)
+                    ret.push_back(ZeroBytes{ element_count - string_length - 1 });
                 return ret;
             }
 
-            auto string_expr = std::get_if<StringExpression>(single->expr.get());
-            if (!string_expr)
-                Abort("Invalid string initializer.");
-            size_t string_length = string_expr->value.size();
-            if (string_length > element_count)
-                Abort("Too many characters in string literal.");
-
-            ret.push_back(StringInit{ string_expr->value, string_length < element_count });
-            if (element_count > string_length + 1)
-                ret.push_back(ZeroBytes{ element_count - string_length - 1 });
+            // It's not allowed in other cases
+            Abort("Array type can't be initialized by a scalar value");
             return ret;
         }
 
-        // It's not allowed in other cases
-        Abort("Array type can't be initialized by a scalar value");
+        // Initializing an array by a compound initializer
+        const CompoundInit *compound = std::get_if<CompoundInit>(init);
+        assert(compound);
+
+        if (array_type->count < compound->list.size())
+            Abort("Too long compound initializer for the given type.");
+
+        for (auto &element : compound->list) {
+            auto values = ToConstantValueList(element.get(), element_type);
+            ret.insert(ret.end(),
+                std::make_move_iterator(values.begin()),
+                std::make_move_iterator(values.end()));
+        }
+
+        // Pad the missing bytes
+        size_t current_size = byteSizeOf(ret);
+        if (current_size < final_size)
+            ret.push_back(ZeroBytes{ final_size - current_size });
+
         return ret;
     }
 
-    // Initializing an array by a compound initializer
-    const CompoundInit *compound = std::get_if<CompoundInit>(init);
-    assert(compound);
+    // Struct
+    if (const StructType *struct_type = type.getAs<StructType>()) {
+        if (std::holds_alternative<SingleInit>(*init))
+            Abort("Can't initialize a struct with a single initializer");
+        const CompoundInit *compound = std::get_if<CompoundInit>(init);
+        assert(compound);
 
-    if (array_type->count < compound->list.size())
-        Abort("Too long compound initializer for the given type.");
+        auto entry = m_typeTable->get(struct_type->tag);
+        if (entry->members.size() < compound->list.size())
+            Abort("Too many initializers for the struct.");
 
-    for (auto &element : compound->list) {
-        auto values = ToConstantValueList(element.get(), element_type);
-        ret.insert(ret.end(),
-            std::make_move_iterator(values.begin()),
-            std::make_move_iterator(values.end()));
+        size_t i = 0;
+        size_t current_offset = 0;
+        for (auto &member_init : compound->list) {
+            const TypeTable::StructMemberEntry &member = entry->members[i];
+            // Insert member padding if necessary
+            if (member.offset != current_offset)
+                ret.push_back(ZeroBytes{ member.offset - current_offset });
+            // Recursively convert the initializer
+            auto values = ToConstantValueList(member_init.get(), member.type);
+            ret.insert(ret.end(),
+                std::make_move_iterator(values.begin()),
+                std::make_move_iterator(values.end()));
+            current_offset = member.offset + member.type.size(m_typeTable);
+            i++;
+        }
+        // Pad the whole struct
+        if (current_offset != entry->size)
+            ret.push_back(ZeroBytes{ entry->size - current_offset });
+        return ret;
     }
 
-    // Pad the missing bytes
-    size_t current_size = byteSizeOf(ret);
-    if (current_size < final_size)
-        ret.push_back(ZeroBytes{ final_size - current_size });
-
+    // Scalar type
+    if (const SingleInit *single = std::get_if<SingleInit>(init)) {
+        assert(single->expr);
+        if (auto c = std::get_if<ConstantExpression>(single->expr.get()))
+            ret.push_back(ConvertValue(c->value, type));
+        else
+            Abort("Initializer is not a constant expression.");
+        return ret;
+    }
+    Abort("Scalar types can't have compound initializers.");
     return ret;
 }
 
@@ -246,13 +285,19 @@ Type TypeChecker::VisitAndConvert(std::unique_ptr<Expression> &expr)
         expr = std::make_unique<Expression>(std::move(addr));
         return new_type;
     }
+    if (const StructType *struct_type = type.getAs<StructType>()) {
+        const std::string &tag = struct_type->tag;
+        if (!m_typeTable->contains(tag))
+            Abort(std::format("Invalid use of incomplete struct type '{}'", tag));
+        return type;
+    }
     return type;
 }
 
 void TypeChecker::ValidateTypeSpecifier(const Type &type)
 {
     if (auto array_type = type.getAs<ArrayType>()) {
-        if (!array_type->element->isComplete())
+        if (!array_type->element->isComplete(m_typeTable))
             Abort("Illegal array of incomplete type");
         ValidateTypeSpecifier(*array_type->element);
     } else if (auto pointer_type = type.getAs<PointerType>())
@@ -315,7 +360,7 @@ Type TypeChecker::operator()(UnaryExpression &u)
         if (!isLvalue(*u.expr, type))
             Abort(std::format("Invalid lvalue in {} unary expression", toString(u.op)));
         if (PointerType *pointer_type = type.getAs<PointerType>()) {
-            if (!pointer_type->referenced->isComplete())
+            if (!pointer_type->referenced->isComplete(m_typeTable))
                 Abort("Incomplete pointer type in unary expression");
         }
     }
@@ -390,11 +435,11 @@ Type TypeChecker::operator()(BinaryExpression &b)
 
     // Pointer arithmetics
     if (b.op == Add) {
-        if (left_type.isCompletePointer() && right_type.isInteger()) {
+        if (left_type.isCompletePointer(m_typeTable) && right_type.isInteger()) {
             b.rhs = explicitCast(std::move(b.rhs), right_type, Type{ BasicType::Long });
             b.type = left_type;
             return b.type;
-        } else if (left_type.isInteger() && right_type.isCompletePointer()) {
+        } else if (left_type.isInteger() && right_type.isCompletePointer(m_typeTable)) {
             b.lhs = explicitCast(std::move(b.lhs), left_type, Type{ BasicType::Long });
             b.type = right_type;
             return b.type;
@@ -402,11 +447,11 @@ Type TypeChecker::operator()(BinaryExpression &b)
             Abort("Invalid operands for addition.");
     }
     if (b.op == Subtract) {
-        if (left_type.isCompletePointer() && right_type.isInteger()) {
+        if (left_type.isCompletePointer(m_typeTable) && right_type.isInteger()) {
             b.rhs = explicitCast(std::move(b.rhs), right_type, Type{ BasicType::Long });
             b.type = left_type;
             return b.type;
-        } else if (left_type.isCompletePointer() && left_type == right_type) {
+        } else if (left_type.isCompletePointer(m_typeTable) && left_type == right_type) {
             // Difference of two pointers: the number of array elements between them
             b.type = Type{ BasicType::Long };  // This would be ptrdiff_t officially
             return b.type;
@@ -454,7 +499,7 @@ Type TypeChecker::operator()(BinaryExpression &b)
         return b.type;
     }
 
-    common_type = getCommonType(left_type, right_type);
+    common_type = GetCommonType(left_type, right_type);
     b.lhs = explicitCast(std::move(b.lhs), left_type, common_type);
     b.rhs = explicitCast(std::move(b.rhs), right_type, common_type);
     if (isRelationOperator(b.op)) {
@@ -509,7 +554,7 @@ Type TypeChecker::operator()(CompoundAssignmentExpression &c)
             || c.op == BinaryOperator::AssignRShift)
             Abort("The type of the given compound operation can't be a pointer.");
 
-        if (!left_type.isCompletePointer())
+        if (!left_type.isCompletePointer(m_typeTable))
             Abort("The left side of += and -= must be a complete pointer.");
 
         if (!right_type.isInteger())
@@ -532,7 +577,7 @@ Type TypeChecker::operator()(CompoundAssignmentExpression &c)
         return c.type;
     }
 
-    Type common_type = getCommonType(left_type, right_type);
+    Type common_type = GetCommonType(left_type, right_type);
     c.lhs = explicitCast(std::move(c.lhs), left_type, common_type);
     c.rhs = explicitCast(std::move(c.rhs), right_type, common_type);
     c.inner_type = common_type;
@@ -562,8 +607,13 @@ Type TypeChecker::operator()(ConditionalExpression &c)
             common_type = *cpt;
         else
             Abort("Expressions have incompatible pointer types");
+    } else if (true_type.isStruct() || false_type.isStruct()) {
+        if (true_type != false_type)
+            Abort("Expressions have incompatible struct types");
+        c.type = true_type;
+        return c.type;
     } else
-        common_type = getCommonType(true_type, false_type);
+        common_type = GetCommonType(true_type, false_type);
 
     c.trueBranch = explicitCast(std::move(c.trueBranch), true_type, common_type);
     c.falseBranch = explicitCast(std::move(c.falseBranch), false_type, common_type);
@@ -617,11 +667,11 @@ Type TypeChecker::operator()(SubscriptExpression &s)
     Type base_type = VisitAndConvert(s.pointer);
     Type index_type = VisitAndConvert(s.index);
     Type result_type;
-    if (base_type.isCompletePointer() && index_type.isInteger()) {
+    if (base_type.isCompletePointer(m_typeTable) && index_type.isInteger()) {
         // array_name[index]
         result_type = base_type;
         s.index = explicitCast(std::move(s.index), index_type, Type{ BasicType::Long });
-    } else if (base_type.isInteger() && index_type.isCompletePointer()) {
+    } else if (base_type.isInteger() && index_type.isCompletePointer(m_typeTable)) {
         // index[array_name]
         result_type = index_type;
         s.pointer = explicitCast(std::move(s.pointer), base_type, Type{ BasicType::Long });
@@ -634,7 +684,7 @@ Type TypeChecker::operator()(SubscriptExpression &s)
 Type TypeChecker::operator()(SizeOfExpression &s)
 {
     s.inner_type = std::visit(*this, *s.expr);
-    if (!s.inner_type.isComplete())
+    if (!s.inner_type.isComplete(m_typeTable))
         Abort("Can't take the size of an incomplete type");
     s.type = Type{ BasicType::ULong };
     return s.type;
@@ -643,21 +693,36 @@ Type TypeChecker::operator()(SizeOfExpression &s)
 Type TypeChecker::operator()(SizeOfTypeExpression &s)
 {
     ValidateTypeSpecifier(s.operand);
-    if (!s.operand.isComplete())
+    if (!s.operand.isComplete(m_typeTable))
         Abort("Can't take the size of an incomplete type");
     s.type = Type{ BasicType::ULong };
     return s.type;
 }
 
-Type TypeChecker::operator()(DotExpression &)
+Type TypeChecker::operator()(DotExpression &d)
 {
-    // TODO
+    Type type = VisitAndConvert(d.expr);
+    const StructType *struct_type = type.getAs<StructType>();
+    if (!struct_type)
+        Abort("Can't access member of a non-struct type");
+    auto entry = m_typeTable->get(struct_type->tag);
+    if (!entry->find(d.identifier))
+        Abort(std::format("Member '{}' not found in struct '{}'", d.identifier, struct_type->tag));
     return Type{ std::monostate() };
 }
 
-Type TypeChecker::operator()(ArrowExpression &)
+Type TypeChecker::operator()(ArrowExpression &a)
 {
-    // TODO
+    Type type = VisitAndConvert(a.expr);
+    const PointerType *pointer_type = type.getAs<PointerType>();
+    if (!pointer_type)
+        Abort("Can't access member of a non-pointer type");
+    const StructType *struct_type = pointer_type->referenced->getAs<StructType>();
+    if (!struct_type)
+        Abort("Can't access member of a non-struct type");
+    auto entry = m_typeTable->get(struct_type->tag);
+    if (!entry->find(a.identifier))
+        Abort(std::format("Member '{}' not found in struct '{}'", a.identifier, struct_type->tag));
     return Type{ std::monostate() };
 }
 
@@ -862,13 +927,20 @@ Type TypeChecker::operator()(FunctionDeclaration &f)
     });
 
     if (f.body) {
-        // Store the arguments in the symbol table only if the body is present
         for (size_t i = 0; i < f.params.size(); i++) {
-            m_context->symbolTable->insert(f.params[i], *function_type->params[i], IdentifierAttributes{
+            // Arguments must be complete types when defining a function
+            Type param_type = *function_type->params[i];
+            if (!param_type.isComplete(m_typeTable))
+                Abort("Argument of a function can't be an incomplete type");
+            // Store the arguments in the symbol table only if the body is present
+            m_context->symbolTable->insert(f.params[i], param_type, IdentifierAttributes{
                 .type = IdentifierAttributes::Local,
                 .defined = false
             });
         }
+        // Return type must be complete when defining a function
+        if (!f.type.isComplete(m_typeTable))
+            Abort("Return type of a function can't be an incomplete type");
         m_fileScope = false;
         m_functionTypeStack.push_back(f.type);
         std::visit(*this, *f.body);
@@ -883,6 +955,8 @@ Type TypeChecker::operator()(VariableDeclaration &v)
     // v.type was already determined during the AST build
     if (v.type.isVoid())
         Abort("Can't declare a variable of type void");
+    if (!v.type.isComplete(m_typeTable) && v.init)
+        Abort("Can't initialize an incomplete variable");
     ValidateTypeSpecifier(v.type);
 
     if (m_forLoopInitializer && v.storage != StorageDefault)
@@ -987,9 +1061,43 @@ Type TypeChecker::operator()(VariableDeclaration &v)
     return Type{ std::monostate() };
 }
 
-Type TypeChecker::operator()(StructDeclaration &)
+Type TypeChecker::operator()(StructDeclaration &s)
 {
-    // TODO
+    // Don't process incomplete structs
+    if (s.members.empty())
+        return Type{ std::monostate() };
+
+    if (m_typeTable->get(s.tag))
+        Abort(std::format("Redeclaration of struct '{}'", s.tag));
+
+    // Validation; calculation of sizes, alignments, offsets
+    TypeTable::StructEntry entry;
+    size_t struct_size = 0;
+    size_t struct_alignment = 0;
+    std::unordered_set<std::string> member_names;
+    for (auto &m : s.members) {
+        if (member_names.contains(m.name))
+            Abort(std::format("Member names should be unique in struct '{}'", s.tag));
+        if (m.type.isArray() && !m.type.getAs<ArrayType>()->element->isComplete(m_typeTable))
+            Abort(std::format("Array member '{}' of struct '{}' is incomplete", m.name, s.tag));
+        member_names.insert(m.name);
+
+        size_t member_alignment = m.type.alignment(m_typeTable);
+        size_t member_offset = roundUp(struct_size, member_alignment);
+        entry.members.emplace_back(TypeTable::StructMemberEntry{
+            .name = m.name,
+            .type = m.type,
+            .offset = member_offset
+        });
+
+        struct_alignment = std::max(struct_alignment, member_alignment);
+        struct_size = member_offset + m.type.size(m_typeTable);
+    }
+    entry.size = roundUp(struct_size, struct_alignment);
+    entry.alignment = struct_alignment;
+
+    // Insert it into the type table
+    m_typeTable->insert(s.tag, entry);
     return Type{ std::monostate() };
 }
 
@@ -1026,23 +1134,28 @@ Type TypeChecker::operator()(SingleInit &s)
 Type TypeChecker::operator()(CompoundInit &c)
 {
     assert(m_targetTypeForInitializer.isInitialized());
-    const ArrayType *array_type = m_targetTypeForInitializer.getAs<ArrayType>();
-    if (!array_type)
-        Abort("Can't initialize a scalar object with a compound initializer.");
-    if (c.list.size() > array_type->count)
-        Abort("Too many initializers for the array.");
+    if (const ArrayType *array_type = m_targetTypeForInitializer.getAs<ArrayType>()) {
+        if (c.list.size() > array_type->count)
+            Abort("Too many initializers for the array.");
 
-    // Save outer_target to restore it later
-    Type outer_target = m_targetTypeForInitializer;
-    // Make a copy of the pointed type, because setting m_targetTypeForInitializer
-    // in a nested initializer would modify the memory area of array_type->element
-    Type inner_target = *array_type->element;
-    for (auto &i: c.list) {
-        m_targetTypeForInitializer = inner_target;
-        std::visit(*this, *i);
-    }
-    m_targetTypeForInitializer = outer_target;
-    c.type = outer_target;
+        Type outer_target = m_targetTypeForInitializer;
+        // Make a copy of the pointed type, because setting m_targetTypeForInitializer
+        // in a nested initializer would modify the memory area of array_type->element
+        Type inner_target = *array_type->element;
+        for (auto &i: c.list) {
+            m_targetTypeForInitializer = inner_target;
+            std::visit(*this, *i);
+        }
+        m_targetTypeForInitializer = outer_target;
+        c.type = outer_target;
+    } else if (const StructType *struct_type = m_targetTypeForInitializer.getAs<StructType>()) {
+        // TODO
+        auto entry = m_typeTable->get(struct_type->tag);
+        if (c.list.size() > entry->members.size())
+            Abort("Too many initializers for the struct.");
+        // c.type =
+    } else
+        Abort("Can't initialize a scalar object with a compound initializer.");
     return c.type;
 }
 

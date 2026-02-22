@@ -23,7 +23,7 @@ std::string from_tac(
     postprocessPseudoRegisters(asmList, asmSymbolTable);
     postprocessInvalidInstructions(asmList);
 
-    ASMPrinter asmPrinter(asmSymbolTable);
+    ASMPrinter asmPrinter(context, asmSymbolTable);
     return asmPrinter.ToText(asmList);
 }
 

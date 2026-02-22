@@ -1,4 +1,5 @@
 #include "types.h"
+#include "common/type_table.h"
 #include <cassert>
 #include <iostream>
 #include <sstream>
@@ -119,10 +120,10 @@ bool AssemblyType::isByteArray() const
     return std::holds_alternative<ByteArray>(t);
 }
 
-int AssemblyType::size() const
+size_t AssemblyType::size() const
 {
     if (auto b = std::get_if<ByteArray>(&t))
-        return static_cast<int>(b->size);
+        return b->size;
     auto w = std::get_if<WordType>(&t);
     assert(w);
     switch (*w) {
@@ -139,7 +140,7 @@ int AssemblyType::size() const
     }
 }
 
-int AssemblyType::alignment() const
+size_t AssemblyType::alignment() const
 {
     if (auto b = std::get_if<ByteArray>(&t))
         return b->alignment;
@@ -211,6 +212,11 @@ bool Type::isArray() const
     return std::holds_alternative<ArrayType>(t);
 }
 
+bool Type::isStruct() const
+{
+    return std::holds_alternative<StructType>(t);
+}
+
 bool Type::isInteger() const
 {
     const BasicType *basic_type = std::get_if<BasicType>(&t);
@@ -231,21 +237,25 @@ bool Type::isInteger() const
     }
 }
 
-bool Type::isComplete() const
+bool Type::isComplete(const TypeTable *table) const
 {
-    return !isVoid();
+    if (isVoid())
+        return false;
+    if (auto struct_type = getAs<StructType>())
+        return table->contains(struct_type->tag);
+    return true;
 }
 
-bool Type::isCompletePointer() const
+bool Type::isCompletePointer(const TypeTable *table) const
 {
     if (auto pointer_type = std::get_if<PointerType>(&t))
-        return pointer_type->referenced->isComplete();
+        return pointer_type->referenced->isComplete(table);
     return false;
 }
 
 bool Type::isScalar() const
 {
-    return !isVoid() && !isArray() && !isFunction();
+    return !isVoid() && !isArray() && !isFunction() && !isStruct();
 }
 
 bool Type::isSigned() const
@@ -313,15 +323,19 @@ bool Type::isInitialized() const
     return !std::holds_alternative<std::monostate>(t);
 }
 
-size_t Type::size() const
+size_t Type::size(const TypeTable *table) const
 {
     if (isPointer())
         return 8;
     if (const ArrayType *arr = std::get_if<ArrayType>(&t))
-        return arr->element->size() * arr->count;
+        return arr->element->size(table) * arr->count;
+    if (const StructType *struct_type = std::get_if<StructType>(&t)) {
+        auto entry = table->get(struct_type->tag);
+        assert(entry);
+        return entry->size;
+    }
     const BasicType *basic_type = std::get_if<BasicType>(&t);
-    if (!basic_type)
-        return 0;
+    assert(basic_type);
     switch (*basic_type) {
     case BasicType::Char:
     case BasicType::SChar:
@@ -339,16 +353,19 @@ size_t Type::size() const
     }
 }
 
-int Type::alignment() const
+size_t Type::alignment(const TypeTable *table) const
 {
-    size_t size = this->size();
+    size_t size = this->size(table);
     if (size > 16)
         return 16;
-    if (auto array_type = std::get_if<ArrayType>(&t)) {
-        size_t element_size = array_type->element->size();
-        return static_cast<int>(element_size % 2 ? element_size + 1 : element_size);
+    if (auto array_type = std::get_if<ArrayType>(&t))
+        return array_type->element->alignment(table);
+    if (auto struct_type = std::get_if<StructType>(&t)) {
+        auto entry = table->get(struct_type->tag);
+        assert(entry);
+        return entry->alignment;
     }
-    return static_cast<int>(size);
+    return size;
 }
 
 WordType Type::wordType() const

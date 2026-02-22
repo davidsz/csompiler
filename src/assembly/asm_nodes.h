@@ -128,11 +128,11 @@ namespace assembly {
         std::string name; \
         bool global; \
         std::vector<ConstantValue> list; \
-        int alignment;) \
+        size_t alignment;) \
     X(StaticConstant, \
         std::string name; \
         ConstantValue init; \
-        int alignment;)
+        size_t alignment;)
 
 enum Register {
 #define ADD_REG_TO_ENUM(name, eightbytename, fourbytename, onebytename) name,

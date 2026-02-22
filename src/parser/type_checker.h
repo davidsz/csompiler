@@ -57,6 +57,7 @@ public:
 private:
     Type VisitAndConvert(std::unique_ptr<Expression> &expr);
     void ValidateTypeSpecifier(const Type &type);
+    Type GetCommonType(const Type &first, const Type &second);
     std::vector<ConstantValue> ToConstantValueList(const Initializer *init, const Type &type);
     InitialValue InitializeStaticPointer(const Initializer *init, const Type &type);
 
@@ -67,6 +68,7 @@ private:
     Type m_targetTypeForInitializer;
 
     Context *m_context;
+    TypeTable *m_typeTable;
 };
 
 }; // namespace parser

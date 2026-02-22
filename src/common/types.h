@@ -7,6 +7,8 @@
 #include <variant>
 #include <vector>
 
+class TypeTable;
+
 // Type and storage specifiers
 #define TYPE_SPECIFIER_LIST(X) \
     X("int") \
@@ -45,7 +47,7 @@ enum WordType {
 
 struct ByteArray {
     size_t size;
-    int alignment;
+    size_t alignment;
 };
 
 using AssemblyTypeInfo = std::variant<WordType, ByteArray>;
@@ -61,8 +63,8 @@ struct AssemblyType {
 
     bool isWord(WordType type) const;
     bool isByteArray() const;
-    int size() const;
-    int alignment() const;
+    size_t size() const;
+    size_t alignment() const;
 };
 
 // TODO: Remove this and replace with .size() when possible
@@ -135,16 +137,17 @@ struct Type {
     bool isVoid() const;
     bool isVoidPointer() const;
     bool isArray() const;
+    bool isStruct() const;
     bool isInteger() const;
-    bool isComplete() const;
-    bool isCompletePointer() const;
+    bool isComplete(const TypeTable *) const;
+    bool isCompletePointer(const TypeTable *) const;
     bool isScalar() const;
     bool isSigned() const;
     bool isArithmetic() const;
     bool isCharacter() const;
     bool isInitialized() const;
-    size_t size() const;
-    int alignment() const;
+    size_t size(const TypeTable *) const;
+    size_t alignment(const TypeTable *) const;
     WordType wordType() const;
     Type storedType() const;
     Type promotedType() const;

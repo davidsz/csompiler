@@ -18,7 +18,7 @@ int SymbolTable::getByteSize(const std::string &name)
 {
     auto it = m_table.find(name);
     if (it != m_table.end())
-        return static_cast<int>(it->second.type.size());
+        return static_cast<int>(it->second.type.size(m_typeTable));
     return 0;
 }
 

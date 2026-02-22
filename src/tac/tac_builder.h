@@ -103,6 +103,7 @@ private:
     std::vector<Instruction> m_instructions;
 
     Context *m_context;
+    TypeTable *m_typeTable;
 };
 
 }; // tac

@@ -53,9 +53,9 @@ Variant TACBuilder::CastValue(
     }
     // We are preserving type information for assembly generation
     // by using the seemingly redundant Copy
-    if (to_type.size() == from_type.size())
+    if (to_type.size(m_typeTable) == from_type.size(m_typeTable))
         i.push_back(Copy{ value, dst });
-    else if (to_type.size() < from_type.size())
+    else if (to_type.size(m_typeTable) < from_type.size(m_typeTable))
         i.push_back(Truncate{ value, dst });
     else if (from_type.isSigned())
         i.push_back(SignExtend{ value, dst });
@@ -109,7 +109,7 @@ TACBuilder::LHSInfo TACBuilder::AnalyzeLHS(const parser::Expression &expr)
         m_instructions.push_back(AddPtr{
             .ptr   = pointer_operand,
             .index = integer_operand,
-            .scale = element_type.size(),
+            .scale = element_type.size(m_typeTable),
             .dst   = addr
         });
 
@@ -136,7 +136,7 @@ void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, size_t 
         base,
         static_cast<int>(offset)
     });
-    offset += type.storedType().size();
+    offset += type.storedType().size(m_typeTable);
 }
 
 void TACBuilder::EmitRuntimeInit(
@@ -223,7 +223,7 @@ void TACBuilder::EmitRuntimeInit(
         else {
             Value v = VisitAndConvert(*single->expr);
             m_instructions.push_back(CopyToOffset{ v, base, static_cast<int>(offset) });
-            offset += type.storedType().size();
+            offset += type.storedType().size(m_typeTable);
         }
         return;
     }
@@ -312,7 +312,7 @@ ExpResult TACBuilder::operator()(const parser::UnaryExpression &u)
             m_instructions.push_back(AddPtr{
                 .ptr = typed_val,
                 .index = Constant{ MakeConstantValue(offset, Type{ BasicType::Long }) },
-                .scale = ptr_type->referenced->size(),
+                .scale = ptr_type->referenced->size(m_typeTable),
                 .dst = new_value
             });
         } else {
@@ -394,7 +394,7 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
             auto add_ptr = AddPtr{
                 .ptr = pointer_operand,
                 .index = integer_operand,
-                .scale = ptr_type->referenced->size(),
+                .scale = ptr_type->referenced->size(m_typeTable),
                 .dst = CreateTemporaryVariable(b.type)
             };
             m_instructions.push_back(add_ptr);
@@ -415,7 +415,7 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
                 auto add_ptr = AddPtr{
                     .ptr = lhs,
                     .index = negate.dst,
-                    .scale = ptr_type->referenced->size(),
+                    .scale = ptr_type->referenced->size(m_typeTable),
                     .dst = CreateTemporaryVariable(lhs_type)
                 };
                 m_instructions.push_back(add_ptr);
@@ -435,7 +435,7 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
 
                 auto ptr_type = lhs_type.getAs<PointerType>();
                 assert(ptr_type);
-                size_t elem_size = ptr_type->referenced->size();
+                size_t elem_size = ptr_type->referenced->size(m_typeTable);
                 auto result = Binary{
                     .op = BinaryOperator::Divide,
                     .src1 = diff.dst,
@@ -515,7 +515,7 @@ ExpResult TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
         m_instructions.push_back(AddPtr{
             .ptr = typed_left,
             .index = index,
-            .scale = pointer_type->referenced->size(),
+            .scale = pointer_type->referenced->size(m_typeTable),
             .dst = tmp
         });
     } else
@@ -605,7 +605,7 @@ ExpResult TACBuilder::operator()(const parser::SubscriptExpression &s)
     auto add_ptr = AddPtr{
         .ptr = pointer_operand,
         .index = integer_operand,
-        .scale = element_type->size(),
+        .scale = element_type->size(m_typeTable),
         .dst = CreateTemporaryVariable(Type{ PointerType{ .referenced = element_type } })
     };
     m_instructions.push_back(add_ptr);
@@ -615,14 +615,18 @@ ExpResult TACBuilder::operator()(const parser::SubscriptExpression &s)
 ExpResult TACBuilder::operator()(const parser::SizeOfExpression &s)
 {
     return PlainOperand{
-        Constant{ MakeConstantValue(static_cast<long>(s.inner_type.size()), Type{ BasicType::ULong }) }
+        Constant{
+            MakeConstantValue(
+                static_cast<long>(s.inner_type.size(m_typeTable)),
+                Type{ BasicType::ULong })
+        }
     };
 }
 
 ExpResult TACBuilder::operator()(const parser::SizeOfTypeExpression &s)
 {
     return PlainOperand{
-        Constant{ MakeConstantValue(static_cast<long>(s.operand.size()), Type{ BasicType::ULong }) }
+        Constant{ MakeConstantValue(static_cast<long>(s.operand.size(m_typeTable)), Type{ BasicType::ULong }) }
     };
 }
 
@@ -875,6 +879,7 @@ ExpResult TACBuilder::operator()(std::monostate)
 
 TACBuilder::TACBuilder(Context *context)
     : m_context(context)
+    , m_typeTable(context->typeTable.get())
 {
     assert(m_context);
 }
@@ -905,7 +910,7 @@ void TACBuilder::ProcessStaticSymbols()
             if (std::holds_alternative<Tentative>(entry.attrs.init)) {
                 std::vector<ConstantValue> initializer;
                 if (entry.type.isArray())
-                    initializer.push_back(ZeroBytes{ entry.type.size() });
+                    initializer.push_back(ZeroBytes{ entry.type.size(m_typeTable) });
                 else
                     initializer.push_back(MakeConstantValue(0, entry.type));
                 m_topLevel.push_back(StaticVariable{

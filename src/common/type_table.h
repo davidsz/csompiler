@@ -5,17 +5,25 @@
 #include <unordered_map>
 #include <vector>
 
-struct TypeTable {
+class TypeTable {
+public:
     struct StructMemberEntry {
         std::string name;
         Type type;
-        int offset;
+        size_t offset;
     };
     struct StructEntry {
-        int size;
-        int alignment;
+        size_t size;
+        size_t alignment;
         std::vector<StructMemberEntry> members;
+
+        const StructMemberEntry *find(const std::string &name) const;
     };
 
+    void insert(const std::string &tag, const StructEntry &entry);
+    const StructEntry *get(const std::string &tag) const;
+    bool contains(const std::string &tag) const;
+
+private:
     std::unordered_map<std::string, StructEntry> m_map;
 };

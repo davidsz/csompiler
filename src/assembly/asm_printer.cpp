@@ -1,4 +1,5 @@
 #include "asm_printer.h"
+#include "common/context.h"
 #include <algorithm>
 #include <format>
 #include <cassert>
@@ -18,40 +19,6 @@ static std::string escapeString(std::string_view in)
         }
     }
     return out;
-}
-
-static std::string buildInitializer(const ConstantValue &init)
-{
-    // Custom types
-    if (const ZeroBytes *zero = std::get_if<ZeroBytes>(&init))
-        return std::format("    .zero {}", zero->bytes);
-
-    if (const StringInit *string = std::get_if<StringInit>(&init)) {
-        if (string->null_terminated)
-            return std::format("    .asciz \"{}\"", escapeString(string->text));
-        else
-            return std::format("    .ascii \"{}\"", escapeString(string->text));
-    }
-
-    if (const PointerInit *pointer = std::get_if<PointerInit>(&init))
-        return std::format("    .quad {}", pointer->name);
-
-    // Atomic types
-    // TODO: Rename getType() to represent that it only supports atomic types
-    Type type = getType(init);
-    std::string initializer;
-    if (isPositiveZero(init))
-        return std::format("    .zero {}", type.size());
-    else {
-        switch (type.wordType()) {
-        case Byte:       initializer = "    .byte ";   break;
-        case Longword:   initializer = "    .long ";   break;
-        case Quadword:   initializer = "    .quad ";   break;
-        case Doubleword: initializer = "    .double "; break;
-        default:         assert(false);
-        }
-    }
-    return std::format("{} {}", initializer, toString(init));
 }
 
 static std::string formatLabel(std::string_view name)
@@ -99,8 +66,45 @@ static std::string getOneByteName(Register reg)
     return "";
 }
 
-ASMPrinter::ASMPrinter(std::shared_ptr<ASMSymbolTable> symbolTable)
+std::string ASMPrinter::BuildInitializer(const ConstantValue &init)
+{
+    // Custom types
+    if (const ZeroBytes *zero = std::get_if<ZeroBytes>(&init))
+        return std::format("    .zero {}", zero->bytes);
+
+    if (const StringInit *string = std::get_if<StringInit>(&init)) {
+        if (string->null_terminated)
+            return std::format("    .asciz \"{}\"", escapeString(string->text));
+        else
+            return std::format("    .ascii \"{}\"", escapeString(string->text));
+    }
+
+    if (const PointerInit *pointer = std::get_if<PointerInit>(&init))
+        return std::format("    .quad {}", pointer->name);
+
+    // Atomic types
+    // TODO: Rename getType() to represent that it only supports atomic types
+    Type type = getType(init);
+    std::string initializer;
+    if (isPositiveZero(init))
+        return std::format("    .zero {}", type.size(m_context->typeTable.get()));
+    else {
+        switch (type.wordType()) {
+        case Byte:       initializer = "    .byte ";   break;
+        case Longword:   initializer = "    .long ";   break;
+        case Quadword:   initializer = "    .quad ";   break;
+        case Doubleword: initializer = "    .double "; break;
+        default:         assert(false);
+        }
+    }
+    return std::format("{} {}", initializer, toString(init));
+}
+
+ASMPrinter::ASMPrinter(
+    Context *context,
+    std::shared_ptr<ASMSymbolTable> symbolTable)
     : m_symbolTable(symbolTable)
+    , m_context(context)
 {
 }
 
@@ -351,7 +355,7 @@ void ASMPrinter::operator()(const StaticVariable &s)
     m_codeStream << formatLabel(s.name) << ":" << std::endl;
 
     for (auto &i : s.list)
-        m_codeStream << buildInitializer(i) << std::endl;
+        m_codeStream << BuildInitializer(i) << std::endl;
 
     m_codeStream << std::endl;
 }
@@ -369,7 +373,7 @@ void ASMPrinter::operator()(const StaticConstant &s)
     m_codeStream << "    .balign " << s.alignment << std::endl;
 
     m_codeStream << formatLabel(s.name) << ":" << std::endl;
-    m_codeStream << buildInitializer(s.init) << std::endl;
+    m_codeStream << BuildInitializer(s.init) << std::endl;
 
 #ifdef __APPLE__
     if (s.alignment == 16)
