@@ -1,4 +1,5 @@
 #include "type_table.h"
+#include <algorithm>
 
 const TypeTable::StructMemberEntry *
 TypeTable::StructEntry::find(const std::string &name) const

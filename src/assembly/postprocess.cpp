@@ -35,8 +35,8 @@ static int postprocessPseudoRegisters(
         // All other variable types are stack offsets
         // If a variable has no stack offset yet, determine it
         if (auto it = pseudoOffset.find(name); it == pseudoOffset.end()) {
-            currentOffset -= entry->type.size();
-            currentOffset &= ~(entry->type.alignment() - 1);
+            currentOffset -= static_cast<int>(entry->type.size());
+            currentOffset &= static_cast<int>(~(entry->type.alignment() - 1));
             pseudoOffset[name] = currentOffset;
         }
         op.emplace<Memory>(BP, pseudoOffset[name] + extra_offset);

@@ -611,7 +611,8 @@ Declaration ASTBuilder::ParseDeclaration(bool only_variable)
             Abort("Struct declaration is not allowed");
         Consume(TokenType::Keyword, "struct");
         auto decl = StructDeclaration{
-            .tag = Consume(TokenType::Identifier)
+            .tag = Consume(TokenType::Identifier),
+            .members = {},
         };
 
         next = Peek();

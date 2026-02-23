@@ -894,7 +894,7 @@ Type TypeChecker::operator()(FunctionDeclaration &f)
     ValidateTypeSpecifier(f.type);
 
     FunctionType *function_type = f.type.getAs<FunctionType>();
-    if (!function_type->ret->isComplete(m_typeTable) && f.body)
+    if (!function_type->ret->isVoid() && !function_type->ret->isComplete(m_typeTable) && f.body)
         Abort(std::format("Defined function '{}' can't return an incomplete type", f.name));
     if (function_type->ret->isArray())
         Abort(std::format("Function '{}' can't return an array", f.name));
