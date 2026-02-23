@@ -56,6 +56,7 @@ std::optional<std::string> SemanticAnalyzer::lookupStructTag(const std::string &
     return std::nullopt;
 }
 
+// Call it only in the IDENTIFIER_RESOLUTION stage
 void SemanticAnalyzer::ValidateTypeSpecifier(Type &type)
 {
     if (auto struct_type = type.getAs<StructType>()) {
@@ -121,7 +122,8 @@ void SemanticAnalyzer::operator()(VariableExpression &v)
 void SemanticAnalyzer::operator()(CastExpression &c)
 {
     // c.type was already determined in the AST builder
-    ValidateTypeSpecifier(c.type);
+    if (m_currentStage == IDENTIFIER_RESOLUTION)
+        ValidateTypeSpecifier(c.type);
     std::visit(*this, *c.expr);
 }
 
@@ -194,7 +196,8 @@ void SemanticAnalyzer::operator()(SizeOfExpression &s)
 
 void SemanticAnalyzer::operator()(SizeOfTypeExpression &s)
 {
-    ValidateTypeSpecifier(s.operand);
+    if (m_currentStage == IDENTIFIER_RESOLUTION)
+        ValidateTypeSpecifier(s.operand);
 }
 
 void SemanticAnalyzer::operator()(DotExpression &d)
@@ -500,7 +503,7 @@ void SemanticAnalyzer::operator()(StructDeclaration &s)
 {
     if (m_currentStage == IDENTIFIER_RESOLUTION) {
         std::optional<std::string> prev_entry = lookupStructTag(s.tag);
-        if (!prev_entry || currentStructTagScope().find(s.tag) != currentStructTagScope().end()) {
+        if (!prev_entry || currentStructTagScope().find(s.tag) == currentStructTagScope().end()) {
             std::string unique_tag = MakeNameUnique(s.tag);
             currentStructTagScope()[s.tag] = unique_tag;
             s.tag = unique_tag;

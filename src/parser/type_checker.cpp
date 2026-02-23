@@ -98,7 +98,7 @@ static bool isLvalue(const Expression &expr, const Type &type)
             return false;
     }
     if (const DotExpression *dot = std::get_if<DotExpression>(&expr))
-        return isLvalue(expr, dot->type);
+        return isLvalue(*dot->expr, dot->type);
     return std::holds_alternative<VariableExpression>(expr)
         || std::holds_alternative<DereferenceExpression>(expr)
         || std::holds_alternative<SubscriptExpression>(expr)
@@ -261,7 +261,16 @@ TypeChecker::ToConstantValueList(const Initializer *init, const Type &type)
         assert(single->expr);
         if (auto c = std::get_if<ConstantExpression>(single->expr.get()))
             ret.push_back(ConvertValue(c->value, type));
-        else
+        else if (std::holds_alternative<StringExpression>(*single->expr)) {
+            // Initializing a char* member of a static struct
+            // Non-member static pointers are handled directly by InitializeStaticPointer()
+            InitialValue i = InitializeStaticPointer(init, type);
+            Initial *initial = std::get_if<Initial>(&i);
+            assert(initial);
+            ret.insert(ret.end(),
+                std::make_move_iterator(initial->list.begin()),
+                std::make_move_iterator(initial->list.end()));
+        } else
             Abort("Initializer is not a constant expression.");
         return ret;
     }
@@ -706,9 +715,11 @@ Type TypeChecker::operator()(DotExpression &d)
     if (!struct_type)
         Abort("Can't access member of a non-struct type");
     auto entry = m_typeTable->get(struct_type->tag);
-    if (!entry->find(d.identifier))
+    if (auto member = entry->find(d.identifier))
+        d.type = member->type;
+    else
         Abort(std::format("Member '{}' not found in struct '{}'", d.identifier, struct_type->tag));
-    return Type{ std::monostate() };
+    return d.type;
 }
 
 Type TypeChecker::operator()(ArrowExpression &a)
@@ -721,9 +732,11 @@ Type TypeChecker::operator()(ArrowExpression &a)
     if (!struct_type)
         Abort("Can't access member of a non-struct type");
     auto entry = m_typeTable->get(struct_type->tag);
-    if (!entry->find(a.identifier))
+    if (auto member = entry->find(a.identifier))
+        a.type = member->type;
+    else
         Abort(std::format("Member '{}' not found in struct '{}'", a.identifier, struct_type->tag));
-    return Type{ std::monostate() };
+    return a.type;
 }
 
 Type TypeChecker::operator()(ReturnStatement &r)
@@ -820,17 +833,11 @@ Type TypeChecker::operator()(ForStatement &f)
 {
     if (f.init) {
         m_forLoopInitializer = true;
-        std::visit(*this, *f.init);
-        // TODO
-        /*
-        std::visit([this](auto &init) {
-            using T = std::decay_t<decltype(init)>;
-            if constexpr (is_expression_v<T>)
-                VisitAndConvert(init);
-            else
-                (*this)(init);
-        }, *f.init);
-        */
+        // Do the completeness check manually, because
+        // we can't call VisitAndConvert on ForInit type
+        Type type = std::visit(*this, *f.init);
+        if (!type.isComplete(m_typeTable) && !type.isVoid())
+            Abort("Can't initialize a for loop with an incomplete type");
         m_forLoopInitializer = false;
     }
     if (f.condition) {
@@ -1086,6 +1093,7 @@ Type TypeChecker::operator()(StructDeclaration &s)
     size_t struct_alignment = 0;
     std::unordered_set<std::string> member_names;
     for (auto &m : s.members) {
+        ValidateTypeSpecifier(m.type);
         if (member_names.contains(m.name))
             Abort(std::format("Member names should be unique in struct '{}'", s.tag));
         if (m.type.isArray() && !m.type.getAs<ArrayType>()->element->isComplete(m_typeTable))

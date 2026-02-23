@@ -315,8 +315,11 @@ void ASTPrinter::operator()(const VariableDeclaration &v)
 void ASTPrinter::operator()(const StructDeclaration &s)
 {
     pad(); std::cout << "StructDeclaration(" << s.tag << ") " << std::endl;
-    for (auto &member : s.members)
-        std::cout << member.type << " " << member.name << std::endl;
+    tab();
+    for (auto &member : s.members) {
+        pad(); std::cout << member.type << " " << member.name << std::endl;
+    }
+    shift_tab();
 }
 
 void ASTPrinter::operator()(const SingleInit &s)
