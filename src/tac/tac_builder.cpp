@@ -115,6 +115,17 @@ void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, size_t 
         return;
     }
 
+    if (const StructType *struct_type = type.getAs<StructType>()) {
+        auto entry = m_typeTable->get(struct_type->tag);
+        m_instructions.push_back(CopyToOffset{
+            Constant{ ZeroBytes{ entry->size } },
+            base,
+            static_cast<int>(offset)
+        });
+        offset += type.size(m_typeTable);
+        return;
+    }
+
     m_instructions.push_back(CopyToOffset{
         Constant{ MakeConstantValue(0, type) },
         base,
@@ -197,6 +208,42 @@ void TACBuilder::EmitRuntimeInit(
         // Pad remaining elements
         for (; initialized_count < array_type->count; initialized_count++)
             EmitZeroInit(element_type, base, offset);
+        return;
+    }
+
+    if (const StructType *struct_type = type.getAs<StructType>()) {
+        auto entry = m_typeTable->get(struct_type->tag);
+
+        // Single (struct) init for a struct type
+        if (auto single = std::get_if<parser::SingleInit>(init)) {
+            assert(single->expr);
+            Value v = VisitAndConvert(*single->expr);
+            m_instructions.push_back(CopyToOffset{ v, base, static_cast<int>(offset) });
+            offset += type.storedType().size(m_typeTable);
+            return;
+        }
+
+        // Compound initializer for a struct type
+        auto compound = std::get_if<parser::CompoundInit>(init);
+        assert(compound);
+        size_t i = 0;
+        for (; i < compound->list.size() && i < entry->members.size(); i++) {
+            const TypeTable::StructMemberEntry &member = entry->members[i];
+            size_t member_offset = offset + member.offset;
+            EmitRuntimeInit(
+                compound->list[i].get(),
+                base,
+                member.type,
+                member_offset
+            );
+        }
+
+        for (; i < entry->members.size(); ++i) {
+            const TypeTable::StructMemberEntry &member = entry->members[i];
+            size_t member_offset = offset + member.offset;
+            EmitZeroInit(member.type, base, member_offset);
+        }
+        offset += entry->size;
         return;
     }
 
@@ -592,6 +639,7 @@ ExpResult TACBuilder::operator()(const parser::AddressOfExpression &a)
     } else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&inner))
         return PlainOperand{ deref->ptr };
     else if (SubObject *sub = std::get_if<SubObject>(&inner)) {
+        // TODO: If sub->offset is 0, we don't need the AddPtr
         Variant dst = CreateTemporaryVariable(a.type);
         m_instructions.push_back(GetAddress{ Variant{ sub->base_identifier }, dst });
         m_instructions.push_back(AddPtr{
@@ -600,6 +648,7 @@ ExpResult TACBuilder::operator()(const parser::AddressOfExpression &a)
             .scale = 1,
             .dst = dst
         });
+        return PlainOperand{ dst };
     }
     assert(false);
     return std::monostate();
@@ -646,7 +695,10 @@ ExpResult TACBuilder::operator()(const parser::SizeOfTypeExpression &s)
 
 ExpResult TACBuilder::operator()(const parser::DotExpression &d)
 {
-    auto struct_entry = m_typeTable->get(d.identifier);
+    Type type = GetExpressionType(*d.expr);
+    const StructType *struct_type = type.getAs<StructType>();
+    assert(struct_type);
+    auto struct_entry = m_typeTable->get(struct_type->tag);
     size_t member_offset = struct_entry->find(d.identifier)->offset;
     ExpResult inner_object = std::visit(*this, *d.expr);
     if (PlainOperand *plain = std::get_if<PlainOperand>(&inner_object)) {
@@ -654,6 +706,7 @@ ExpResult TACBuilder::operator()(const parser::DotExpression &d)
         assert(var);
         return SubObject{ var->name, member_offset };
     } else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&inner_object)) {
+        // TODO: If member_offset is 0, we don't need the AddPtr
         Variant dst_ptr = CreateTemporaryVariable(
             Type{ PointerType{ .referenced = std::make_shared<Type>(d.type) } }
         );
@@ -670,10 +723,26 @@ ExpResult TACBuilder::operator()(const parser::DotExpression &d)
     return std::monostate();
 }
 
-ExpResult TACBuilder::operator()(const parser::ArrowExpression &)
+ExpResult TACBuilder::operator()(const parser::ArrowExpression &a)
 {
-    // TODO
-    return std::monostate();
+    const PointerType *pointer_type = GetExpressionType(*a.expr).getAs<PointerType>();
+    assert(pointer_type);
+    const StructType *struct_type = pointer_type->referenced->getAs<StructType>();
+    assert(struct_type);
+    // TODO: If member_offset is 0, we don't need the AddPtr
+    auto struct_entry = m_typeTable->get(struct_type->tag);
+    size_t member_offset = struct_entry->find(a.identifier)->offset;
+    Value base_ptr = VisitAndConvert(*a.expr);
+    Variant dst_ptr = CreateTemporaryVariable(
+        Type{ PointerType{ .referenced = std::make_shared<Type>(a.type) } }
+    );
+    m_instructions.push_back(AddPtr{
+        .ptr = base_ptr,
+        .index = Constant{ MakeConstantValue(static_cast<long>(member_offset), Type{ BasicType::Long }) },
+        .scale = 1,
+        .dst = dst_ptr
+    });
+    return DereferencedPointer{ dst_ptr };
 }
 
 ExpResult TACBuilder::operator()(const parser::ReturnStatement &r)
@@ -856,7 +925,7 @@ ExpResult TACBuilder::operator()(const parser::FunctionDeclaration &f)
         // and will be optimised out in later stages.
         const FunctionType *type = f.type.getAs<FunctionType>();
         assert(type);
-        if (type->ret->isVoid())
+        if (!type->ret->isScalar())
             func.inst.push_back(Return{ });
         else
             func.inst.push_back(Return{ Constant{ MakeConstantValue(0, *(type->ret)) } });
@@ -943,7 +1012,7 @@ void TACBuilder::ProcessStaticSymbols()
         if (entry.attrs.type == IdentifierAttributes::Static) {
             if (std::holds_alternative<Tentative>(entry.attrs.init)) {
                 std::vector<ConstantValue> initializer;
-                if (entry.type.isArray())
+                if (entry.type.isArray() || entry.type.isStruct())
                     initializer.push_back(ZeroBytes{ entry.type.size(m_typeTable) });
                 else
                     initializer.push_back(MakeConstantValue(0, entry.type));
