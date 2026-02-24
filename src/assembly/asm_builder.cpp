@@ -688,6 +688,12 @@ Operand ASMBuilder::operator()(const tac::CopyToOffset &c)
     return std::monostate();
 }
 
+Operand ASMBuilder::operator()(const tac::CopyFromOffset &)
+{
+    // TODO
+    return std::monostate();
+}
+
 Operand ASMBuilder::operator()(const tac::Constant &c)
 {
     if (getType(c.value).isBasic(Double)) {

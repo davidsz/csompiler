@@ -5,22 +5,6 @@
 
 namespace tac {
 
-#if 0
-// This can be useful later, but it's a layering violation
-Type GetExpressionType(parser::Expression &expr)
-{
-    return std::visit([](const auto &node) -> Type {
-        using T = std::decay_t<decltype(node)>;
-        if constexpr (std::is_same_v<T, std::monostate>) {
-            assert(false);
-            return Type{};
-        } else {
-            return node.type;
-        }
-    }, expr);
-}
-#endif
-
 Variant TACBuilder::CreateTemporaryVariable(const Type &type)
 {
     Variant var = Variant{ GenerateTempVariableName() };
@@ -243,6 +227,19 @@ Type TACBuilder::GetType(const Value &value)
         assert(false);
         return Type{ BasicType::Int };
     }
+}
+
+Type TACBuilder::GetExpressionType(const parser::Expression &expr)
+{
+    return std::visit([](const auto &node) -> Type {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, std::monostate>) {
+            assert(false);
+            return Type{};
+        } else {
+            return node.type;
+        }
+    }, expr);
 }
 
 ExpResult TACBuilder::operator()(const parser::ConstantExpression &n)
@@ -470,6 +467,13 @@ ExpResult TACBuilder::operator()(const parser::AssignmentExpression &a)
     } else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&left)) {
         m_instructions.push_back(Store{ right, deref->ptr });
         return PlainOperand{ right };
+    } else if (SubObject *sub = std::get_if<SubObject>(&left)) {
+        m_instructions.push_back(CopyToOffset{
+            .src = right,
+            .dst_identifier = sub->base_identifier,
+            .offset = static_cast<int>(sub->offset)
+        });
+        return PlainOperand{ right };
     }
     assert(false);
     return std::monostate();
@@ -587,6 +591,16 @@ ExpResult TACBuilder::operator()(const parser::AddressOfExpression &a)
         return PlainOperand{ dst };
     } else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&inner))
         return PlainOperand{ deref->ptr };
+    else if (SubObject *sub = std::get_if<SubObject>(&inner)) {
+        Variant dst = CreateTemporaryVariable(a.type);
+        m_instructions.push_back(GetAddress{ Variant{ sub->base_identifier }, dst });
+        m_instructions.push_back(AddPtr{
+            .ptr = dst,
+            .index = Constant{ MakeConstantValue(static_cast<long>(sub->offset), Type{ BasicType::Long }) },
+            .scale = 1,
+            .dst = dst
+        });
+    }
     assert(false);
     return std::monostate();
 }
@@ -630,9 +644,29 @@ ExpResult TACBuilder::operator()(const parser::SizeOfTypeExpression &s)
     };
 }
 
-ExpResult TACBuilder::operator()(const parser::DotExpression &)
+ExpResult TACBuilder::operator()(const parser::DotExpression &d)
 {
-    // TODO
+    auto struct_entry = m_typeTable->get(d.identifier);
+    size_t member_offset = struct_entry->find(d.identifier)->offset;
+    ExpResult inner_object = std::visit(*this, *d.expr);
+    if (PlainOperand *plain = std::get_if<PlainOperand>(&inner_object)) {
+        Variant *var = std::get_if<Variant>(&plain->val);
+        assert(var);
+        return SubObject{ var->name, member_offset };
+    } else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&inner_object)) {
+        Variant dst_ptr = CreateTemporaryVariable(
+            Type{ PointerType{ .referenced = std::make_shared<Type>(d.type) } }
+        );
+        m_instructions.push_back(AddPtr{
+            .ptr = deref->ptr,
+            .index = Constant{ MakeConstantValue(static_cast<long>(member_offset), Type{ BasicType::Long }) },
+            .scale = 1,
+            .dst = dst_ptr
+        });
+        return DereferencedPointer{ dst_ptr };
+    } else if (SubObject *sub = std::get_if<SubObject>(&inner_object))
+        return SubObject{ sub->base_identifier, sub->offset + member_offset };
+    assert(false);
     return std::monostate();
 }
 

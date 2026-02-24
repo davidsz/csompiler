@@ -8,9 +8,17 @@ class Context;
 
 namespace tac {
 
-struct PlainOperand { Value val; };
-struct DereferencedPointer { Value ptr; };
-using ExpResult = std::variant<PlainOperand, DereferencedPointer, std::monostate>;
+struct PlainOperand {
+    Value val;
+};
+struct DereferencedPointer {
+    Value ptr;
+};
+struct SubObject {
+    std::string base_identifier;
+    size_t offset;
+};
+using ExpResult = std::variant<PlainOperand, DereferencedPointer, SubObject, std::monostate>;
 
 class TACBuilder : public parser::IASTVisitor<tac::ExpResult> {
 public:
@@ -66,6 +74,7 @@ private:
         const Type &from_type,
         const Type &to_type);
     Type GetType(const Value &value);
+    Type GetExpressionType(const parser::Expression &expr);
     void ProcessStaticSymbols();
 
     template <typename... Variants>
@@ -78,6 +87,14 @@ private:
             assert(ptr_type);
             Variant dst = CreateTemporaryVariable(ptr_type->referenced->storedType());
             m_instructions.push_back(Load{ deref->ptr, dst });
+            return dst;
+        } else if (SubObject *sub = std::get_if<SubObject>(&result)) {
+            Variant dst = CreateTemporaryVariable(GetExpressionType(variants ...));
+            m_instructions.push_back(CopyFromOffset{
+                .src_identifier = sub->base_identifier,
+                .offset = static_cast<int>(sub->offset),
+                .dst = dst
+            });
             return dst;
         }
         assert(false);

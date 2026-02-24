@@ -33,6 +33,7 @@ struct TACPrinter : public ITACVisitor<void> {
     void operator()(const tac::UIntToDouble &u) override;
     void operator()(const tac::AddPtr &a) override;
     void operator()(const tac::CopyToOffset &c) override;
+    void operator()(const tac::CopyFromOffset &c) override;
     void operator()(const tac::FunctionDefinition &f) override;
     void operator()(const tac::StaticVariable &s) override;
     void operator()(const tac::StaticConstant &s) override;

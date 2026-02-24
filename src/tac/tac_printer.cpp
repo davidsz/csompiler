@@ -205,8 +205,19 @@ void TACPrinter::operator()(const tac::CopyToOffset &c)
     pad(); std::cout << "CopyToOffset(" << std::endl;
     tab();
     std::visit(*this, c.src);
-    pad(); std::cout << "identifier = " << c.dst_identifier << std::endl;
+    pad(); std::cout << "dst_identifier = " << c.dst_identifier << std::endl;
     pad(); std::cout << "offset = " << c.offset << std::endl;
+    shift_tab();
+    pad(); std::cout << ")" << std::endl;
+}
+
+void TACPrinter::operator()(const tac::CopyFromOffset &c)
+{
+    pad(); std::cout << "CopyFromOffset(" << std::endl;
+    tab();
+    pad(); std::cout << "src_identifier = " << c.src_identifier << std::endl;
+    pad(); std::cout << "offset = " << c.offset << std::endl;
+    std::visit(*this, c.dst);
     shift_tab();
     pad(); std::cout << ")" << std::endl;
 }
