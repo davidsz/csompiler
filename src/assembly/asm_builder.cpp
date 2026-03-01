@@ -96,6 +96,36 @@ static std::vector<StructClass> classifyStruct(TypeTable::StructEntry *entry)
 }
 */
 
+template<typename T>
+struct ClassifiedParams {
+    std::vector<T> int_regs;
+    std::vector<T> double_regs;
+    std::vector<T> stack;
+};
+
+template<typename T, typename GetTypeFn>
+static ClassifiedParams<T> classifyParameters(
+    const std::vector<T> &values,
+    GetTypeFn getType)
+{
+    ClassifiedParams<T> result;
+    for (const auto &v : values) {
+        WordType type = getType(v);
+        if (type == WordType::Doubleword) {
+            if (result.double_regs.size() < 8)
+                result.double_regs.push_back(v);
+            else
+                result.stack.push_back(v);
+        } else {
+            if (result.int_regs.size() < 6)
+                result.int_regs.push_back(v);
+            else
+                result.stack.push_back(v);
+        }
+    }
+    return result;
+}
+
 ASMBuilder::ASMBuilder(Context *context, std::shared_ptr<ConstantMap> constants)
     : m_context(context)
     , m_typeTable(context->typeTable.get())
@@ -460,28 +490,12 @@ Operand ASMBuilder::operator()(const tac::Label &l)
 
 Operand ASMBuilder::operator()(const tac::FunctionCall &f)
 {
-    // The first six integer arguments and the first eight
-    // double arguments will be in their corresponding registers,
-    // the other arguments will be pushed to the stack.
-    std::vector<tac::Value> integer_register_args = {};
-    std::vector<tac::Value> double_register_args = {};
-    std::vector<tac::Value> stack_args = {};
-    for (size_t i = 0; i < f.args.size(); i++) {
-        if (GetWordType(f.args[i]) == Doubleword) {
-            if (double_register_args.size() < 8)
-                double_register_args.push_back(f.args[i]);
-            else
-                stack_args.push_back(f.args[i]);
-        } else {
-            if (integer_register_args.size() < 6)
-                integer_register_args.push_back(f.args[i]);
-            else
-                stack_args.push_back(f.args[i]);
-        }
-    }
+    auto args = classifyParameters(f.args, [this](const tac::Value &v) {
+        return GetWordType(v);
+    });
 
     // Adjust stack alignment to 16 bytes and allocate stack
-    size_t stack_padding = (stack_args.size() % 2 == 0) ? 0 : 8;
+    size_t stack_padding = (args.stack.size() % 2 == 0) ? 0 : 8;
     if (stack_padding != 0) {
         Comment(m_instructions, "Allocating stack");
         m_instructions.push_back(Binary{
@@ -494,9 +508,9 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
 
     // Move arguments into registers
     size_t reg_index = 0;
-    if (integer_register_args.size() > 0)
+    if (args.int_regs.size() > 0)
         Comment(m_instructions, "Moving the first six int arguments into registers");
-    for (auto &arg : integer_register_args) {
+    for (auto &arg : args.int_regs) {
         WordType type = GetWordType(arg);
         m_instructions.push_back(Mov{
             std::visit(*this, arg),
@@ -505,21 +519,20 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
         });
     }
     reg_index = 0;
-    if (double_register_args.size() > 0)
+    if (args.double_regs.size() > 0)
         Comment(m_instructions, "Moving the first eight double arguments into registers");
-    for (auto &arg : double_register_args) {
-        WordType type = GetWordType(arg);
+    for (auto &arg : args.double_regs) {
         m_instructions.push_back(Mov{
             std::visit(*this, arg),
-            Reg{ s_doubleArgRegisters[reg_index++], GetBytesOfWordType(type) },
-            type
+            Reg{ s_doubleArgRegisters[reg_index++], 8 },
+            Doubleword
         });
     }
 
     // Push remaining arguments to the stack (in reverse order)
-    if (stack_args.size() > 0)
+    if (args.stack.size() > 0)
         Comment(m_instructions, "Pushing the rest of the arguments onto the stack");
-    for (auto &arg : std::views::reverse(stack_args)) {
+    for (auto &arg : std::views::reverse(args.stack)) {
         auto asm_arg = std::visit(*this, arg);
         WordType arg_type = GetWordType(arg);
         if (std::holds_alternative<Reg>(asm_arg)
@@ -541,7 +554,7 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
     m_instructions.push_back(Call{ f.identifier });
 
     // The callee clears the stack
-    size_t bytes_to_remove = 8 * stack_args.size() + stack_padding;
+    size_t bytes_to_remove = 8 * args.stack.size() + stack_padding;
     if (bytes_to_remove != 0) {
         Comment(m_instructions, "Clearing the stack");
         m_instructions.push_back(Binary{
@@ -832,54 +845,44 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     func.name = f.name;
     func.global = f.global;
 
+    auto args = classifyParameters(f.params, [this](const std::string &name) {
+        return m_symbolTable->getWordType(name);
+    });
+
     // We copy each of the parameters into the current stack frame
     // to make life easier. This can be optimised out later.
-    // First six integer and the first eight double parameters are in registers
-    if (f.params.size() > 0)
-        Comment(func.instructions, "Getting the first parameters from registers");
-    size_t int_c = 0;
-    size_t double_c = 0;
-    std::vector<std::pair<std::string, WordType>> stack_params;
-    for (auto &param : f.params) {
-        WordType type = m_context->symbolTable->getWordType(param);
-        if (type == Doubleword) {
-            if (double_c < 8) {
-                func.instructions.push_back(Mov{
-                    Reg{ s_doubleArgRegisters[double_c], 8 },
-                    Pseudo{ param },
-                    Doubleword
-                });
-                double_c++;
-            } else
-                stack_params.push_back(std::make_pair(param, Doubleword));
-        } else {
-            if (int_c < 6) {
-                func.instructions.push_back(Mov{
-                    Reg{ s_intArgRegisters[int_c], GetBytesOfWordType(type) },
-                    Pseudo{ param },
-                    type
-                });
-                int_c++;
-            } else
-                stack_params.push_back(std::make_pair(param, type));
-        }
+    if (args.int_regs.size() > 0)
+        Comment(func.instructions, "Getting integer parameters from registers");
+    for (size_t i = 0; i < args.int_regs.size(); i++) {
+        const std::string &p = args.int_regs[i];
+        WordType type = m_symbolTable->getWordType(p);
+        func.instructions.push_back(Mov{
+            Reg{ s_intArgRegisters[i], GetBytesOfWordType(type) },
+            Pseudo{ p },
+            type
+        });
     }
-    if (f.params.size() > 0)
-        Comment(func.instructions, "---");
-    // The others are on the stack
-    // The 8 byte RBP are already on the stack (prologue)
-    if (f.params.size() > 6)
-        Comment(func.instructions, "Getting the rest of the arguments from the stack");
+    if (args.double_regs.size() > 0)
+        Comment(func.instructions, "Getting double parameters from registers");
+    for (size_t i = 0; i < args.double_regs.size(); i++) {
+        func.instructions.push_back(Mov{
+            Reg{ s_doubleArgRegisters[i], 8 },
+            Pseudo{ args.double_regs[i] },
+            Doubleword
+        });
+    }
+    if (args.stack.size() > 0)
+        Comment(func.instructions, "Getting remaining parameters from the stack");
     size_t stack_offset = 16;
-    for (auto &param : stack_params) {
+    for (auto &param : args.stack) {
         func.instructions.push_back(Mov{
             Memory{ BP, static_cast<int>(stack_offset) },
-            Pseudo{ param.first },
-            param.second
+            Pseudo{ param },
+            m_symbolTable->getWordType(param)
         });
         stack_offset += 8;
     }
-    if (f.params.size() > 6)
+    if (!args.int_regs.empty() || !args.double_regs.empty() || !args.stack.empty())
         Comment(func.instructions, "---");
 
     // Body
