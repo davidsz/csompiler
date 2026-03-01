@@ -120,7 +120,7 @@ void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, size_t 
         m_instructions.push_back(CopyToOffset{
             Constant{ ZeroBytes{ entry->size } },
             base,
-            static_cast<int>(offset)
+            offset
         });
         offset += type.size(m_typeTable);
         return;
@@ -129,7 +129,7 @@ void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, size_t 
     m_instructions.push_back(CopyToOffset{
         Constant{ MakeConstantValue(0, type) },
         base,
-        static_cast<int>(offset)
+        offset
     });
     offset += type.storedType().size(m_typeTable);
 }
@@ -166,7 +166,7 @@ void TACBuilder::EmitRuntimeInit(
                     CopyToOffset{
                         Constant{ MakeConstantValue(v, Type{ BasicType::UInt }) },
                         base,
-                        static_cast<int>(offset)
+                        offset
                     });
                 i += 4;
                 offset += 4;
@@ -178,7 +178,7 @@ void TACBuilder::EmitRuntimeInit(
                     CopyToOffset{
                         Constant{ MakeConstantValue(text[i], Type{ BasicType::Char }) },
                         base,
-                        static_cast<int>(offset)
+                        offset
                     });
                 offset++;
             }
@@ -188,7 +188,7 @@ void TACBuilder::EmitRuntimeInit(
                 m_instructions.push_back(CopyToOffset{
                     Constant{ MakeConstantValue(0, Type{ BasicType::Char }) },
                     base,
-                    static_cast<int>(offset)
+                    offset
                 });
                 offset++;
             }
@@ -218,7 +218,7 @@ void TACBuilder::EmitRuntimeInit(
         if (auto single = std::get_if<parser::SingleInit>(init)) {
             assert(single->expr);
             Value v = VisitAndConvert(*single->expr);
-            m_instructions.push_back(CopyToOffset{ v, base, static_cast<int>(offset) });
+            m_instructions.push_back(CopyToOffset{ v, base, offset });
             offset += type.storedType().size(m_typeTable);
             return;
         }
@@ -253,7 +253,7 @@ void TACBuilder::EmitRuntimeInit(
             EmitZeroInit(type, base, offset);
         else {
             Value v = VisitAndConvert(*single->expr);
-            m_instructions.push_back(CopyToOffset{ v, base, static_cast<int>(offset) });
+            m_instructions.push_back(CopyToOffset{ v, base, offset });
             offset += type.storedType().size(m_typeTable);
         }
         return;
@@ -518,7 +518,7 @@ ExpResult TACBuilder::operator()(const parser::AssignmentExpression &a)
         m_instructions.push_back(CopyToOffset{
             .src = right,
             .dst_identifier = sub->base_identifier,
-            .offset = static_cast<int>(sub->offset)
+            .offset = sub->offset
         });
         return PlainOperand{ right };
     }

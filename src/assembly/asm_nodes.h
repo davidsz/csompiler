@@ -42,12 +42,13 @@ namespace assembly {
         std::string name;) \
     X(PseudoAggregate, \
         std::string name; \
-        int offset;) \
+        size_t offset;) \
     X(Memory, \
         Register reg; \
         int offset;) \
     X(Data, \
-        std::string name;) \
+        std::string name; \
+        size_t i = 0;) \
     X(Indexed, \
         Register base; \
         Register index; \

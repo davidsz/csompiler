@@ -92,7 +92,7 @@ private:
             Variant dst = CreateTemporaryVariable(GetExpressionType(variants ...));
             m_instructions.push_back(CopyFromOffset{
                 .src_identifier = sub->base_identifier,
-                .offset = static_cast<int>(sub->offset),
+                .offset = sub->offset,
                 .dst = dst
             });
             return dst;

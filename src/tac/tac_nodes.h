@@ -83,10 +83,10 @@ namespace tac {
     X(CopyToOffset, \
         Value src; \
         std::string dst_identifier; \
-        int offset;) \
+        size_t offset;) \
     X(CopyFromOffset, \
         std::string src_identifier; \
-        int offset; \
+        size_t offset; \
         Value dst;)
 
 #define TAC_TOP_LEVEL_LIST(X) \

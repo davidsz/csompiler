@@ -37,54 +37,100 @@ static std::string toConditionCode(BinaryOperator op, bool another)
 }
 DIAG_POP
 
+static std::vector<WordType> getMemoryFragments(size_t size)
+{
+    std::vector<WordType> ret;
+    while (size >= 8) {
+        ret.push_back(Quadword);
+        size -= 8;
+    }
+    if (size >= 4) {
+        ret.push_back(Longword);
+        size -= 4;
+    }
+    while (size-- > 0)
+        ret.push_back(Byte);
+    return ret;
+}
+
+/*
+enum StructClass {
+    INTEGER,
+    SSE,
+    MEMORY
+};
+
+static std::vector<StructClass> classifyStruct(TypeTable::StructEntry *entry)
+{
+    if (entry->members.empty()) {
+        assert(false);
+        return {};
+    }
+
+    // The struct can't fit on two registers
+    size_t size = entry->size;
+    if (size > 16) {
+        std::vector<StructClass> ret;
+        while (size > 0) {
+            ret.push_back(MEMORY);
+            size -= 8;
+        }
+        return ret;
+    }
+
+    // Classify the two registers
+    bool first_is_double = entry->members.front().type.storedType().isBasic(Double);
+    bool last_is_double = entry->members.back().type.storedType().isBasic(Double);
+    if (size > 8) {
+        if (first_is_double && last_is_double)
+            return { SSE, SSE };
+        if (first_is_double)
+            return { SSE, INTEGER };
+        if (last_is_double)
+            return { INTEGER, SSE };
+        return { INTEGER, INTEGER };
+    } else if (first_is_double)
+        return { SSE };
+    else
+        return { INTEGER };
+}
+*/
+
 ASMBuilder::ASMBuilder(Context *context, std::shared_ptr<ConstantMap> constants)
     : m_context(context)
+    , m_typeTable(context->typeTable.get())
+    , m_symbolTable(context->symbolTable.get())
     , m_constants(constants)
 {
+    assert(m_context);
+}
+
+Type ASMBuilder::GetType(const tac::Value &value)
+{
+    if (auto c = std::get_if<tac::Constant>(&value))
+        return getType(c->value);
+    auto v = std::get_if<tac::Variant>(&value);
+    assert(v);
+    auto entry = m_symbolTable->get(v->name);
+    return entry->type;
 }
 
 BasicType ASMBuilder::GetBasicType(const tac::Value &value)
 {
-    if (auto c = std::get_if<tac::Constant>(&value)) {
-        const BasicType *type = getType(c->value).getAs<BasicType>();
-        assert(type);
-        return *type;
-    } else if (auto v = std::get_if<tac::Variant>(&value)) {
-        const BasicType *type = m_context->symbolTable->getTypeAs<BasicType>(v->name);
-        assert(type);
-        return *type;
-    } else {
-        assert(false);
-        return Int;
-    }
+    return *GetType(value).getAs<BasicType>();
 }
 
 WordType ASMBuilder::GetWordType(const tac::Value &value)
 {
-    if (auto c = std::get_if<tac::Constant>(&value))
-        return getType(c->value).wordType();
-    else if (auto v = std::get_if<tac::Variant>(&value)) {
-        const SymbolEntry *entry = m_context->symbolTable->get(v->name);
-        assert(entry);
-        return entry->type.wordType();
-    } else {
-        assert(false);
-        return Longword;
-    }
+    return GetType(value).wordType();
 }
 
-bool ASMBuilder::CheckSignedness(const tac::Value &value)
+std::optional<std::pair<std::string, const TypeTable::StructEntry *>>
+ASMBuilder::GetStructEntry(const tac::Value &value)
 {
-    if (auto c = std::get_if<tac::Constant>(&value)) {
-        return getType(c->value).isSigned();
-    } else if (auto v = std::get_if<tac::Variant>(&value)) {
-        const SymbolEntry *entry = m_context->symbolTable->get(v->name);
-        assert(entry);
-        return entry->type.isSigned();
-    } else {
-        assert(false);
-        return true;
-    }
+    if (auto v = std::get_if<tac::Variant>(&value))
+        std::make_pair(v->name, m_typeTable->get(v->name));
+    return std::nullopt;
 }
 
 void ASMBuilder::Comment(std::list<Instruction> &i, const std::string &text)
@@ -175,7 +221,7 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
     // The src1 and src2 have common type, dst is always int (Longword)
     WordType srcType = GetWordType(b.src1);
     WordType dstType = GetWordType(b.dst);
-    bool isSigned = CheckSignedness(b.src1);
+    bool isSigned = GetType(b.src1).isSigned();
     ASMBinaryOperator op = toASMBinaryOperator(b.op, srcType, isSigned);
     Operand src1 = std::visit(*this, b.src1);
     Operand src2 = std::visit(*this, b.src2);
@@ -256,6 +302,21 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
 
 Operand ASMBuilder::operator()(const tac::Copy &c)
 {
+    if (auto s = GetStructEntry(c.src)) {
+        auto &[tag, entry] = *s;
+        std::vector<WordType> fragments = getMemoryFragments(entry->size);
+        size_t offset = 0;
+        for (auto &word_type : fragments) {
+            m_instructions.push_back(Mov{
+                PseudoAggregate{ tag, offset },
+                PseudoAggregate{ tag, offset },
+                word_type
+            });
+            offset += GetBytesOfWordType(word_type);
+        }
+        return std::monostate();
+    }
+
     m_instructions.push_back(Mov{
         std::visit(*this, c.src),
         std::visit(*this, c.dst),
@@ -277,11 +338,29 @@ Operand ASMBuilder::operator()(const tac::GetAddress &g)
 
 Operand ASMBuilder::operator()(const tac::Load &l)
 {
+    // Store the pointer in RAX
     m_instructions.push_back(Mov{
         std::visit(*this, l.src_ptr),
         Reg{ AX, 8 },
         Quadword
     });
+
+    // Copy chunks of data stored at offsets from the address in RAX
+    if (auto s = GetStructEntry(l.dst)) {
+        auto &[tag, entry] = *s;
+        std::vector<WordType> fragments = getMemoryFragments(entry->size);
+        size_t offset = 0;
+        for (auto &word_type : fragments) {
+            m_instructions.push_back(Mov{
+                Memory{ AX, static_cast<int>(offset) },
+                PseudoAggregate{ tag, offset },
+                word_type
+            });
+            offset += GetBytesOfWordType(word_type);
+        }
+        return std::monostate();
+    }
+
     m_instructions.push_back(Mov{
         Memory{ AX, 0 },
         std::visit(*this, l.dst),
@@ -680,6 +759,21 @@ Operand ASMBuilder::operator()(const tac::AddPtr &a)
 
 Operand ASMBuilder::operator()(const tac::CopyToOffset &c)
 {
+    if (auto s = GetStructEntry(c.src)) {
+        auto &[tag, entry] = *s;
+        std::vector<WordType> fragments = getMemoryFragments(entry->size);
+        size_t offset = 0;
+        for (auto &word_type : fragments) {
+            m_instructions.push_back(Mov{
+                PseudoAggregate{ tag, offset },
+                PseudoAggregate{ c.dst_identifier, offset + c.offset },
+                word_type
+            });
+            offset += GetBytesOfWordType(word_type);
+        }
+        return std::monostate();
+    }
+
     m_instructions.push_back(Mov{
         std::visit(*this, c.src),
         PseudoAggregate{ c.dst_identifier, c.offset },
@@ -688,9 +782,28 @@ Operand ASMBuilder::operator()(const tac::CopyToOffset &c)
     return std::monostate();
 }
 
-Operand ASMBuilder::operator()(const tac::CopyFromOffset &)
+Operand ASMBuilder::operator()(const tac::CopyFromOffset &c)
 {
-    // TODO
+    if (auto s = GetStructEntry(c.dst)) {
+        auto &[tag, entry] = *s;
+        std::vector<WordType> fragments = getMemoryFragments(entry->size);
+        size_t offset = 0;
+        for (auto &word_type : fragments) {
+            m_instructions.push_back(Mov{
+                PseudoAggregate{ c.src_identifier, offset + c.offset },
+                PseudoAggregate{ tag, offset },
+                word_type
+            });
+            offset += GetBytesOfWordType(word_type);
+        }
+        return std::monostate();
+    }
+
+    m_instructions.push_back(Mov{
+        PseudoAggregate{ c.src_identifier, c.offset },
+        std::visit(*this, c.dst),
+        GetWordType(c.dst)
+    });
     return std::monostate();
 }
 
@@ -706,7 +819,8 @@ Operand ASMBuilder::operator()(const tac::Constant &c)
 
 Operand ASMBuilder::operator()(const tac::Variant &v)
 {
-    if (m_context->symbolTable->getTypeAs<ArrayType>(v.name))
+    auto entry = m_context->symbolTable->get(v.name);
+    if (entry->type.isArray() || entry->type.isStruct())
         return PseudoAggregate{ v.name, 0 };
     else
         return Pseudo{ v.name }; // TODO: Rename to PseudoScalar?

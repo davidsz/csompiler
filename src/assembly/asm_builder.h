@@ -3,6 +3,7 @@
 #include "asm_nodes.h"
 #include "asm_symbol_table.h"
 #include "constant_map.h"
+#include "common/type_table.h"
 #include "tac/tac_visitor.h"
 
 class Context;
@@ -51,9 +52,11 @@ public:
     std::list<Instruction> ConvertInstructions(const std::vector<tac::Instruction>);
 
 private:
+    Type GetType(const tac::Value &);
     BasicType GetBasicType(const tac::Value &);
     WordType GetWordType(const tac::Value &);
-    bool CheckSignedness(const tac::Value &);
+    std::optional<std::pair<std::string, const TypeTable::StructEntry *>>
+        GetStructEntry(const tac::Value &);
     void Comment(std::list<Instruction> &i, const std::string &text);
     std::string AddConstant(const ConstantValue &c, const std::string &name);
 
@@ -62,6 +65,8 @@ private:
     std::list<Instruction> m_instructions;
 
     Context *m_context;
+    TypeTable *m_typeTable;
+    SymbolTable *m_symbolTable;
     // Keep track of static constants and their IDs to avoid duplications
     std::shared_ptr<ConstantMap> m_constants;
 };

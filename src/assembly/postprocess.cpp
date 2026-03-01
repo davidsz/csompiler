@@ -21,7 +21,7 @@ static int postprocessPseudoRegisters(
             name = pseudo->name;
         else if (auto pseudo_aggr = std::get_if<PseudoAggregate>(&op)) {
             name = pseudo_aggr->name;
-            extra_offset = pseudo_aggr->offset;
+            extra_offset = static_cast<int>(pseudo_aggr->offset);
         } else
             return;
 

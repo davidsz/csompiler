@@ -51,9 +51,9 @@
 #define ASM_UNARY_OPERATOR_LIST(X) \
     X(Unknown_AU, "UNKNOWN_OP") \
     X(Neg_AU, "neg") \
-    X(Not_AU, "not")
-    // TODO: Support this "unary" shr?
-    // X(Shr_AU, "shrl", "shrq")
+    X(Not_AU, "not") \
+    X(Shl_AU, "shl") \
+    X(Shr_AU, "shr")
 
 #define ASM_BINARY_OPERATOR_LIST(X) \
     X(Unknown_AB, "UNKNOWN_OP") \
