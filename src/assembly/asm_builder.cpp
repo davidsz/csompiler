@@ -53,14 +53,14 @@ static std::vector<WordType> getMemoryFragments(size_t size)
     return ret;
 }
 
-/*
+// Break a struct into eight byte parts and classify them
 enum StructClass {
     INTEGER,
     SSE,
     MEMORY
 };
 
-static std::vector<StructClass> classifyStruct(TypeTable::StructEntry *entry)
+static std::vector<StructClass> classifyStruct(const TypeTable::StructEntry *entry)
 {
     if (entry->members.empty()) {
         assert(false);
@@ -94,36 +94,149 @@ static std::vector<StructClass> classifyStruct(TypeTable::StructEntry *entry)
     else
         return { INTEGER };
 }
-*/
 
-template<typename T>
+static AssemblyType getStructPartType(size_t offset, size_t struct_size)
+{
+    size_t byte_from_end = struct_size - offset;
+    if (byte_from_end >= 8)
+        return AssemblyType{ Quadword };
+    if (byte_from_end == 4)
+        return AssemblyType{ Longword };
+    if (byte_from_end == 1)
+        return AssemblyType{ Byte };
+    return AssemblyType{ ByteArray{ byte_from_end, 8 } };
+}
+
 struct ClassifiedParams {
-    std::vector<T> int_regs;
-    std::vector<T> double_regs;
-    std::vector<T> stack;
+    std::vector<std::pair<Operand, AssemblyType>> int_regs;
+    std::vector<Operand> double_regs;
+    std::vector<std::pair<Operand, AssemblyType>> stack;
 };
 
-template<typename T, typename GetTypeFn>
-static ClassifiedParams<T> classifyParameters(
-    const std::vector<T> &values,
-    GetTypeFn getType)
+template<typename T, typename GetTypeFn, typename GetOperandFn>
+static ClassifiedParams classifyParameters(
+    const std::vector<T> &parameters,
+    /*bool return_in_memory,*/
+    TypeTable *typeTable,
+    GetTypeFn getType,
+    GetOperandFn getOperand)
 {
-    ClassifiedParams<T> result;
-    for (const auto &v : values) {
-        WordType type = getType(v);
-        if (type == WordType::Doubleword) {
-            if (result.double_regs.size() < 8)
-                result.double_regs.push_back(v);
-            else
-                result.stack.push_back(v);
-        } else {
-            if (result.int_regs.size() < 6)
-                result.int_regs.push_back(v);
-            else
-                result.stack.push_back(v);
+    // TODO
+    size_t int_regs_available = 6;
+    ClassifiedParams result;
+    for (const auto &p : parameters) {
+        Type type = getType(p);
+        const StructType *struct_type = type.getAs<StructType>();
+        if (!struct_type) {
+            WordType word_type = type.wordType();
+            if (word_type == WordType::Doubleword) {
+                if (result.double_regs.size() < 8)
+                    result.double_regs.push_back(getOperand(p));
+                else
+                    result.stack.push_back({
+                        getOperand(p),
+                        AssemblyType{ word_type }
+                    });
+            } else {
+                if (result.int_regs.size() < int_regs_available)
+                    result.int_regs.push_back({
+                        getOperand(p),
+                        AssemblyType{ word_type }
+                    });
+                else
+                    result.stack.push_back({
+                        getOperand(p),
+                        AssemblyType{ word_type }
+                    });
+            }
+            continue;
+        }
+
+        size_t struct_size = type.size(typeTable);
+        const TypeTable::StructEntry *entry = typeTable->get(struct_type->tag);
+        std::vector<StructClass> classes = classifyStruct(entry);
+        bool use_stack = true;
+        if (classes.front() != MEMORY) {
+            std::vector<std::pair<Operand, AssemblyType>> tentative_ints;
+            std::vector<Operand> tentative_doubles;
+            size_t offset = 0;
+            for (auto &c : classes) {
+                Operand operand = PseudoAggregate{ struct_type->tag, offset };
+                if (c == SSE)
+                    tentative_doubles.push_back(operand);
+                else {
+                    AssemblyType part_type = getStructPartType(offset, struct_size);
+                    tentative_ints.push_back({ operand, part_type });
+                }
+                offset += 8;
+            }
+
+            if ((tentative_ints.size() + s_intArgRegisters.size() <= int_regs_available)
+                && (tentative_doubles.size() + s_doubleArgRegisters.size() <= 8)) {
+                result.int_regs.insert(result.int_regs.end(),
+                    tentative_ints.begin(),
+                    tentative_ints.end());
+                result.double_regs.insert(result.double_regs.end(),
+                    tentative_doubles.begin(),
+                    tentative_doubles.end());
+                use_stack = false;
+            }
+        }
+
+        if (use_stack) {
+            size_t offset = 0;
+            for (auto &_ : classes) {
+                Operand operand = PseudoAggregate{ struct_type->tag, offset };
+                AssemblyType part_type = getStructPartType(offset, struct_size);
+                result.stack.push_back({ operand, part_type });
+                offset += 8;
+            }
         }
     }
     return result;
+}
+
+struct ClassifiedReturn {
+    std::vector<std::pair<Operand, AssemblyType>> int_values;
+    std::vector<Operand> double_values;
+    bool in_memory = false;
+};
+
+static ClassifiedReturn classifyReturnValue(
+    const Operand &operand,
+    const Type &type,
+    const TypeTable *typeTable)
+{
+    ClassifiedReturn ret;
+    if (type.isBasic(Double))
+        ret.double_values.push_back(operand);
+    else if (type.isScalar())
+        ret.int_values.push_back({ operand, AssemblyType{ type.wordType() } });
+    else {
+        const StructType *struct_type = type.getAs<StructType>();
+        assert(struct_type);
+        size_t struct_size = type.size(typeTable);
+        const TypeTable::StructEntry *entry = typeTable->get(struct_type->tag);
+        auto classes = classifyStruct(entry);
+        if (classes.front() == MEMORY)
+            ret.in_memory = true;
+        else {
+            size_t offset = 0;
+            for (auto &c : classes) {
+                // FIXME: The string should be the variabe name
+                Operand op = PseudoAggregate{ struct_type->tag, offset };
+                if (c == SSE)
+                    ret.double_values.push_back(op);
+                else if (c == INTEGER) {
+                    AssemblyType part_type = getStructPartType(offset, struct_size);
+                    ret.int_values.push_back({ op, part_type });
+                } else if (c == MEMORY)
+                    assert(false);
+                offset += 8;
+            }
+        }
+    }
+    return ret;
 }
 
 ASMBuilder::ASMBuilder(Context *context, std::shared_ptr<ConstantMap> constants)
@@ -490,9 +603,32 @@ Operand ASMBuilder::operator()(const tac::Label &l)
 
 Operand ASMBuilder::operator()(const tac::FunctionCall &f)
 {
-    auto args = classifyParameters(f.args, [this](const tac::Value &v) {
-        return GetWordType(v);
-    });
+    Operand dst_operand;
+    ClassifiedReturn ret;
+    if (f.dst) {
+        dst_operand = std::visit(*this, *f.dst);
+        ret = classifyReturnValue(dst_operand, GetType(*f.dst), m_typeTable);
+    }
+
+    size_t reg_index = 0;
+    if (ret.in_memory) {
+        Comment(m_instructions, "Return value is in memory, it's address is RDI");
+        m_instructions.push_back(Lea{ dst_operand, Reg{ DI, 8 } });
+        // The first argument register (RDI) is occupied
+        reg_index = 1;
+    }
+
+    auto args = classifyParameters(
+        f.args,
+        /* ret.in_memory, */
+        m_typeTable,
+        [this](const tac::Value &v) {
+            return GetType(v);
+        },
+        [this](const tac::Value &v) {
+            return std::visit(*this, v);
+        }
+    );
 
     // Adjust stack alignment to 16 bytes and allocate stack
     size_t stack_padding = (args.stack.size() % 2 == 0) ? 0 : 8;
@@ -507,23 +643,28 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
     }
 
     // Move arguments into registers
-    size_t reg_index = 0;
     if (args.int_regs.size() > 0)
         Comment(m_instructions, "Moving the first six int arguments into registers");
     for (auto &arg : args.int_regs) {
-        WordType type = GetWordType(arg);
-        m_instructions.push_back(Mov{
-            std::visit(*this, arg),
-            Reg{ s_intArgRegisters[reg_index++], GetBytesOfWordType(type) },
-            type
-        });
+        auto &[operand, type] = arg;
+        Register reg = s_intArgRegisters[reg_index++];
+        if (/*const ByteArray *byte_array = */type.getAs<ByteArray>()) {
+            // TODO
+            // CopyBytesToReg(operand, reg, byte_array->size);
+        } else {
+            m_instructions.push_back(Mov{
+                operand,
+                Reg{ reg, static_cast<uint8_t>(type.size()) },
+                *type.getAs<WordType>()
+            });
+        }
     }
     reg_index = 0;
     if (args.double_regs.size() > 0)
         Comment(m_instructions, "Moving the first eight double arguments into registers");
-    for (auto &arg : args.double_regs) {
+    for (auto &operand : args.double_regs) {
         m_instructions.push_back(Mov{
-            std::visit(*this, arg),
+            operand,
             Reg{ s_doubleArgRegisters[reg_index++], 8 },
             Doubleword
         });
@@ -533,18 +674,22 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
     if (args.stack.size() > 0)
         Comment(m_instructions, "Pushing the rest of the arguments onto the stack");
     for (auto &arg : std::views::reverse(args.stack)) {
-        auto asm_arg = std::visit(*this, arg);
-        WordType arg_type = GetWordType(arg);
-        if (std::holds_alternative<Reg>(asm_arg)
-            || std::holds_alternative<Imm>(asm_arg)
-            || arg_type == WordType::Quadword
-            || arg_type == WordType::Doubleword)
-            m_instructions.push_back(Push{ asm_arg });
+        auto &[operand, type] = arg;
+        // TODO
+        if (/*const ByteArray *byte_array =*/ type.getAs<ByteArray>()) {
+            Comment(m_instructions, "Copying irregular argument to the stack");
+            m_instructions.push_back(Binary{ Sub_AB, Imm{ 8 }, Reg{ SP, 8 }, Quadword });
+            // CopyBytesToMemory(operand, Memory{ SP, 0 }, byte_array->size);
+        } else if (std::holds_alternative<Reg>(operand)
+            || std::holds_alternative<Imm>(operand)
+            || type.isWord(Quadword)
+            || type.isWord(Doubleword))
+            m_instructions.push_back(Push{ operand });
         else {
             m_instructions.push_back(Mov{
-                asm_arg,
-                Reg{ AX, GetBytesOfWordType(arg_type) },
-                arg_type
+                operand,
+                Reg{ AX, static_cast<uint8_t>(type.size()) },
+                *type.getAs<WordType>()
             });
             m_instructions.push_back(Push{ Reg{ AX, 8 } });
         }
@@ -566,25 +711,28 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
     }
 
     // Retrieve the return value if needed
-    if (!f.dst)
+    if (!f.dst || ret.in_memory)
         return std::monostate();
-    WordType return_type = GetWordType(*f.dst);
-    if (return_type == Doubleword) {
-        Comment(m_instructions, "The return value is in XMM0");
-        m_instructions.push_back(Mov{
-            Reg{ XMM0, GetBytesOfWordType(return_type) },
-            std::visit(*this, *f.dst),
-            Doubleword
-        });
-    } else {
-        Comment(m_instructions, "The return value is in AX");
-        m_instructions.push_back(Mov{
-            Reg{ AX, GetBytesOfWordType(return_type) },
-            std::visit(*this, *f.dst),
-            return_type
-        });
+    Register int_return_registers[2] = { AX, DX };
+    reg_index = 0;
+    for (auto &int_val : ret.int_values) {
+        auto &[operand, type] = int_val;
+        Register reg = int_return_registers[reg_index++];
+        if (/* const ByteArray *byte_array =*/ type.getAs<ByteArray>()) {
+            // CopyBytesFromReg(reg, operand, byte_array->size);
+        } else
+            m_instructions.push_back(Mov{
+                Reg{ reg, static_cast<uint8_t>(type.size()) },
+                operand,
+                *type.getAs<WordType>()
+            });
     }
-
+    Register double_return_registers[2] = { XMM0, XMM1 };
+    reg_index = 0;
+    for (auto &operand : ret.double_values) {
+        Register reg = double_return_registers[reg_index++];
+        m_instructions.push_back(Mov{ Reg{ reg, 8 }, operand, Doubleword });
+    }
     return std::monostate();
 }
 
@@ -845,29 +993,39 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     func.name = f.name;
     func.global = f.global;
 
-    auto args = classifyParameters(f.params, [this](const std::string &name) {
-        return m_symbolTable->getWordType(name);
-    });
+    auto args = classifyParameters(
+        f.params,
+        m_typeTable,
+        [this](const std::string &name) {
+            return m_symbolTable->getType(name);
+        },
+        [](const std::string &name) {
+            return Pseudo{ name };
+        }
+    );
 
     // We copy each of the parameters into the current stack frame
     // to make life easier. This can be optimised out later.
     if (args.int_regs.size() > 0)
         Comment(func.instructions, "Getting integer parameters from registers");
     for (size_t i = 0; i < args.int_regs.size(); i++) {
-        const std::string &p = args.int_regs[i];
-        WordType type = m_symbolTable->getWordType(p);
-        func.instructions.push_back(Mov{
-            Reg{ s_intArgRegisters[i], GetBytesOfWordType(type) },
-            Pseudo{ p },
-            type
-        });
+        auto &[operand, type] = args.int_regs[i];
+        if (type.isByteArray()) {
+            // TODO
+        } else {
+            func.instructions.push_back(Mov{
+                Reg{ s_intArgRegisters[i], static_cast<uint8_t>(type.size()) },
+                operand,
+                *type.getAs<WordType>()
+            });
+        }
     }
     if (args.double_regs.size() > 0)
         Comment(func.instructions, "Getting double parameters from registers");
     for (size_t i = 0; i < args.double_regs.size(); i++) {
         func.instructions.push_back(Mov{
             Reg{ s_doubleArgRegisters[i], 8 },
-            Pseudo{ args.double_regs[i] },
+            args.double_regs[i],
             Doubleword
         });
     }
@@ -875,10 +1033,14 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
         Comment(func.instructions, "Getting remaining parameters from the stack");
     size_t stack_offset = 16;
     for (auto &param : args.stack) {
+        auto &[operand, type] = param;
+        // TODO
+        if (type.isByteArray())
+            continue;
         func.instructions.push_back(Mov{
             Memory{ BP, static_cast<int>(stack_offset) },
-            Pseudo{ param },
-            m_symbolTable->getWordType(param)
+            operand,
+            *type.getAs<WordType>()
         });
         stack_offset += 8;
     }

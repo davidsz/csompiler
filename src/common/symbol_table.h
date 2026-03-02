@@ -49,6 +49,7 @@ public:
         return nullptr;
     }
     int getByteSize(const std::string &name);
+    Type getType(const std::string &name);
     WordType getWordType(const std::string &name);
     void insert(
         const std::string &name,

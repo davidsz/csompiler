@@ -22,6 +22,14 @@ int SymbolTable::getByteSize(const std::string &name)
     return 0;
 }
 
+Type SymbolTable::getType(const std::string &name)
+{
+    auto it = m_table.find(name);
+    if (it != m_table.end())
+        return it->second.type;
+    return Type{ std::monostate() };
+}
+
 WordType SymbolTable::getWordType(const std::string &name)
 {
     auto it = m_table.find(name);
