@@ -60,6 +60,12 @@ private:
     void Comment(std::list<Instruction> &i, const std::string &text);
     std::string AddConstant(const ConstantValue &c, const std::string &name);
 
+    // Copy between Memory and PseudoAggregate operands in a specified size
+    void CopyBytes(Operand src, Operand dst, size_t size);
+    // Only for copying irregular size structs between register and memory
+    void CopyBytesToReg(Operand src, Register dst, size_t size);
+    void CopyBytesFromReg(Register src, Operand dst, size_t size);
+
     bool m_commentsEnabled = true;
     std::list<TopLevel> m_topLevel;
     std::list<Instruction> m_instructions;

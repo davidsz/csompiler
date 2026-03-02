@@ -37,6 +37,16 @@ static std::string toConditionCode(BinaryOperator op, bool another)
 }
 DIAG_POP
 
+static Operand addOffset(Operand op, size_t offset)
+{
+    if (Memory *m = std::get_if<Memory>(&op))
+        return Memory{ m->reg, m->offset + static_cast<int>(offset) };
+    if (PseudoAggregate *p = std::get_if<PseudoAggregate>(&op))
+        return PseudoAggregate{ p->name, p->offset + offset };
+    assert(false);
+    return Operand{ };
+}
+
 static std::vector<WordType> getMemoryFragments(size_t size)
 {
     std::vector<WordType> ret;
@@ -104,6 +114,7 @@ static AssemblyType getStructPartType(size_t offset, size_t struct_size)
         return AssemblyType{ Longword };
     if (byte_from_end == 1)
         return AssemblyType{ Byte };
+    // Irregular size struct; "not word-aligned tail fragment"
     return AssemblyType{ ByteArray{ byte_from_end, 8 } };
 }
 
@@ -447,16 +458,8 @@ Operand ASMBuilder::operator()(const tac::Copy &c)
 {
     if (auto s = GetStructEntry(c.src)) {
         auto &[tag, entry] = *s;
-        std::vector<WordType> fragments = getMemoryFragments(entry->size);
-        size_t offset = 0;
-        for (auto &word_type : fragments) {
-            m_instructions.push_back(Mov{
-                PseudoAggregate{ tag, offset },
-                PseudoAggregate{ tag, offset },
-                word_type
-            });
-            offset += GetBytesOfWordType(word_type);
-        }
+        // FIXME: tag is incorrect, use struct name
+        CopyBytes(PseudoAggregate{ tag, 0 }, PseudoAggregate{ tag, 0 }, entry->size);
         return std::monostate();
     }
 
@@ -491,16 +494,8 @@ Operand ASMBuilder::operator()(const tac::Load &l)
     // Copy chunks of data stored at offsets from the address in RAX
     if (auto s = GetStructEntry(l.dst)) {
         auto &[tag, entry] = *s;
-        std::vector<WordType> fragments = getMemoryFragments(entry->size);
-        size_t offset = 0;
-        for (auto &word_type : fragments) {
-            m_instructions.push_back(Mov{
-                Memory{ AX, static_cast<int>(offset) },
-                PseudoAggregate{ tag, offset },
-                word_type
-            });
-            offset += GetBytesOfWordType(word_type);
-        }
+        // FIXME: tag
+        CopyBytes(Memory{ AX, 0 }, PseudoAggregate{ tag, 0 }, entry->size);
         return std::monostate();
     }
 
@@ -648,9 +643,9 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
     for (auto &arg : args.int_regs) {
         auto &[operand, type] = arg;
         Register reg = s_intArgRegisters[reg_index++];
-        if (/*const ByteArray *byte_array = */type.getAs<ByteArray>()) {
-            // TODO
-            // CopyBytesToReg(operand, reg, byte_array->size);
+        if (const ByteArray *byte_array = type.getAs<ByteArray>()) {
+            Comment(m_instructions, "Irregular size struct will be passed in registers");
+            CopyBytesToReg(operand, reg, byte_array->size);
         } else {
             m_instructions.push_back(Mov{
                 operand,
@@ -675,11 +670,10 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
         Comment(m_instructions, "Pushing the rest of the arguments onto the stack");
     for (auto &arg : std::views::reverse(args.stack)) {
         auto &[operand, type] = arg;
-        // TODO
-        if (/*const ByteArray *byte_array =*/ type.getAs<ByteArray>()) {
-            Comment(m_instructions, "Copying irregular argument to the stack");
+        if (const ByteArray *byte_array = type.getAs<ByteArray>()) {
+            Comment(m_instructions, "Copying irregular size argument to the stack");
             m_instructions.push_back(Binary{ Sub_AB, Imm{ 8 }, Reg{ SP, 8 }, Quadword });
-            // CopyBytesToMemory(operand, Memory{ SP, 0 }, byte_array->size);
+            CopyBytes(operand, Memory{ SP, 0 }, byte_array->size);
         } else if (std::holds_alternative<Reg>(operand)
             || std::holds_alternative<Imm>(operand)
             || type.isWord(Quadword)
@@ -718,8 +712,9 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
     for (auto &int_val : ret.int_values) {
         auto &[operand, type] = int_val;
         Register reg = int_return_registers[reg_index++];
-        if (/* const ByteArray *byte_array =*/ type.getAs<ByteArray>()) {
-            // CopyBytesFromReg(reg, operand, byte_array->size);
+        if (const ByteArray *byte_array = type.getAs<ByteArray>()) {
+            Comment(m_instructions, "Irregular size struct is coming from registers");
+            CopyBytesFromReg(reg, operand, byte_array->size);
         } else
             m_instructions.push_back(Mov{
                 Reg{ reg, static_cast<uint8_t>(type.size()) },
@@ -922,16 +917,11 @@ Operand ASMBuilder::operator()(const tac::CopyToOffset &c)
 {
     if (auto s = GetStructEntry(c.src)) {
         auto &[tag, entry] = *s;
-        std::vector<WordType> fragments = getMemoryFragments(entry->size);
-        size_t offset = 0;
-        for (auto &word_type : fragments) {
-            m_instructions.push_back(Mov{
-                PseudoAggregate{ tag, offset },
-                PseudoAggregate{ c.dst_identifier, offset + c.offset },
-                word_type
-            });
-            offset += GetBytesOfWordType(word_type);
-        }
+        // FIXME: tag
+        CopyBytes(
+            PseudoAggregate{ tag, 0 },
+            PseudoAggregate{ c.dst_identifier, c.offset },
+            entry->size);
         return std::monostate();
     }
 
@@ -947,16 +937,11 @@ Operand ASMBuilder::operator()(const tac::CopyFromOffset &c)
 {
     if (auto s = GetStructEntry(c.dst)) {
         auto &[tag, entry] = *s;
-        std::vector<WordType> fragments = getMemoryFragments(entry->size);
-        size_t offset = 0;
-        for (auto &word_type : fragments) {
-            m_instructions.push_back(Mov{
-                PseudoAggregate{ c.src_identifier, offset + c.offset },
-                PseudoAggregate{ tag, offset },
-                word_type
-            });
-            offset += GetBytesOfWordType(word_type);
-        }
+        // FIXME: tag
+        CopyBytes(
+            PseudoAggregate{ c.src_identifier, c.offset },
+            PseudoAggregate{ tag, 0 },
+            entry->size);
         return std::monostate();
     }
 
@@ -1113,6 +1098,46 @@ std::string ASMBuilder::AddConstant(const ConstantValue &c, const std::string &n
     else {
         m_constants->insert({ c, name });
         return name;
+    }
+}
+
+void ASMBuilder::CopyBytes(Operand src, Operand dst, size_t size)
+{
+    std::vector<WordType> fragments = getMemoryFragments(size);
+    size_t offset = 0;
+    for (auto &word_type : fragments) {
+        m_instructions.push_back(Mov{
+            addOffset(src, offset),
+            addOffset(dst, offset),
+            word_type
+        });
+        offset += GetBytesOfWordType(word_type);
+    }
+}
+
+void ASMBuilder::CopyBytesToReg(Operand src, Register dst, size_t size)
+{
+    assert(std::holds_alternative<Memory>(src) || std::holds_alternative<PseudoAggregate>(src));
+    size_t offset = size - 1;
+    while (offset >= 0) {
+        Operand src_byte = addOffset(src, offset);
+        m_instructions.push_back(Mov{ src_byte, Reg{ dst, 1 }, Byte });
+        if (offset > 0)
+            m_instructions.push_back(Binary{ ShiftL_AB, Imm{ 8 }, Reg{ dst, 8 }, Quadword });
+        offset -= 1;
+    }
+}
+
+void ASMBuilder::CopyBytesFromReg(Register src, Operand dst, size_t size)
+{
+    assert(std::holds_alternative<Memory>(dst) || std::holds_alternative<PseudoAggregate>(dst));
+    size_t offset = 0;
+    while (offset < size) {
+        Operand dst_byte = addOffset(dst, offset);
+        m_instructions.push_back(Mov{ Reg{ src, 1 }, dst_byte, Byte });
+        if (offset < size - 1)
+            m_instructions.push_back(Binary{ ShiftRU_AB, Imm{ 8 }, Reg{ src, 8 }, Quadword });
+        offset += 1;
     }
 }
 
