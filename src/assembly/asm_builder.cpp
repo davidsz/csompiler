@@ -177,7 +177,8 @@ static ClassifiedParams classifyParameters(
 
         if (use_stack) {
             size_t offset = 0;
-            for (auto &_ : classes) {
+            for (auto &c : classes) {
+                (void)c; // Unused
                 Operand pseudo = PseudoAggregate{ *getString(operand), offset };
                 AssemblyType part_type = getStructPartType(offset, struct_size);
                 result.stack.push_back({ pseudo, part_type });
@@ -1134,9 +1135,9 @@ void ASMBuilder::CopyBytes(Operand src, Operand dst, size_t size)
 void ASMBuilder::CopyBytesToReg(Operand src, Register dst, size_t size)
 {
     assert(std::holds_alternative<Memory>(src) || std::holds_alternative<PseudoAggregate>(src));
-    size_t offset = size - 1;
+    int offset = static_cast<int>(size) - 1;
     while (offset >= 0) {
-        Operand src_byte = addOffset(src, offset);
+        Operand src_byte = addOffset(src, static_cast<size_t>(offset));
         m_instructions.push_back(Mov{ src_byte, Reg{ dst, 1 }, Byte });
         if (offset > 0)
             m_instructions.push_back(Binary{ ShiftL_AB, Imm{ 8 }, Reg{ dst, 8 }, Quadword });
