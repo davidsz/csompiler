@@ -55,8 +55,7 @@ private:
     Type GetType(const tac::Value &);
     BasicType GetBasicType(const tac::Value &);
     WordType GetWordType(const tac::Value &);
-    std::optional<std::pair<std::string, const TypeTable::StructEntry *>>
-        GetStructEntry(const tac::Value &);
+    const TypeTable::StructEntry *GetStructEntry(const std::string *name);
     void Comment(std::list<Instruction> &i, const std::string &text);
     std::string AddConstant(const ConstantValue &c, const std::string &name);
 

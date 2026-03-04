@@ -1,4 +1,5 @@
 #include "asm_symbol_table.h"
+#include "asm_helper.h"
 #include "common/context.h"
 #include <cassert>
 
@@ -18,9 +19,16 @@ ASMSymbolTable::ASMSymbolTable(
                 .is_static = entry.attrs.type == IdentifierAttributes::Static,
                 .is_constant = false
             });
-        } else if (entry.type.getAs<FunctionType>()) {
+        } else if (const FunctionType *func_type = entry.type.getAs<FunctionType>()) {
+            bool return_on_stack = false;
+            if (const StructType *struct_type = func_type->ret->getAs<StructType>()) {
+                auto struct_entry = type_table->get(struct_type->tag);
+                std::vector<StructClass> classes = classifyStruct(struct_entry);
+                return_on_stack = (classes.front() != MEMORY);
+            }
             insert(name, FunEntry{
-                .defined = entry.attrs.defined
+                .defined = entry.attrs.defined,
+                .return_on_stack = return_on_stack
             });
         } else if (entry.type.getAs<PointerType>()) {
             insert(name, ObjEntry{
@@ -29,6 +37,15 @@ ASMSymbolTable::ASMSymbolTable(
                 .is_constant = false
             });
         } else if (entry.type.getAs<ArrayType>()) {
+            insert(name, ObjEntry{
+                .type = AssemblyType{
+                    ByteArray{ entry.type.size(type_table), entry.type.alignment(type_table) }
+                },
+                .is_static = entry.attrs.type == IdentifierAttributes::Static
+                    || entry.attrs.type == IdentifierAttributes::Constant,
+                .is_constant = entry.attrs.type == IdentifierAttributes::Constant
+            });
+        } else if (entry.type.getAs<StructType>()) {
             insert(name, ObjEntry{
                 .type = AssemblyType{
                     ByteArray{ entry.type.size(type_table), entry.type.alignment(type_table) }

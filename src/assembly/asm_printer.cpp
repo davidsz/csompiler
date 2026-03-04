@@ -151,7 +151,10 @@ void ASMPrinter::operator()(const Memory &m)
 void ASMPrinter::operator()(const Data &d)
 {
     // TODO: Append L prefix to floating point and string constants?
-    m_codeStream << formatLabel(d.name) << "(%rip)";
+    if (d.offset == 0)
+        m_codeStream << formatLabel(d.name) << "(%rip)";
+    else
+        m_codeStream << formatLabel(d.name) << "+" << d.offset << "(%rip)";
 }
 
 void ASMPrinter::operator()(const Indexed &i)

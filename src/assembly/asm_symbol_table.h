@@ -16,6 +16,7 @@ struct ObjEntry {
 
 struct FunEntry {
     bool defined;
+    bool return_on_stack;
 };
 
 using ASMSymbolEntry = std::variant<ObjEntry, FunEntry>;

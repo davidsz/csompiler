@@ -9,19 +9,20 @@ namespace assembly {
 // calculates the overall stack size needed to store all local variables.
 static int postprocessPseudoRegisters(
     std::list<Instruction> &asmList,
+    int stackStart,
     std::shared_ptr<ASMSymbolTable> asmSymbolTable)
 {
     std::map<std::string, int> pseudoOffset;
-    int currentOffset = 0;
+    int currentOffset = stackStart;
 
     auto resolvePseudo = [&](Operand &op) {
         std::string name;
-        int extra_offset = 0; // The offset inside the array
+        size_t extra_offset = 0; // The offset inside the array
         if (auto pseudo = std::get_if<Pseudo>(&op))
             name = pseudo->name;
         else if (auto pseudo_aggr = std::get_if<PseudoAggregate>(&op)) {
             name = pseudo_aggr->name;
-            extra_offset = static_cast<int>(pseudo_aggr->offset);
+            extra_offset = pseudo_aggr->offset;
         } else
             return;
 
@@ -29,7 +30,7 @@ static int postprocessPseudoRegisters(
         assert(entry);
         if (entry && entry->is_static) {
             // Replace static variables with Data operands
-            op.emplace<Data>(name);
+            op.emplace<Data>(name, extra_offset);
             return;
         }
         // All other variable types are stack offsets
@@ -39,7 +40,7 @@ static int postprocessPseudoRegisters(
             currentOffset &= static_cast<int>(~(entry->type.alignment() - 1));
             pseudoOffset[name] = currentOffset;
         }
-        op.emplace<Memory>(BP, pseudoOffset[name] + extra_offset);
+        op.emplace<Memory>(BP, pseudoOffset[name] + static_cast<int>(extra_offset));
     };
 
 
@@ -95,7 +96,15 @@ void postprocessPseudoRegisters(
         std::visit([&](auto &obj) {
             using T = std::decay_t<decltype(obj)>;
             if constexpr (std::is_same_v<T, Function>) {
-                obj.stackSize = postprocessPseudoRegisters(obj.instructions, asmSymbolTable);
+                // If the function returns on the stack, the pointer
+                // to the returned data is at -8(%rbp); allocate space
+                // for this pointer.
+                int stack_start = 0;
+                FunEntry *entry = asmSymbolTable->getAs<FunEntry>(obj.name);
+                assert(entry);
+                if (entry->return_on_stack)
+                    stack_start = -8;
+                obj.stackSize = postprocessPseudoRegisters(obj.instructions, stack_start, asmSymbolTable);
                 // Round up to the next number which is divisible by 16
                 obj.stackSize = (obj.stackSize + 15) & ~15;
             }

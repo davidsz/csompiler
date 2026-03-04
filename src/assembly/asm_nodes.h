@@ -48,7 +48,7 @@ namespace assembly {
         int offset;) \
     X(Data, \
         std::string name; \
-        size_t i = 0;) \
+        size_t offset = 0;) \
     X(Indexed, \
         Register base; \
         Register index; \

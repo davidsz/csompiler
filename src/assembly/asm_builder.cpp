@@ -1,4 +1,5 @@
 #include "asm_builder.h"
+#include "asm_helper.h"
 #include "common/context.h"
 #include "common/labeling.h"
 #include <format>
@@ -13,6 +14,10 @@ static const std::array<Register, 6> s_intArgRegisters = {
 static const std::array<Register, 8> s_doubleArgRegisters = {
     XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7
 };
+
+static const Register s_intReturnRegisters[2] = { AX, DX };
+
+static const Register s_doubleReturnRegisters[2] = { XMM0, XMM1 };
 
 DIAG_PUSH
 DIAG_IGNORE("-Wswitch-enum")
@@ -36,6 +41,23 @@ static std::string toConditionCode(BinaryOperator op, bool another)
     }
 }
 DIAG_POP
+
+static const std::string *getString(const tac::Value &value)
+{
+    if (auto *var = std::get_if<tac::Variant>(&value))
+        return &var->name;
+    return nullptr;
+}
+
+static const std::string *getString(const Operand &op)
+{
+    if (const Pseudo *p = std::get_if<Pseudo>(&op))
+        return &p->name;
+    else if (const PseudoAggregate *agg = std::get_if<PseudoAggregate>(&op))
+        return &agg->name;
+    assert(false);
+    return nullptr;
+}
 
 static Operand addOffset(Operand op, size_t offset)
 {
@@ -63,48 +85,6 @@ static std::vector<WordType> getMemoryFragments(size_t size)
     return ret;
 }
 
-// Break a struct into eight byte parts and classify them
-enum StructClass {
-    INTEGER,
-    SSE,
-    MEMORY
-};
-
-static std::vector<StructClass> classifyStruct(const TypeTable::StructEntry *entry)
-{
-    if (entry->members.empty()) {
-        assert(false);
-        return {};
-    }
-
-    // The struct can't fit on two registers
-    size_t size = entry->size;
-    if (size > 16) {
-        std::vector<StructClass> ret;
-        while (size > 0) {
-            ret.push_back(MEMORY);
-            size -= 8;
-        }
-        return ret;
-    }
-
-    // Classify the two registers
-    bool first_is_double = entry->members.front().type.storedType().isBasic(Double);
-    bool last_is_double = entry->members.back().type.storedType().isBasic(Double);
-    if (size > 8) {
-        if (first_is_double && last_is_double)
-            return { SSE, SSE };
-        if (first_is_double)
-            return { SSE, INTEGER };
-        if (last_is_double)
-            return { INTEGER, SSE };
-        return { INTEGER, INTEGER };
-    } else if (first_is_double)
-        return { SSE };
-    else
-        return { INTEGER };
-}
-
 static AssemblyType getStructPartType(size_t offset, size_t struct_size)
 {
     size_t byte_from_end = struct_size - offset;
@@ -127,42 +107,43 @@ struct ClassifiedParams {
 template<typename T, typename GetTypeFn, typename GetOperandFn>
 static ClassifiedParams classifyParameters(
     const std::vector<T> &parameters,
-    /*bool return_in_memory,*/
+    bool return_in_memory,
     TypeTable *typeTable,
     GetTypeFn getType,
     GetOperandFn getOperand)
 {
-    // TODO
-    size_t int_regs_available = 6;
+    size_t int_regs_available = return_in_memory ? 5 : 6;
     ClassifiedParams result;
     for (const auto &p : parameters) {
+        Operand operand = getOperand(p);
         Type type = getType(p);
         const StructType *struct_type = type.getAs<StructType>();
         if (!struct_type) {
             WordType word_type = type.wordType();
             if (word_type == WordType::Doubleword) {
                 if (result.double_regs.size() < 8)
-                    result.double_regs.push_back(getOperand(p));
+                    result.double_regs.push_back(operand);
                 else
                     result.stack.push_back({
-                        getOperand(p),
+                        operand,
                         AssemblyType{ word_type }
                     });
             } else {
                 if (result.int_regs.size() < int_regs_available)
                     result.int_regs.push_back({
-                        getOperand(p),
+                        operand,
                         AssemblyType{ word_type }
                     });
                 else
                     result.stack.push_back({
-                        getOperand(p),
+                        operand,
                         AssemblyType{ word_type }
                     });
             }
             continue;
         }
 
+        // Parameter is a struct
         size_t struct_size = type.size(typeTable);
         const TypeTable::StructEntry *entry = typeTable->get(struct_type->tag);
         std::vector<StructClass> classes = classifyStruct(entry);
@@ -172,12 +153,12 @@ static ClassifiedParams classifyParameters(
             std::vector<Operand> tentative_doubles;
             size_t offset = 0;
             for (auto &c : classes) {
-                Operand operand = PseudoAggregate{ struct_type->tag, offset };
+                Operand pseudo = PseudoAggregate{ *getString(operand), offset };
                 if (c == SSE)
-                    tentative_doubles.push_back(operand);
+                    tentative_doubles.push_back(pseudo);
                 else {
                     AssemblyType part_type = getStructPartType(offset, struct_size);
-                    tentative_ints.push_back({ operand, part_type });
+                    tentative_ints.push_back({ pseudo, part_type });
                 }
                 offset += 8;
             }
@@ -197,9 +178,9 @@ static ClassifiedParams classifyParameters(
         if (use_stack) {
             size_t offset = 0;
             for (auto &_ : classes) {
-                Operand operand = PseudoAggregate{ struct_type->tag, offset };
+                Operand pseudo = PseudoAggregate{ *getString(operand), offset };
                 AssemblyType part_type = getStructPartType(offset, struct_size);
-                result.stack.push_back({ operand, part_type });
+                result.stack.push_back({ pseudo, part_type });
                 offset += 8;
             }
         }
@@ -234,8 +215,7 @@ static ClassifiedReturn classifyReturnValue(
         else {
             size_t offset = 0;
             for (auto &c : classes) {
-                // FIXME: The string should be the variabe name
-                Operand op = PseudoAggregate{ struct_type->tag, offset };
+                Operand op = PseudoAggregate{ *getString(operand), offset };
                 if (c == SSE)
                     ret.double_values.push_back(op);
                 else if (c == INTEGER) {
@@ -279,12 +259,15 @@ WordType ASMBuilder::GetWordType(const tac::Value &value)
     return GetType(value).wordType();
 }
 
-std::optional<std::pair<std::string, const TypeTable::StructEntry *>>
-ASMBuilder::GetStructEntry(const tac::Value &value)
+const TypeTable::StructEntry *ASMBuilder::GetStructEntry(const std::string *name)
 {
-    if (auto v = std::get_if<tac::Variant>(&value))
-        std::make_pair(v->name, m_typeTable->get(v->name));
-    return std::nullopt;
+    if (!name)
+        return nullptr;
+    Type type = m_symbolTable->getType(*name);
+    const StructType *struct_type = type.getAs<StructType>();
+    if (!struct_type)
+        return nullptr;
+    return m_typeTable->get(struct_type->tag);
 }
 
 void ASMBuilder::Comment(std::list<Instruction> &i, const std::string &text)
@@ -300,20 +283,39 @@ Operand ASMBuilder::operator()(const tac::Return &r)
         return std::monostate();
     }
 
-    WordType type = GetWordType(*r.val);
-    if (type == Doubleword) {
-        m_instructions.push_back(Mov{
-            std::visit(*this, *r.val),
-            Reg{ XMM0, 8 },
-            Doubleword
-        });
+    Operand ret_value = std::visit(*this, *r.val);
+    Type return_type = GetType(*r.val);
+    ClassifiedReturn ret = classifyReturnValue(ret_value, return_type, m_typeTable);
+    if (ret.in_memory) {
+        // Retrieve the address of the return value into RAX
+        m_instructions.push_back(Mov{ Memory{ BP, -8 }, Reg{ AX, 8 }, Quadword });
+        CopyBytes(
+            ret_value,
+            Memory { AX, 0 },
+            return_type.size(m_typeTable)
+        );
     } else {
-        m_instructions.push_back(Mov{
-            std::visit(*this, *r.val),
-            Reg{ AX, GetBytesOfWordType(type) },
-            type
-        });
+        size_t reg_index = 0;
+        for (auto &int_val : ret.int_values) {
+            auto &[operand, type] = int_val;
+            Register reg = s_intReturnRegisters[reg_index++];
+            if (const ByteArray *byte_array = type.getAs<ByteArray>())
+                CopyBytesToReg(operand, reg, byte_array->size);
+            else {
+                m_instructions.push_back(Mov{
+                    operand,
+                    Reg{ reg, static_cast<uint8_t>(type.size()) },
+                    *type.getAs<WordType>()
+                });
+            }
+        }
+        reg_index = 0;
+        for (auto &operand : ret.double_values) {
+            Register reg = s_doubleReturnRegisters[reg_index++];
+            m_instructions.push_back(Mov{ operand, Reg{ reg, 8 }, Doubleword });
+        }
     }
+
     m_instructions.push_back(Ret{ });
     return std::monostate();
 }
@@ -456,10 +458,12 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
 
 Operand ASMBuilder::operator()(const tac::Copy &c)
 {
-    if (auto s = GetStructEntry(c.src)) {
-        auto &[tag, entry] = *s;
-        // FIXME: tag is incorrect, use struct name
-        CopyBytes(PseudoAggregate{ tag, 0 }, PseudoAggregate{ tag, 0 }, entry->size);
+    const std::string *src_name = getString(c.src);
+    if (auto entry = GetStructEntry(src_name)) {
+        CopyBytes(
+            PseudoAggregate{ *src_name, 0 },
+            PseudoAggregate{ *getString(c.dst), 0 },
+            entry->size);
         return std::monostate();
     }
 
@@ -492,10 +496,9 @@ Operand ASMBuilder::operator()(const tac::Load &l)
     });
 
     // Copy chunks of data stored at offsets from the address in RAX
-    if (auto s = GetStructEntry(l.dst)) {
-        auto &[tag, entry] = *s;
-        // FIXME: tag
-        CopyBytes(Memory{ AX, 0 }, PseudoAggregate{ tag, 0 }, entry->size);
+    const std::string *dst_name = getString(l.dst);
+    if (auto entry = GetStructEntry(dst_name)) {
+        CopyBytes(Memory{ AX, 0 }, PseudoAggregate{ *dst_name, 0 }, entry->size);
         return std::monostate();
     }
 
@@ -615,7 +618,7 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
 
     auto args = classifyParameters(
         f.args,
-        /* ret.in_memory, */
+        ret.in_memory,
         m_typeTable,
         [this](const tac::Value &v) {
             return GetType(v);
@@ -707,11 +710,10 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
     // Retrieve the return value if needed
     if (!f.dst || ret.in_memory)
         return std::monostate();
-    Register int_return_registers[2] = { AX, DX };
     reg_index = 0;
     for (auto &int_val : ret.int_values) {
         auto &[operand, type] = int_val;
-        Register reg = int_return_registers[reg_index++];
+        Register reg = s_intReturnRegisters[reg_index++];
         if (const ByteArray *byte_array = type.getAs<ByteArray>()) {
             Comment(m_instructions, "Irregular size struct is coming from registers");
             CopyBytesFromReg(reg, operand, byte_array->size);
@@ -722,10 +724,9 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
                 *type.getAs<WordType>()
             });
     }
-    Register double_return_registers[2] = { XMM0, XMM1 };
     reg_index = 0;
     for (auto &operand : ret.double_values) {
-        Register reg = double_return_registers[reg_index++];
+        Register reg = s_doubleReturnRegisters[reg_index++];
         m_instructions.push_back(Mov{ Reg{ reg, 8 }, operand, Doubleword });
     }
     return std::monostate();
@@ -915,11 +916,10 @@ Operand ASMBuilder::operator()(const tac::AddPtr &a)
 
 Operand ASMBuilder::operator()(const tac::CopyToOffset &c)
 {
-    if (auto s = GetStructEntry(c.src)) {
-        auto &[tag, entry] = *s;
-        // FIXME: tag
+    const std::string *src_name = getString(c.src);
+    if (auto entry = GetStructEntry(src_name)) {
         CopyBytes(
-            PseudoAggregate{ tag, 0 },
+            PseudoAggregate{ *src_name, 0 },
             PseudoAggregate{ c.dst_identifier, c.offset },
             entry->size);
         return std::monostate();
@@ -935,12 +935,11 @@ Operand ASMBuilder::operator()(const tac::CopyToOffset &c)
 
 Operand ASMBuilder::operator()(const tac::CopyFromOffset &c)
 {
-    if (auto s = GetStructEntry(c.dst)) {
-        auto &[tag, entry] = *s;
-        // FIXME: tag
+    const std::string *dst_name = getString(c.dst);
+    if (auto entry = GetStructEntry(dst_name)) {
         CopyBytes(
             PseudoAggregate{ c.src_identifier, c.offset },
-            PseudoAggregate{ tag, 0 },
+            PseudoAggregate{ *dst_name, 0 },
             entry->size);
         return std::monostate();
     }
@@ -965,11 +964,11 @@ Operand ASMBuilder::operator()(const tac::Constant &c)
 
 Operand ASMBuilder::operator()(const tac::Variant &v)
 {
-    auto entry = m_context->symbolTable->get(v.name);
+    auto entry = m_symbolTable->get(v.name);
     if (entry->type.isArray() || entry->type.isStruct())
         return PseudoAggregate{ v.name, 0 };
     else
-        return Pseudo{ v.name }; // TODO: Rename to PseudoScalar?
+        return Pseudo{ v.name };
 }
 
 Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
@@ -978,8 +977,17 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     func.name = f.name;
     func.global = f.global;
 
+    bool return_in_memory = false;
+    const FunctionType *func_type = m_symbolTable->getType(f.name).getAs<FunctionType>();
+    if (const StructType *struct_type = func_type->ret->getAs<StructType>()) {
+        auto struct_entry = m_typeTable->get(struct_type->tag);
+        std::vector<StructClass> classes = classifyStruct(struct_entry);
+        return_in_memory = (classes.front() == MEMORY);
+    }
+
     auto args = classifyParameters(
         f.params,
+        return_in_memory,
         m_typeTable,
         [this](const std::string &name) {
             return m_symbolTable->getType(name);
@@ -989,17 +997,24 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
         }
     );
 
+    size_t reg_index = 0;
+    if (return_in_memory) {
+        func.instructions.push_back(Mov{ Reg{ DI, 8 }, Memory{ BP, -8 }, Quadword });
+        reg_index = 1;
+    }
+
     // We copy each of the parameters into the current stack frame
     // to make life easier. This can be optimised out later.
     if (args.int_regs.size() > 0)
         Comment(func.instructions, "Getting integer parameters from registers");
-    for (size_t i = 0; i < args.int_regs.size(); i++) {
-        auto &[operand, type] = args.int_regs[i];
-        if (type.isByteArray()) {
-            // TODO
-        } else {
+    for (auto &int_reg : args.int_regs) {
+        auto &[operand, type] = int_reg;
+        Register reg = s_intArgRegisters[reg_index++];
+        if (type.isByteArray())
+            CopyBytesFromReg(reg, operand, type.size());
+        else {
             func.instructions.push_back(Mov{
-                Reg{ s_intArgRegisters[i], static_cast<uint8_t>(type.size()) },
+                Reg{ reg, static_cast<uint8_t>(type.size()) },
                 operand,
                 *type.getAs<WordType>()
             });
@@ -1019,14 +1034,15 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     size_t stack_offset = 16;
     for (auto &param : args.stack) {
         auto &[operand, type] = param;
-        // TODO
         if (type.isByteArray())
-            continue;
-        func.instructions.push_back(Mov{
-            Memory{ BP, static_cast<int>(stack_offset) },
-            operand,
-            *type.getAs<WordType>()
-        });
+            CopyBytes(Memory{ BP, static_cast<int>(stack_offset) }, operand, type.size());
+        else {
+            func.instructions.push_back(Mov{
+                Memory{ BP, static_cast<int>(stack_offset) },
+                operand,
+                *type.getAs<WordType>()
+            });
+        }
         stack_offset += 8;
     }
     if (!args.int_regs.empty() || !args.double_regs.empty() || !args.stack.empty())
@@ -1048,7 +1064,7 @@ Operand ASMBuilder::operator()(const tac::StaticVariable &s)
         .name = s.name,
         .global = s.global,
         .list = s.list,
-        .alignment = s.type.alignment(m_context->typeTable.get())
+        .alignment = s.type.alignment(m_typeTable)
     });
     return std::monostate();
 }
@@ -1058,7 +1074,7 @@ Operand ASMBuilder::operator()(const tac::StaticConstant &s)
     m_topLevel.push_back(StaticConstant{
         .name = s.name,
         .init = s.static_init,
-        .alignment = s.type.alignment(m_context->typeTable.get())
+        .alignment = s.type.alignment(m_typeTable)
     });
     return std::monostate();
 }
