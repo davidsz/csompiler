@@ -36,8 +36,13 @@ static int postprocessPseudoRegisters(
         // All other variable types are stack offsets
         // If a variable has no stack offset yet, determine it
         if (auto it = pseudoOffset.find(name); it == pseudoOffset.end()) {
-            currentOffset -= static_cast<int>(entry->type.size());
-            currentOffset &= static_cast<int>(~(entry->type.alignment() - 1));
+            size_t size = entry->type.size();
+            size_t align = entry->type.alignment();
+            if (size >= 16)
+                align = std::max<size_t>(align, 16);
+            currentOffset -= static_cast<int>(size);
+            currentOffset &= static_cast<int>(~(align - 1));
+
             pseudoOffset[name] = currentOffset;
         }
         op.emplace<Memory>(BP, pseudoOffset[name] + static_cast<int>(extra_offset));

@@ -356,17 +356,14 @@ size_t Type::size(const TypeTable *table) const
 
 size_t Type::alignment(const TypeTable *table) const
 {
-    size_t size = this->size(table);
-    if (size > 16)
-        return 16;
     if (auto array_type = std::get_if<ArrayType>(&t))
         return array_type->element->alignment(table);
     if (auto struct_type = std::get_if<StructType>(&t)) {
         auto entry = table->get(struct_type->tag);
-        assert(entry);
+        assert(entry); // Incomplete struct
         return entry->alignment;
     }
-    return size;
+    return size(table);
 }
 
 WordType Type::wordType() const

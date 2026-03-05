@@ -146,7 +146,7 @@ static ClassifiedParams classifyParameters(
         // Parameter is a struct
         size_t struct_size = type.size(typeTable);
         const TypeTable::StructEntry *entry = typeTable->get(struct_type->tag);
-        std::vector<StructClass> classes = classifyStruct(entry);
+        std::vector<StructClass> classes = classifyStruct(entry, typeTable);
         bool use_stack = true;
         if (classes.front() != MEMORY) {
             std::vector<std::pair<Operand, AssemblyType>> tentative_ints;
@@ -163,8 +163,8 @@ static ClassifiedParams classifyParameters(
                 offset += 8;
             }
 
-            if ((tentative_ints.size() + s_intArgRegisters.size() <= int_regs_available)
-                && (tentative_doubles.size() + s_doubleArgRegisters.size() <= 8)) {
+            if ((tentative_ints.size() + result.int_regs.size() <= int_regs_available)
+                && (tentative_doubles.size() + result.double_regs.size() <= 8)) {
                 result.int_regs.insert(result.int_regs.end(),
                     tentative_ints.begin(),
                     tentative_ints.end());
@@ -178,9 +178,12 @@ static ClassifiedParams classifyParameters(
         if (use_stack) {
             size_t offset = 0;
             for (auto &c : classes) {
-                (void)c; // Unused
                 Operand pseudo = PseudoAggregate{ *getString(operand), offset };
-                AssemblyType part_type = getStructPartType(offset, struct_size);
+                AssemblyType part_type;
+                if (c == SSE)
+                    part_type = AssemblyType{ WordType::Doubleword };
+                else
+                    part_type = getStructPartType(offset, struct_size);
                 result.stack.push_back({ pseudo, part_type });
                 offset += 8;
             }
@@ -210,7 +213,7 @@ static ClassifiedReturn classifyReturnValue(
         assert(struct_type);
         size_t struct_size = type.size(typeTable);
         const TypeTable::StructEntry *entry = typeTable->get(struct_type->tag);
-        auto classes = classifyStruct(entry);
+        auto classes = classifyStruct(entry, typeTable);
         if (classes.front() == MEMORY)
             ret.in_memory = true;
         else {
@@ -993,7 +996,7 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     const FunctionType *func_type = m_symbolTable->getType(f.name).getAs<FunctionType>();
     if (const StructType *struct_type = func_type->ret->getAs<StructType>()) {
         auto struct_entry = m_typeTable->get(struct_type->tag);
-        std::vector<StructClass> classes = classifyStruct(struct_entry);
+        std::vector<StructClass> classes = classifyStruct(struct_entry, m_typeTable);
         return_in_memory = (classes.front() == MEMORY);
     }
 

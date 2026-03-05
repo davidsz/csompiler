@@ -116,7 +116,7 @@ int main(int argc, char **argv)
         return parser_result.return_code;
     }
 
-#if 1
+#if 0
     std::cout << std::endl << "AST:" << std::endl;
     parser::ASTPrinter astPrinter;
     astPrinter.print(parser_result.root);
@@ -140,7 +140,7 @@ int main(int argc, char **argv)
     if (Error error = typeChecker.CheckAndMutate(parser_result.root))
         return error;
 
-#if 1
+#if 0
     std::cout << std::endl << "After type checking:" << std::endl;
     parser::ASTPrinter typePrinter;
     typePrinter.print(parser_result.root);
