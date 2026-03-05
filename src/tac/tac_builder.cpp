@@ -117,12 +117,11 @@ void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, size_t 
 
     if (const StructType *struct_type = type.getAs<StructType>()) {
         auto entry = m_typeTable->get(struct_type->tag);
-        m_instructions.push_back(CopyToOffset{
-            Constant{ ZeroBytes{ entry->size } },
-            base,
-            offset
-        });
-        offset += type.size(m_typeTable);
+        for (auto &member : entry->members) {
+            size_t member_offset = offset + member.offset;
+            EmitZeroInit(member.type, base, member_offset);
+        }
+        offset += entry->size;
         return;
     }
 

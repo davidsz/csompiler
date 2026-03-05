@@ -89,6 +89,8 @@ size_t byteSizeOf(const ConstantValue &c)
             return v.bytes;
         else if constexpr (std::is_same_v<V, StringInit>)
             return v.text.size() + (v.null_terminated ? 1 : 0);
+        if constexpr (std::is_same_v<V, PointerInit>)
+            return 8;
         else
             return sizeof(V);
     }, c);

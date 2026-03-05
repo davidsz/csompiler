@@ -331,6 +331,7 @@ size_t Type::size(const TypeTable *table) const
         return arr->element->size(table) * arr->count;
     if (const StructType *struct_type = std::get_if<StructType>(&t)) {
         auto entry = table->get(struct_type->tag);
+        // Handle tentative structs on higher levels
         assert(entry);
         return entry->size;
     }

@@ -244,10 +244,11 @@ TypeChecker::ToConstantValueList(const Initializer *init, const Type &type)
                 ret.push_back(ZeroBytes{ member.offset - current_offset });
             // Recursively convert the initializer
             auto values = ToConstantValueList(member_init.get(), member.type);
+            size_t member_size = byteSizeOf(values);
             ret.insert(ret.end(),
                 std::make_move_iterator(values.begin()),
                 std::make_move_iterator(values.end()));
-            current_offset = member.offset + member.type.size(m_typeTable);
+            current_offset = member.offset + member_size;
             i++;
         }
         // Pad the whole struct
@@ -1240,7 +1241,7 @@ InitialValue TypeChecker::InitializeStaticPointer(
         std::string constant_name = MakeNameUnique("string");
         Type expr_type = std::visit(*this, *single_init->expr);
         m_context->symbolTable->insert(constant_name, expr_type, IdentifierAttributes{
-            .type = IdentifierAttributes::Static,
+            .type = IdentifierAttributes::Constant,
             .static_init = StringInit{ string_expr->value, true }
         });
         // Return the initializer of the pointer

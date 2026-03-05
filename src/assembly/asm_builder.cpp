@@ -496,13 +496,14 @@ Operand ASMBuilder::operator()(const tac::Load &l)
         Quadword
     });
 
-    // Copy chunks of data stored at offsets from the address in RAX
+    // Struct: copy chunks of data stored at offsets from the address in RAX
     const std::string *dst_name = getString(l.dst);
     if (auto entry = GetStructEntry(dst_name)) {
         CopyBytes(Memory{ AX, 0 }, PseudoAggregate{ *dst_name, 0 }, entry->size);
         return std::monostate();
     }
 
+    // Scalar
     m_instructions.push_back(Mov{
         Memory{ AX, 0 },
         std::visit(*this, l.dst),
@@ -513,11 +514,21 @@ Operand ASMBuilder::operator()(const tac::Load &l)
 
 Operand ASMBuilder::operator()(const tac::Store &s)
 {
+    // Store the pointer in RAX
     m_instructions.push_back(Mov{
         std::visit(*this, s.dst_ptr),
         Reg{ AX, 8 },
         Quadword
     });
+
+    // Struct: copy chunks of data stored to the address in RAX
+    const std::string *src_name = getString(s.src);
+    if (auto entry = GetStructEntry(src_name)) {
+        CopyBytes(PseudoAggregate{ *src_name, 0 }, Memory{ AX, 0 }, entry->size);
+        return std::monostate();
+    }
+
+    // Scalar
     m_instructions.push_back(Mov{
         std::visit(*this, s.src),
         Memory{ AX, 0 },

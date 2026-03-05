@@ -1,5 +1,6 @@
 #include "type_table.h"
 #include <algorithm>
+#include <iostream>
 
 const TypeTable::StructMemberEntry *
 TypeTable::StructEntry::find(const std::string &name) const
@@ -30,4 +31,15 @@ const TypeTable::StructEntry *TypeTable::get(const std::string &tag) const
 bool TypeTable::contains(const std::string &tag) const
 {
     return m_map.contains(tag);
+}
+
+void TypeTable::print() const
+{
+    for (auto &[tag, entry] : m_map) {
+        std::cout << "Struct " << tag << "(size: " << entry.size
+                  << ", alignment: " << entry.alignment << ") {" << std::endl;
+        for (auto &member : entry.members)
+            std::cout << "    " << member.name << " - " << member.type << std::endl;
+        std::cout << "}" << std::endl;
+    }
 }

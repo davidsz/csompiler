@@ -80,7 +80,7 @@ std::string ASMPrinter::BuildInitializer(const ConstantValue &init)
     }
 
     if (const PointerInit *pointer = std::get_if<PointerInit>(&init))
-        return std::format("    .quad {}", pointer->name);
+        return std::format("    .quad {}", formatLabel(pointer->name));
 
     // Atomic types
     // TODO: Rename getType() to represent that it only supports atomic types

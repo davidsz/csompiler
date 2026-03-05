@@ -23,6 +23,7 @@ public:
     void insert(const std::string &tag, const StructEntry &entry);
     const StructEntry *get(const std::string &tag) const;
     bool contains(const std::string &tag) const;
+    void print() const;
 
 private:
     std::unordered_map<std::string, StructEntry> m_map;

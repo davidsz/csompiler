@@ -164,6 +164,11 @@ int main(int argc, char **argv)
     context->symbolTable->print();
 #endif
 
+#if 0
+    std::cout << std::endl << "Type table:" << std::endl;
+    context->typeTable->print();
+#endif
+
     if (has_flag("tacky"))
         return Error::ALL_OK;
 
