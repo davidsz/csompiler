@@ -24,7 +24,7 @@ ASMSymbolTable::ASMSymbolTable(
             if (const StructType *struct_type = func_type->ret->getAs<StructType>()) {
                 if (auto struct_entry = type_table->get(struct_type->tag)) {
                     std::vector<StructClass> classes = classifyStruct(struct_entry, type_table);
-                    return_on_stack = (classes.front() != MEMORY);
+                    return_on_stack = (classes.front() == MEMORY);
                 }
             }
             insert(name, FunEntry{
