@@ -42,7 +42,6 @@ static int postprocessPseudoRegisters(
                 align = std::max<size_t>(align, 16);
             currentOffset -= static_cast<int>(size);
             currentOffset &= static_cast<int>(~(align - 1));
-
             pseudoOffset[name] = currentOffset;
         }
         op.emplace<Memory>(BP, pseudoOffset[name] + static_cast<int>(extra_offset));

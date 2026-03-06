@@ -294,6 +294,7 @@ Operand ASMBuilder::operator()(const tac::Return &r)
         // Retrieve the address of the return value into RAX
         m_instructions.push_back(Mov{ Memory{ BP, -8 }, Reg{ AX, 8 }, Quadword });
         CopyBytes(
+            m_instructions,
             ret_value,
             Memory { AX, 0 },
             return_type.size(m_typeTable)
@@ -304,7 +305,7 @@ Operand ASMBuilder::operator()(const tac::Return &r)
             auto &[operand, type] = int_val;
             Register reg = s_intReturnRegisters[reg_index++];
             if (const ByteArray *byte_array = type.getAs<ByteArray>())
-                CopyBytesToReg(operand, reg, byte_array->size);
+                CopyBytesToReg(m_instructions, operand, reg, byte_array->size);
             else {
                 m_instructions.push_back(Mov{
                     operand,
@@ -465,6 +466,7 @@ Operand ASMBuilder::operator()(const tac::Copy &c)
     const std::string *src_name = getString(c.src);
     if (auto entry = GetStructEntry(src_name)) {
         CopyBytes(
+            m_instructions,
             PseudoAggregate{ *src_name, 0 },
             PseudoAggregate{ *getString(c.dst), 0 },
             entry->size);
@@ -502,7 +504,11 @@ Operand ASMBuilder::operator()(const tac::Load &l)
     // Struct: copy chunks of data stored at offsets from the address in RAX
     const std::string *dst_name = getString(l.dst);
     if (auto entry = GetStructEntry(dst_name)) {
-        CopyBytes(Memory{ AX, 0 }, PseudoAggregate{ *dst_name, 0 }, entry->size);
+        CopyBytes(
+            m_instructions,
+            Memory{ AX, 0 },
+            PseudoAggregate{ *dst_name, 0 },
+            entry->size);
         return std::monostate();
     }
 
@@ -527,7 +533,12 @@ Operand ASMBuilder::operator()(const tac::Store &s)
     // Struct: copy chunks of data stored to the address in RAX
     const std::string *src_name = getString(s.src);
     if (auto entry = GetStructEntry(src_name)) {
-        CopyBytes(PseudoAggregate{ *src_name, 0 }, Memory{ AX, 0 }, entry->size);
+        CopyBytes(
+            m_instructions,
+            PseudoAggregate{ *src_name, 0 },
+            Memory{ AX, 0 },
+            entry->size
+        );
         return std::monostate();
     }
 
@@ -663,7 +674,7 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
         Register reg = s_intArgRegisters[reg_index++];
         if (const ByteArray *byte_array = type.getAs<ByteArray>()) {
             Comment(m_instructions, "Irregular size struct will be passed in registers");
-            CopyBytesToReg(operand, reg, byte_array->size);
+            CopyBytesToReg(m_instructions, operand, reg, byte_array->size);
         } else {
             m_instructions.push_back(Mov{
                 operand,
@@ -691,7 +702,7 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
         if (const ByteArray *byte_array = type.getAs<ByteArray>()) {
             Comment(m_instructions, "Copying irregular size argument to the stack");
             m_instructions.push_back(Binary{ Sub_AB, Imm{ 8 }, Reg{ SP, 8 }, Quadword });
-            CopyBytes(operand, Memory{ SP, 0 }, byte_array->size);
+            CopyBytes(m_instructions, operand, Memory{ SP, 0 }, byte_array->size);
         } else if (std::holds_alternative<Reg>(operand)
             || std::holds_alternative<Imm>(operand)
             || type.isWord(Quadword)
@@ -731,7 +742,7 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
         Register reg = s_intReturnRegisters[reg_index++];
         if (const ByteArray *byte_array = type.getAs<ByteArray>()) {
             Comment(m_instructions, "Irregular size struct is coming from registers");
-            CopyBytesFromReg(reg, operand, byte_array->size);
+            CopyBytesFromReg(m_instructions, reg, operand, byte_array->size);
         } else
             m_instructions.push_back(Mov{
                 Reg{ reg, static_cast<uint8_t>(type.size()) },
@@ -934,6 +945,7 @@ Operand ASMBuilder::operator()(const tac::CopyToOffset &c)
     const std::string *src_name = getString(c.src);
     if (auto entry = GetStructEntry(src_name)) {
         CopyBytes(
+            m_instructions,
             PseudoAggregate{ *src_name, 0 },
             PseudoAggregate{ c.dst_identifier, c.offset },
             entry->size);
@@ -953,6 +965,7 @@ Operand ASMBuilder::operator()(const tac::CopyFromOffset &c)
     const std::string *dst_name = getString(c.dst);
     if (auto entry = GetStructEntry(dst_name)) {
         CopyBytes(
+            m_instructions,
             PseudoAggregate{ c.src_identifier, c.offset },
             PseudoAggregate{ *dst_name, 0 },
             entry->size);
@@ -1026,7 +1039,7 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
         auto &[operand, type] = int_reg;
         Register reg = s_intArgRegisters[reg_index++];
         if (type.isByteArray())
-            CopyBytesFromReg(reg, operand, type.size());
+            CopyBytesFromReg(func.instructions, reg, operand, type.size());
         else {
             func.instructions.push_back(Mov{
                 Reg{ reg, static_cast<uint8_t>(type.size()) },
@@ -1049,9 +1062,13 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     size_t stack_offset = 16;
     for (auto &param : args.stack) {
         auto &[operand, type] = param;
-        if (type.isByteArray())
-            CopyBytes(Memory{ BP, static_cast<int>(stack_offset) }, operand, type.size());
-        else {
+        if (type.isByteArray()) {
+            CopyBytes(
+                func.instructions,
+                Memory{ BP, static_cast<int>(stack_offset) },
+                operand, type.size()
+            );
+        } else {
             func.instructions.push_back(Mov{
                 Memory{ BP, static_cast<int>(stack_offset) },
                 operand,
@@ -1132,12 +1149,12 @@ std::string ASMBuilder::AddConstant(const ConstantValue &c, const std::string &n
     }
 }
 
-void ASMBuilder::CopyBytes(Operand src, Operand dst, size_t size)
+void ASMBuilder::CopyBytes(std::list<Instruction> &i, Operand src, Operand dst, size_t size)
 {
     std::vector<WordType> fragments = getMemoryFragments(size);
     size_t offset = 0;
     for (auto &word_type : fragments) {
-        m_instructions.push_back(Mov{
+        i.push_back(Mov{
             addOffset(src, offset),
             addOffset(dst, offset),
             word_type
@@ -1146,28 +1163,28 @@ void ASMBuilder::CopyBytes(Operand src, Operand dst, size_t size)
     }
 }
 
-void ASMBuilder::CopyBytesToReg(Operand src, Register dst, size_t size)
+void ASMBuilder::CopyBytesToReg(std::list<Instruction> &i, Operand src, Register dst, size_t size)
 {
     assert(std::holds_alternative<Memory>(src) || std::holds_alternative<PseudoAggregate>(src));
     int offset = static_cast<int>(size) - 1;
     while (offset >= 0) {
         Operand src_byte = addOffset(src, static_cast<size_t>(offset));
-        m_instructions.push_back(Mov{ src_byte, Reg{ dst, 1 }, Byte });
+        i.push_back(Mov{ src_byte, Reg{ dst, 1 }, Byte });
         if (offset > 0)
-            m_instructions.push_back(Binary{ ShiftL_AB, Imm{ 8 }, Reg{ dst, 8 }, Quadword });
+            i.push_back(Binary{ ShiftL_AB, Imm{ 8 }, Reg{ dst, 8 }, Quadword });
         offset -= 1;
     }
 }
 
-void ASMBuilder::CopyBytesFromReg(Register src, Operand dst, size_t size)
+void ASMBuilder::CopyBytesFromReg(std::list<Instruction> &i, Register src, Operand dst, size_t size)
 {
     assert(std::holds_alternative<Memory>(dst) || std::holds_alternative<PseudoAggregate>(dst));
     size_t offset = 0;
     while (offset < size) {
         Operand dst_byte = addOffset(dst, offset);
-        m_instructions.push_back(Mov{ Reg{ src, 1 }, dst_byte, Byte });
+        i.push_back(Mov{ Reg{ src, 1 }, dst_byte, Byte });
         if (offset < size - 1)
-            m_instructions.push_back(Binary{ ShiftRU_AB, Imm{ 8 }, Reg{ src, 8 }, Quadword });
+            i.push_back(Binary{ ShiftRU_AB, Imm{ 8 }, Reg{ src, 8 }, Quadword });
         offset += 1;
     }
 }

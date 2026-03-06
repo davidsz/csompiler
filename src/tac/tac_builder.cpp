@@ -638,16 +638,17 @@ ExpResult TACBuilder::operator()(const parser::AddressOfExpression &a)
     } else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&inner))
         return PlainOperand{ deref->ptr };
     else if (SubObject *sub = std::get_if<SubObject>(&inner)) {
-        // TODO: If sub->offset is 0, we don't need the AddPtr
-        Variant dst = CreateTemporaryVariable(a.type);
-        m_instructions.push_back(GetAddress{ Variant{ sub->base_identifier }, dst });
-        m_instructions.push_back(AddPtr{
-            .ptr = dst,
-            .index = Constant{ MakeConstantValue(static_cast<long>(sub->offset), Type{ BasicType::Long }) },
-            .scale = 1,
-            .dst = dst
-        });
-        return PlainOperand{ dst };
+        Variant base_ptr = CreateTemporaryVariable(a.type);
+        m_instructions.push_back(GetAddress{ Variant{ sub->base_identifier }, base_ptr });
+        if (sub->offset != 0) {
+            m_instructions.push_back(AddPtr{
+                .ptr = base_ptr,
+                .index = Constant{ MakeConstantValue(static_cast<long>(sub->offset), Type{ BasicType::Long }) },
+                .scale = 1,
+                .dst = base_ptr
+            });
+        }
+        return PlainOperand{ base_ptr };
     }
     assert(false);
     return std::monostate();

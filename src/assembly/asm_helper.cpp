@@ -39,7 +39,7 @@ std::vector<StructClass> classifyStruct(const TypeTable::StructEntry *entry, con
     }
 
     // The struct can't fit on two registers
-    size_t size = entry->size;
+    int size = static_cast<int>(entry->size);
     if (size > 16) {
         std::vector<StructClass> ret;
         while (size > 0) {
