@@ -1,13 +1,13 @@
 #include "assembly/assembly.h"
 #include "common/context.h"
 #include "common/error.h"
-#include "common/types.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
 #include "parser/ast_printer.h"
 #include "parser/parser.h"
 #include "parser/semantic_analyzer.h"
 #include "parser/type_checker.h"
+#include "tac/optimization/optimization.h"
 #include "tac/tac.h"
 #include "tac/tac_printer.h"
 #include <algorithm>
@@ -149,7 +149,7 @@ int main(int argc, char **argv)
     if (has_flag("validate"))
         return Error::ALL_OK;
 
-    // Intermediate representation
+    // Intermediate representation (TAC)
     std::vector<tac::TopLevel> tacVector = tac::from_ast(
         parser_result.root,
         context.get());
@@ -168,6 +168,17 @@ int main(int argc, char **argv)
     std::cout << std::endl << "Type table:" << std::endl;
     context->typeTable->print();
 #endif
+
+    // TAC optimizations
+    tac::TACOptimizationArgs tac_args = {
+        .constant_folding = has_flag("fold-constants"),
+        .copy_propagation = has_flag("propagate-copies"),
+        .unreachable_code_elimination = has_flag("eliminate-unreachable-code"),
+        .dead_store_elimination = has_flag("eliminate-dead-stores")
+    };
+    if (has_flag("optimize"))
+        tac_args = { true, true, true, true };
+    tac::apply_optimizations(tacVector, tac_args);
 
     if (has_flag("tacky"))
         return Error::ALL_OK;
@@ -193,6 +204,9 @@ int main(int argc, char **argv)
     output_assembly_file << assemblySource;
     output_assembly_file.close();
 
+    if (has_flag("S"))
+        return Error::ALL_OK;
+
     // Compilation
     bool standalone = !has_flag("c");
     std::filesystem::path output_compiled(output_assembly_path);
@@ -212,5 +226,5 @@ int main(int argc, char **argv)
     }
     deleteFile(output_assembly_path);
 
-    return 0;
+    return Error::ALL_OK;
 }
