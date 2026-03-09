@@ -2,7 +2,7 @@
 
 #include "parser/ast_visitor.h"
 #include "tac_nodes.h"
-#include <vector>
+#include <list>
 
 class Context;
 
@@ -63,13 +63,13 @@ public:
     ExpResult operator()(const parser::CompoundInit &c) override;
     ExpResult operator()(std::monostate) override;
 
-    std::vector<TopLevel> ConvertTopLevel(const std::vector<parser::Declaration> &list);
-    std::vector<Instruction> ConvertBlock(const std::vector<parser::BlockItem> &list);
+    std::list<TopLevel> ConvertTopLevel(const std::vector<parser::Declaration> &list);
+    std::list<Instruction> ConvertBlock(const std::vector<parser::BlockItem> &list);
 
 private:
     Variant CreateTemporaryVariable(const Type &type);
     Variant CastValue(
-        std::vector<Instruction> &i,
+        std::list<Instruction> &i,
         const Value &result,
         const Type &from_type,
         const Type &to_type);
@@ -116,8 +116,8 @@ private:
         size_t &offset
     );
 
-    std::vector<TopLevel> m_topLevel;
-    std::vector<Instruction> m_instructions;
+    std::list<TopLevel> m_topLevel;
+    std::list<Instruction> m_instructions;
 
     Context *m_context;
     TypeTable *m_typeTable;

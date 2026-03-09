@@ -2,11 +2,7 @@
 
 namespace tac {
 
-static void constantFolding(std::vector<Instruction> &, bool &)
-{
-}
-
-void apply_optimizations(std::vector<TopLevel> &list, const TACOptimizationArgs &arg)
+void apply_optimizations(std::list<TopLevel> &list, const TACOptimizationArgs &arg)
 {
     // Intraprocedural optimization: we iterate through the instructions of each
     // function body and process them separately.
@@ -17,12 +13,11 @@ void apply_optimizations(std::vector<TopLevel> &list, const TACOptimizationArgs 
                 // We don't care about the phase ordering problem of optimizations,
                 // we simply run them until they can't change the program anymore.
                 bool changed = false;
-                while (true) {
+                do {
+                    changed = false;
                     if (arg.constant_folding)
                         constantFolding(obj.inst, changed);
-                    if (!changed)
-                        break;
-                }
+                } while (changed);
             }
         }, top_level_obj);
     }

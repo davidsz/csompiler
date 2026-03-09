@@ -260,7 +260,7 @@ void TACPrinter::operator()(const tac::StaticConstant &s)
     pad(); std::cout << "}" << std::endl;
 }
 
-void TACPrinter::print(std::vector<TopLevel> instructions) {
+void TACPrinter::print(std::list<TopLevel> instructions) {
     for (auto &i : instructions)
         std::visit(*this, i);
 }

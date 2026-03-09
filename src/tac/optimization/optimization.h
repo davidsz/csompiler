@@ -11,6 +11,8 @@ struct TACOptimizationArgs {
     bool dead_store_elimination : 1;
 };
 
-void apply_optimizations(std::vector<TopLevel> &list, const TACOptimizationArgs &args);
+void apply_optimizations(std::list<TopLevel> &list, const TACOptimizationArgs &args);
+
+void constantFolding(std::list<Instruction> &instructions, bool &changed);
 
 } // namespace tac

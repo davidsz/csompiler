@@ -15,7 +15,7 @@ Variant TACBuilder::CreateTemporaryVariable(const Type &type)
 }
 
 Variant TACBuilder::CastValue(
-    std::vector<Instruction> &i,
+    std::list<Instruction> &i,
     const Value &value,
     const Type &from_type,
     const Type &to_type)
@@ -987,7 +987,7 @@ TACBuilder::TACBuilder(Context *context)
     assert(m_context);
 }
 
-std::vector<TopLevel> TACBuilder::ConvertTopLevel(const std::vector<parser::Declaration> &list)
+std::list<TopLevel> TACBuilder::ConvertTopLevel(const std::vector<parser::Declaration> &list)
 {
     m_topLevel.clear();
     for (auto &i : list)
@@ -998,7 +998,7 @@ std::vector<TopLevel> TACBuilder::ConvertTopLevel(const std::vector<parser::Decl
     return std::move(m_topLevel);
 }
 
-std::vector<Instruction> TACBuilder::ConvertBlock(const std::vector<parser::BlockItem> &list)
+std::list<Instruction> TACBuilder::ConvertBlock(const std::vector<parser::BlockItem> &list)
 {
     m_instructions.clear();
     for (auto &i : list)

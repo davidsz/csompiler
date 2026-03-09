@@ -150,13 +150,13 @@ int main(int argc, char **argv)
         return Error::ALL_OK;
 
     // Intermediate representation (TAC)
-    std::vector<tac::TopLevel> tacVector = tac::from_ast(
+    std::list<tac::TopLevel> tacList = tac::from_ast(
         parser_result.root,
         context.get());
 #if 1
     std::cout << std::endl << "TAC:" << std::endl;
     tac::TACPrinter tacPrinter;
-    tacPrinter.print(tacVector);
+    tacPrinter.print(tacList);
 #endif
 
 #if 0
@@ -178,14 +178,14 @@ int main(int argc, char **argv)
     };
     if (has_flag("optimize"))
         tac_args = { true, true, true, true };
-    tac::apply_optimizations(tacVector, tac_args);
+    tac::apply_optimizations(tacList, tac_args);
 
     if (has_flag("tacky"))
         return Error::ALL_OK;
 
     // Assembly generation
     std::string assemblySource = assembly::from_tac(
-        tacVector,
+        tacList,
         context.get());
 #if 1
     std::cout << std::endl << "ASM:" << std::endl;

@@ -3,7 +3,7 @@
 
 namespace tac {
 
-std::vector<TopLevel> from_ast(
+std::list<TopLevel> from_ast(
     const std::vector<parser::Declaration> &ast_root,
     Context *context)
 {

@@ -5,6 +5,7 @@
 #include "common/types.h"
 #include "common/values.h"
 #include <cassert>
+#include <list>
 #include <string>
 #include <vector>
 
@@ -94,7 +95,7 @@ namespace tac {
         std::string name; \
         bool global; \
         std::vector<std::string> params; \
-        std::vector<Instruction> inst;) \
+        std::list<Instruction> inst;) \
     X(StaticVariable, \
         std::string name; \
         Type type = Type{}; \

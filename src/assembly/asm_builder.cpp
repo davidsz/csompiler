@@ -1111,7 +1111,7 @@ Operand ASMBuilder::operator()(const tac::StaticConstant &s)
     return std::monostate();
 }
 
-std::list<TopLevel> ASMBuilder::ConvertTopLevel(const std::vector<tac::TopLevel> instructions)
+std::list<TopLevel> ASMBuilder::ConvertTopLevel(const std::list<tac::TopLevel> instructions)
 {
     m_topLevel.clear();
     m_constants->clear();
@@ -1130,7 +1130,7 @@ std::list<TopLevel> ASMBuilder::ConvertTopLevel(const std::vector<tac::TopLevel>
     return std::move(m_topLevel);
 }
 
-std::list<Instruction> ASMBuilder::ConvertInstructions(const std::vector<tac::Instruction> instructions)
+std::list<Instruction> ASMBuilder::ConvertInstructions(const std::list<tac::Instruction> instructions)
 {
     m_instructions.clear();
     for (auto &inst : instructions)

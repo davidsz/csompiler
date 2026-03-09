@@ -41,7 +41,7 @@ struct TACPrinter : public ITACVisitor<void> {
         assert(false);
     }
 
-    void print(std::vector<TopLevel> instructions);
+    void print(std::list<TopLevel> instructions);
 };
 
 } // namespace tac
