@@ -39,7 +39,11 @@ static std::optional<ConstantValue> evaluate(
 
             if constexpr (!std::is_floating_point_v<T>) {
                 switch (op) {
-                case BinaryOperator::Remainder:  return ConstantValue(T(l % r));
+                case BinaryOperator::Remainder: {
+                    if (r == 0)
+                        return std::nullopt;
+                    return ConstantValue(T(l % r));
+                }
                 case BinaryOperator::LeftShift:  return ConstantValue(T(l << r));
                 case BinaryOperator::RightShift: return ConstantValue(T(l >> r));
                 case BinaryOperator::BitwiseAnd: return ConstantValue(T(l & r));
@@ -53,14 +57,43 @@ static std::optional<ConstantValue> evaluate(
         return std::nullopt;
     }, a, b);
 }
+
+static std::optional<ConstantValue> evaluate(UnaryOperator op, const ConstantValue &a)
+{
+    return std::visit([&](auto l) -> std::optional<ConstantValue> {
+        using L = std::decay_t<decltype(l)>;
+        if constexpr (!is_custom_constant_type<L>::value) {
+            switch (op) {
+            case UnaryOperator::Negate:       return ConstantValue(-l);
+            case UnaryOperator::Decrement:    return ConstantValue(l - 1);
+            case UnaryOperator::Increment:    return ConstantValue(l + 1);
+            }
+
+            if constexpr (!std::is_floating_point_v<L>) {
+                switch (op) {
+                case UnaryOperator::BitwiseComplement: return ConstantValue(~l);
+                case UnaryOperator::Not:               return ConstantValue(!l);
+                }
+            }
+        }
+        return std::nullopt;
+    }, a);
+}
+
 DIAG_POP
 
 static std::list<Instruction>::iterator foldUnary(
-    std::list<Instruction> &,
     std::list<Instruction>::iterator it,
-    bool &)
+    bool &changed)
 {
-    // TODO
+    auto &obj = std::get<Unary>(*it);
+    const Constant *lhs = std::get_if<Constant>(&obj.src);
+    if (!lhs)
+        return std::next(it);
+    if (auto result = evaluate(obj.op, lhs->value)) {
+        *it = Copy{ Constant{ *result }, obj.dst };
+        changed = true;
+    }
     return std::next(it);
 }
 
@@ -120,7 +153,7 @@ void constantFolding(std::list<Instruction> &instructions, bool &changed)
         it = std::visit([&](auto &obj) {
             using T = std::decay_t<decltype(obj)>;
             if constexpr (std::is_same_v<T, Unary>) {
-                return foldUnary(instructions, it, changed);
+                return foldUnary(it, changed);
             } else if constexpr (std::is_same_v<T, Binary>) {
                 return foldBinary(it, changed);
             } else if constexpr (std::is_same_v<T, JumpIfZero>) {
