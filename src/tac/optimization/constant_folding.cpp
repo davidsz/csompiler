@@ -81,20 +81,36 @@ static std::list<Instruction>::iterator foldBinary(
 }
 
 static std::list<Instruction>::iterator foldJumpIfZero(
-    std::list<Instruction> &,
+    std::list<Instruction> &i,
     std::list<Instruction>::iterator it,
-    bool &)
+    bool &changed)
 {
-    // TODO
+    auto &obj = std::get<JumpIfZero>(*it);
+    const Constant *condition = std::get_if<Constant>(&obj.condition);
+    if (!condition)
+        return std::next(it);
+    if (castTo<int>(condition->value) == 0)
+        *it = Jump{ obj.target };
+    else
+        it = i.erase(it);
+    changed = true;
     return std::next(it);
 }
 
 static std::list<Instruction>::iterator foldJumpIfNotZero(
-    std::list<Instruction> &,
+    std::list<Instruction> &i,
     std::list<Instruction>::iterator it,
-    bool &)
+    bool &changed)
 {
-    // TODO
+    auto &obj = std::get<JumpIfNotZero>(*it);
+    const Constant *condition = std::get_if<Constant>(&obj.condition);
+    if (!condition)
+        return std::next(it);
+    if (castTo<int>(condition->value) != 0)
+        *it = Jump{ obj.target };
+    else
+        it = i.erase(it);
+    changed = true;
     return std::next(it);
 }
 
