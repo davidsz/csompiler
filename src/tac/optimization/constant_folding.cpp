@@ -4,6 +4,7 @@
 namespace tac {
 
 DIAG_PUSH
+DIAG_IGNORE("-Wconversion")
 DIAG_IGNORE("-Wsign-conversion")
 DIAG_IGNORE("-Wswitch")
 DIAG_IGNORE("-Wswitch-enum")
