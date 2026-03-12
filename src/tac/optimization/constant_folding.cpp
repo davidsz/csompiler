@@ -22,6 +22,13 @@ static std::optional<ConstantValue> evaluate(
             T l = lhs;
             T r = rhs;
 
+            if constexpr (std::is_floating_point_v<T>) {
+                switch (op) {
+                // Division by zero is not undefined behavior between floating points
+                case BinaryOperator::Divide:     return ConstantValue(T(l / r));
+                }
+            }
+
             switch (op) {
             case BinaryOperator::Multiply:       return ConstantValue(T(l * r));
             case BinaryOperator::Divide: {
@@ -31,12 +38,12 @@ static std::optional<ConstantValue> evaluate(
             }
             case BinaryOperator::Add:            return ConstantValue(T(l + r));
             case BinaryOperator::Subtract:       return ConstantValue(T(l - r));
-            case BinaryOperator::LessThan:       return ConstantValue(bool(l < r));
-            case BinaryOperator::LessOrEqual:    return ConstantValue(bool(l <= r));
-            case BinaryOperator::GreaterThan:    return ConstantValue(bool(l > r));
-            case BinaryOperator::GreaterOrEqual: return ConstantValue(bool(l >= r));
-            case BinaryOperator::Equal:          return ConstantValue(bool(l == r));
-            case BinaryOperator::NotEqual:       return ConstantValue(bool(l != r));
+            case BinaryOperator::LessThan:       return ConstantValue(int(l < r));
+            case BinaryOperator::LessOrEqual:    return ConstantValue(int(l <= r));
+            case BinaryOperator::GreaterThan:    return ConstantValue(int(l > r));
+            case BinaryOperator::GreaterOrEqual: return ConstantValue(int(l >= r));
+            case BinaryOperator::Equal:          return ConstantValue(int(l == r));
+            case BinaryOperator::NotEqual:       return ConstantValue(int(l != r));
             }
 
             if constexpr (!std::is_floating_point_v<T>) {
@@ -46,13 +53,17 @@ static std::optional<ConstantValue> evaluate(
                         return std::nullopt;
                     return ConstantValue(T(l % r));
                 }
-                case BinaryOperator::LeftShift:  return ConstantValue(T(l << r));
+                case BinaryOperator::LeftShift: {
+                    if (r < 0)
+                        return std::nullopt;
+                    return ConstantValue(T(l << r));
+                }
                 case BinaryOperator::RightShift: return ConstantValue(T(l >> r));
                 case BinaryOperator::BitwiseAnd: return ConstantValue(T(l & r));
                 case BinaryOperator::BitwiseXor: return ConstantValue(T(l ^ r));
                 case BinaryOperator::BitwiseOr:  return ConstantValue(T(l | r));
-                case BinaryOperator::And:        return ConstantValue(bool(l && r));
-                case BinaryOperator::Or:         return ConstantValue(bool(l || r));
+                case BinaryOperator::And:        return ConstantValue(int(l && r));
+                case BinaryOperator::Or:         return ConstantValue(int(l || r));
                 }
             }
         }
@@ -69,12 +80,12 @@ static std::optional<ConstantValue> evaluate(UnaryOperator op, const ConstantVal
             case UnaryOperator::Negate:       return ConstantValue(-l);
             case UnaryOperator::Decrement:    return ConstantValue(l - 1);
             case UnaryOperator::Increment:    return ConstantValue(l + 1);
+            case UnaryOperator::Not:          return ConstantValue(!l);
             }
 
             if constexpr (!std::is_floating_point_v<L>) {
                 switch (op) {
                 case UnaryOperator::BitwiseComplement: return ConstantValue(~l);
-                case UnaryOperator::Not:               return ConstantValue(!l);
                 }
             }
         }
@@ -123,7 +134,7 @@ static std::list<Instruction>::iterator foldJumpIfZero(
     const Constant *condition = std::get_if<Constant>(&obj.condition);
     if (!condition)
         return std::next(it);
-    if (castTo<int>(condition->value) == 0)
+    if (isPositiveZero(condition->value))
         *it = Jump{ obj.target };
     else
         it = i.erase(it);
@@ -140,7 +151,7 @@ static std::list<Instruction>::iterator foldJumpIfNotZero(
     const Constant *condition = std::get_if<Constant>(&obj.condition);
     if (!condition)
         return std::next(it);
-    if (castTo<int>(condition->value) != 0)
+    if (!isPositiveZero(condition->value))
         *it = Jump{ obj.target };
     else
         it = i.erase(it);

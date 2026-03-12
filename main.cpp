@@ -180,6 +180,12 @@ int main(int argc, char **argv)
         tac_args = { true, true, true, true };
     tac::apply_optimizations(tacList, tac_args, context.get());
 
+#if 1
+    std::cout << std::endl << "TAC after optimizations:" << std::endl;
+    tac::TACPrinter optimizedTacPrinter;
+    optimizedTacPrinter.print(tacList);
+#endif
+
     if (has_flag("tacky"))
         return Error::ALL_OK;
 
@@ -187,7 +193,7 @@ int main(int argc, char **argv)
     std::string assemblySource = assembly::from_tac(
         tacList,
         context.get());
-#if 1
+#if 0
     std::cout << std::endl << "ASM:" << std::endl;
     std::cout << assemblySource;
 #endif
