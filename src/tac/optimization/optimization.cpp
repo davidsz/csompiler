@@ -2,7 +2,10 @@
 
 namespace tac {
 
-void apply_optimizations(std::list<TopLevel> &list, const TACOptimizationArgs &arg)
+void apply_optimizations(
+    std::list<TopLevel> &list,
+    const TACOptimizationArgs &arg,
+    Context *context)
 {
     // Intraprocedural optimization: we iterate through the instructions of each
     // function body and process them separately.
@@ -16,7 +19,7 @@ void apply_optimizations(std::list<TopLevel> &list, const TACOptimizationArgs &a
                 do {
                     changed = false;
                     if (arg.constant_folding)
-                        constantFolding(obj.inst, changed);
+                        constantFolding(obj.inst, context, changed);
                 } while (changed);
             }
         }, top_level_obj);

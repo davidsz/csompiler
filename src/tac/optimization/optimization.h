@@ -2,6 +2,8 @@
 
 #include "tac/tac_nodes.h"
 
+class Context;
+
 namespace tac {
 
 struct TACOptimizationArgs {
@@ -11,8 +13,16 @@ struct TACOptimizationArgs {
     bool dead_store_elimination : 1;
 };
 
-void apply_optimizations(std::list<TopLevel> &list, const TACOptimizationArgs &args);
+void apply_optimizations(
+    std::list<TopLevel> &list,
+    const TACOptimizationArgs &args,
+    Context *context
+);
 
-void constantFolding(std::list<Instruction> &instructions, bool &changed);
+void constantFolding(
+    std::list<Instruction> &instructions,
+    Context *context,
+    bool &changed
+);
 
 } // namespace tac

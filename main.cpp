@@ -178,7 +178,7 @@ int main(int argc, char **argv)
     };
     if (has_flag("optimize"))
         tac_args = { true, true, true, true };
-    tac::apply_optimizations(tacList, tac_args);
+    tac::apply_optimizations(tacList, tac_args, context.get());
 
     if (has_flag("tacky"))
         return Error::ALL_OK;

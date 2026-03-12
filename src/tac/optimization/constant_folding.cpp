@@ -1,4 +1,5 @@
 #include "optimization.h"
+#include "common/context.h"
 #include "common/system.h"
 
 namespace tac {
@@ -80,7 +81,6 @@ static std::optional<ConstantValue> evaluate(UnaryOperator op, const ConstantVal
         return std::nullopt;
     }, a);
 }
-
 DIAG_POP
 
 static std::list<Instruction>::iterator foldUnary(
@@ -148,20 +148,156 @@ static std::list<Instruction>::iterator foldJumpIfNotZero(
     return std::next(it);
 }
 
-void constantFolding(std::list<Instruction> &instructions, bool &changed)
+static std::list<Instruction>::iterator foldSignExtend(
+    std::list<Instruction>::iterator it,
+    Context *context,
+    bool &changed)
+{
+    // Signed integers; from smaller to bigger type
+    auto &obj = std::get<SignExtend>(*it);
+    const Constant *src = std::get_if<Constant>(&obj.src);
+    if (!src)
+        return std::next(it);
+    const Variant *dst = std::get_if<Variant>(&obj.dst);
+    assert(dst);
+    const SymbolEntry *entry = context->symbolTable->get(dst->name);
+    *it = Copy{ Constant{ ConvertValue(src->value, entry->type) }, obj.dst };
+    changed = true;
+    return std::next(it);
+}
+
+static std::list<Instruction>::iterator foldTruncate(
+    std::list<Instruction>::iterator it,
+    Context *context,
+    bool &changed)
+{
+    // Integers; from bigger to smaller type
+    auto &obj = std::get<Truncate>(*it);
+    const Constant *src = std::get_if<Constant>(&obj.src);
+    if (!src)
+        return std::next(it);
+    const Variant *dst = std::get_if<Variant>(&obj.dst);
+    assert(dst);
+    const SymbolEntry *entry = context->symbolTable->get(dst->name);
+    *it = Copy{ Constant{ ConvertValue(src->value, entry->type) }, obj.dst };
+    changed = true;
+    return std::next(it);
+}
+
+static std::list<Instruction>::iterator foldZeroExtend(
+    std::list<Instruction>::iterator it,
+    Context *context,
+    bool &changed)
+{
+    // Unsigned integers; from smaller to bigger type
+    auto &obj = std::get<ZeroExtend>(*it);
+    const Constant *src = std::get_if<Constant>(&obj.src);
+    if (!src)
+        return std::next(it);
+    const Variant *dst = std::get_if<Variant>(&obj.dst);
+    assert(dst);
+    const SymbolEntry *entry = context->symbolTable->get(dst->name);
+    *it = Copy{ Constant{ ConvertValue(src->value, entry->type) }, obj.dst };
+    changed = true;
+    return std::next(it);
+}
+
+static std::list<Instruction>::iterator foldDoubleToInt(
+    std::list<Instruction>::iterator it,
+    Context *context,
+    bool &changed)
+{
+    auto &obj = std::get<DoubleToInt>(*it);
+    const Constant *src = std::get_if<Constant>(&obj.src);
+    if (!src)
+        return std::next(it);
+    const Variant *dst = std::get_if<Variant>(&obj.dst);
+    assert(dst);
+    const SymbolEntry *entry = context->symbolTable->get(dst->name);
+    *it = Copy{ Constant{ ConvertValue(src->value, entry->type) }, obj.dst };
+    changed = true;
+    return std::next(it);
+}
+
+static std::list<Instruction>::iterator foldDoubleToUInt(
+    std::list<Instruction>::iterator it,
+    Context *context,
+    bool &changed)
+{
+    auto &obj = std::get<DoubleToUInt>(*it);
+    const Constant *src = std::get_if<Constant>(&obj.src);
+    if (!src)
+        return std::next(it);
+    const Variant *dst = std::get_if<Variant>(&obj.dst);
+    assert(dst);
+    const SymbolEntry *entry = context->symbolTable->get(dst->name);
+    *it = Copy{ Constant{ ConvertValue(src->value, entry->type) }, obj.dst };
+    changed = true;
+    return std::next(it);
+}
+
+static std::list<Instruction>::iterator foldIntToDouble(
+    std::list<Instruction>::iterator it,
+    Context *context,
+    bool &changed)
+{
+    auto &obj = std::get<IntToDouble>(*it);
+    const Constant *src = std::get_if<Constant>(&obj.src);
+    if (!src)
+        return std::next(it);
+    const Variant *dst = std::get_if<Variant>(&obj.dst);
+    assert(dst);
+    const SymbolEntry *entry = context->symbolTable->get(dst->name);
+    *it = Copy{ Constant{ ConvertValue(src->value, entry->type) }, obj.dst };
+    changed = true;
+    return std::next(it);
+}
+
+static std::list<Instruction>::iterator foldUIntToDouble(
+    std::list<Instruction>::iterator it,
+    Context *context,
+    bool &changed)
+{
+    auto &obj = std::get<UIntToDouble>(*it);
+    const Constant *src = std::get_if<Constant>(&obj.src);
+    if (!src)
+        return std::next(it);
+    const Variant *dst = std::get_if<Variant>(&obj.dst);
+    assert(dst);
+    const SymbolEntry *entry = context->symbolTable->get(dst->name);
+    *it = Copy{ Constant{ ConvertValue(src->value, entry->type) }, obj.dst };
+    changed = true;
+    return std::next(it);
+}
+
+void constantFolding(std::list<Instruction> &instructions, Context *context, bool &changed)
 {
     for (auto it = instructions.begin(); it != instructions.end();) {
         it = std::visit([&](auto &obj) {
             using T = std::decay_t<decltype(obj)>;
-            if constexpr (std::is_same_v<T, Unary>) {
+            if constexpr (std::is_same_v<T, Unary>)
                 return foldUnary(it, changed);
-            } else if constexpr (std::is_same_v<T, Binary>) {
+            else if constexpr (std::is_same_v<T, Binary>)
                 return foldBinary(it, changed);
-            } else if constexpr (std::is_same_v<T, JumpIfZero>) {
+            else if constexpr (std::is_same_v<T, JumpIfZero>)
                 return foldJumpIfZero(instructions, it, changed);
-            } else if constexpr (std::is_same_v<T, JumpIfNotZero>) {
+            else if constexpr (std::is_same_v<T, JumpIfNotZero>)
                 return foldJumpIfNotZero(instructions, it, changed);
-            } else
+            else if constexpr (std::is_same_v<T, SignExtend>)
+                return foldSignExtend(it, context, changed);
+            else if constexpr (std::is_same_v<T, Truncate>)
+                return foldTruncate(it, context, changed);
+            else if constexpr (std::is_same_v<T, ZeroExtend>)
+                return foldZeroExtend(it, context, changed);
+            else if constexpr (std::is_same_v<T, DoubleToInt>)
+                return foldDoubleToInt(it, context, changed);
+            else if constexpr (std::is_same_v<T, DoubleToUInt>)
+                return foldDoubleToUInt(it, context, changed);
+            else if constexpr (std::is_same_v<T, IntToDouble>)
+                return foldIntToDouble(it, context, changed);
+            else if constexpr (std::is_same_v<T, UIntToDouble>)
+                return foldUIntToDouble(it, context, changed);
+            else
                 return std::next(it);
         }, *it);
     }
