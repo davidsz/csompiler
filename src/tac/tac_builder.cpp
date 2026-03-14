@@ -90,7 +90,7 @@ TACBuilder::LHSInfo TACBuilder::AnalyzeLHS(const parser::Expression &expr)
             Type{ PointerType{ .referenced = std::make_shared<Type>(element_type) } }
         );
 
-        m_instructions.push_back(AddPtr{
+        AddInstruction(AddPtr{
             .ptr   = pointer_operand,
             .index = integer_operand,
             .scale = element_type.size(m_typeTable),
@@ -125,7 +125,7 @@ void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, size_t 
         return;
     }
 
-    m_instructions.push_back(CopyToOffset{
+    AddInstruction(CopyToOffset{
         Constant{ MakeConstantValue(0, type) },
         base,
         offset
@@ -161,7 +161,7 @@ void TACBuilder::EmitRuntimeInit(
                              uint32_t(uint8_t(p[1]) <<  8) |
                              uint32_t(uint8_t(p[2]) << 16) |
                              uint32_t(uint8_t(p[3]) << 24);
-                m_instructions.push_back(
+                AddInstruction(
                     CopyToOffset{
                         Constant{ MakeConstantValue(v, Type{ BasicType::UInt }) },
                         base,
@@ -173,7 +173,7 @@ void TACBuilder::EmitRuntimeInit(
 
             // Copy the rest of the string one by one
             for (; i < text.size(); i++) {
-                m_instructions.push_back(
+                AddInstruction(
                     CopyToOffset{
                         Constant{ MakeConstantValue(text[i], Type{ BasicType::Char }) },
                         base,
@@ -184,7 +184,7 @@ void TACBuilder::EmitRuntimeInit(
 
             // Null terminator and padding with zeros (if possible)
             for (; i < array_type->count; i++) {
-                m_instructions.push_back(CopyToOffset{
+                AddInstruction(CopyToOffset{
                     Constant{ MakeConstantValue(0, Type{ BasicType::Char }) },
                     base,
                     offset
@@ -217,7 +217,7 @@ void TACBuilder::EmitRuntimeInit(
         if (auto single = std::get_if<parser::SingleInit>(init)) {
             assert(single->expr);
             Value v = VisitAndConvert(*single->expr);
-            m_instructions.push_back(CopyToOffset{ v, base, offset });
+            AddInstruction(CopyToOffset{ v, base, offset });
             offset += type.storedType().size(m_typeTable);
             return;
         }
@@ -252,7 +252,7 @@ void TACBuilder::EmitRuntimeInit(
             EmitZeroInit(type, base, offset);
         else {
             Value v = VisitAndConvert(*single->expr);
-            m_instructions.push_back(CopyToOffset{ v, base, offset });
+            AddInstruction(CopyToOffset{ v, base, offset });
             offset += type.storedType().size(m_typeTable);
         }
         return;
@@ -337,9 +337,9 @@ ExpResult TACBuilder::operator()(const parser::UnaryExpression &u)
         // Load current value if it's a pointer dereference
         Variant old_val = CreateTemporaryVariable(lhs.original_type.storedType());
         if (lhs.kind == LHSInfo::Kind::Plain)
-            m_instructions.push_back(Copy{ lhs.address, old_val });
+            AddInstruction(Copy{ lhs.address, old_val });
         else
-            m_instructions.push_back(Load{ lhs.address, old_val });
+            AddInstruction(Load{ lhs.address, old_val });
 
         // Cast if needed
         Value typed_val = old_val;
@@ -352,14 +352,14 @@ ExpResult TACBuilder::operator()(const parser::UnaryExpression &u)
             auto ptr_type = u.type.getAs<PointerType>();
             assert(ptr_type);
             int offset = (u.op == UnaryOperator::Increment) ? 1 : -1;
-            m_instructions.push_back(AddPtr{
+            AddInstruction(AddPtr{
                 .ptr = typed_val,
                 .index = Constant{ MakeConstantValue(offset, Type{ BasicType::Long }) },
                 .scale = ptr_type->referenced->size(m_typeTable),
                 .dst = new_value
             });
         } else {
-            m_instructions.push_back(Binary{
+            AddInstruction(Binary{
                 unaryToBinary(u.op),
                 typed_val,
                 Constant{ MakeConstantValue(1, u.type) },
@@ -374,9 +374,9 @@ ExpResult TACBuilder::operator()(const parser::UnaryExpression &u)
 
         // Store the result back
         if (lhs.kind == LHSInfo::Kind::Plain)
-            m_instructions.push_back(Copy{ result_to_store, lhs.address });
+            AddInstruction(Copy{ result_to_store, lhs.address });
         else
-            m_instructions.push_back(Store{ result_to_store, lhs.address });
+            AddInstruction(Store{ result_to_store, lhs.address });
 
         // The return value depends on the operator type
         return PlainOperand{ u.postfix ? typed_val : new_value };
@@ -386,7 +386,7 @@ ExpResult TACBuilder::operator()(const parser::UnaryExpression &u)
     unary.op = u.op;
     unary.src = VisitAndConvert(*u.expr);
     unary.dst = CreateTemporaryVariable(u.type);
-    m_instructions.push_back(unary);
+    AddInstruction(unary);
     return PlainOperand{ unary.dst };
 }
 
@@ -400,23 +400,23 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
         auto label_false = MakeNameUnique("false_label");
         auto label_end = MakeNameUnique("end_label");
         if (b.op == BinaryOperator::And) {
-            m_instructions.push_back(JumpIfZero{lhs_val, label_false});
+            AddInstruction(JumpIfZero{lhs_val, label_false});
             auto rhs = VisitAndConvert(*b.rhs);
-            m_instructions.push_back(JumpIfZero{rhs, label_false});
-            m_instructions.push_back(Copy{Constant(1), result});
-            m_instructions.push_back(Jump{label_end});
-            m_instructions.push_back(Label{label_false});
-            m_instructions.push_back(Copy{Constant(0), result});
-            m_instructions.push_back(Label{label_end});
+            AddInstruction(JumpIfZero{rhs, label_false});
+            AddInstruction(Copy{Constant(1), result});
+            AddInstruction(Jump{label_end});
+            AddInstruction(Label{label_false});
+            AddInstruction(Copy{Constant(0), result});
+            AddInstruction(Label{label_end});
         } else {
-            m_instructions.push_back(JumpIfNotZero{lhs_val, label_true});
+            AddInstruction(JumpIfNotZero{lhs_val, label_true});
             auto rhs = VisitAndConvert(*b.rhs);
-            m_instructions.push_back(JumpIfNotZero{rhs, label_true});
-            m_instructions.push_back(Copy{Constant(0), result});
-            m_instructions.push_back(Jump{label_end});
-            m_instructions.push_back(Label{label_true});
-            m_instructions.push_back(Copy{Constant(1), result});
-            m_instructions.push_back(Label{label_end});
+            AddInstruction(JumpIfNotZero{rhs, label_true});
+            AddInstruction(Copy{Constant(0), result});
+            AddInstruction(Jump{label_end});
+            AddInstruction(Label{label_true});
+            AddInstruction(Copy{Constant(1), result});
+            AddInstruction(Label{label_end});
         }
         return PlainOperand{ result };
     }
@@ -440,7 +440,7 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
                 .scale = ptr_type->referenced->size(m_typeTable),
                 .dst = CreateTemporaryVariable(b.type)
             };
-            m_instructions.push_back(add_ptr);
+            AddInstruction(add_ptr);
             return PlainOperand{ add_ptr.dst };
         }
         if (b.op == BinaryOperator::Subtract) {
@@ -452,7 +452,7 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
                     .src = rhs,
                     .dst = CreateTemporaryVariable(Type{ BasicType::Long })
                 };
-                m_instructions.push_back(negate);
+                AddInstruction(negate);
                 auto ptr_type = b.type.getAs<PointerType>();
                 assert(ptr_type);
                 auto add_ptr = AddPtr{
@@ -461,7 +461,7 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
                     .scale = ptr_type->referenced->size(m_typeTable),
                     .dst = CreateTemporaryVariable(lhs_type)
                 };
-                m_instructions.push_back(add_ptr);
+                AddInstruction(add_ptr);
                 return PlainOperand{ add_ptr.dst };
             } else if (rhs_type.isPointer()) {
                 // Subtracting one pointer from another: First, we calculate the difference
@@ -474,7 +474,7 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
                     .src2 = rhs,
                     .dst = CreateTemporaryVariable(Type{ BasicType::Long })
                 };
-                m_instructions.push_back(diff);
+                AddInstruction(diff);
 
                 auto ptr_type = lhs_type.getAs<PointerType>();
                 assert(ptr_type);
@@ -487,7 +487,7 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
                     },
                     .dst = CreateTemporaryVariable(Type{ BasicType::Long })
                 };
-                m_instructions.push_back(result);
+                AddInstruction(result);
                 return PlainOperand{ result.dst };
             } else
                 assert(false);
@@ -499,7 +499,7 @@ ExpResult TACBuilder::operator()(const parser::BinaryExpression &b)
     binary.src1 = lhs;
     binary.src2 = rhs;
     binary.dst = CreateTemporaryVariable(b.type);
-    m_instructions.push_back(binary);
+    AddInstruction(binary);
     return PlainOperand{ binary.dst };
 }
 
@@ -508,13 +508,13 @@ ExpResult TACBuilder::operator()(const parser::AssignmentExpression &a)
     ExpResult left = std::visit(*this, *a.lhs);
     Value right = VisitAndConvert(*a.rhs);
     if (PlainOperand *plain = std::get_if<PlainOperand>(&left)) {
-        m_instructions.push_back(Copy{ right, plain->val });
+        AddInstruction(Copy{ right, plain->val });
         return left;
     } else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&left)) {
-        m_instructions.push_back(Store{ right, deref->ptr });
+        AddInstruction(Store{ right, deref->ptr });
         return PlainOperand{ right };
     } else if (SubObject *sub = std::get_if<SubObject>(&left)) {
-        m_instructions.push_back(CopyToOffset{
+        AddInstruction(CopyToOffset{
             .src = right,
             .dst_identifier = sub->base_identifier,
             .offset = sub->offset
@@ -538,9 +538,9 @@ ExpResult TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
     // Load the value if lhs is a pointer dereference
     Variant old_val = CreateTemporaryVariable(lhs.original_type.storedType());
     if (lhs.kind == LHSInfo::Kind::Plain)
-        m_instructions.push_back(Copy{ lhs.address, old_val });
+        AddInstruction(Copy{ lhs.address, old_val });
     else
-        m_instructions.push_back(Load{ lhs.address, old_val });
+        AddInstruction(Load{ lhs.address, old_val });
 
     // Cast the left side if needed
     Value typed_left = old_val;
@@ -555,21 +555,21 @@ ExpResult TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
         Value index = rhs;
         if (c.op == BinaryOperator::AssignSub) {
             Variant negated = CreateTemporaryVariable(GetType(rhs));
-            m_instructions.push_back(Unary{
+            AddInstruction(Unary{
                 UnaryOperator::Negate,
                 rhs,
                 negated
             });
             index = negated;
         }
-        m_instructions.push_back(AddPtr{
+        AddInstruction(AddPtr{
             .ptr = typed_left,
             .index = index,
             .scale = pointer_type->referenced->size(m_typeTable),
             .dst = tmp
         });
     } else
-        m_instructions.push_back(Binary{ compoundToBinary(c.op), typed_left, rhs, tmp });
+        AddInstruction(Binary{ compoundToBinary(c.op), typed_left, rhs, tmp });
 
     // Cast back if needed
     Value result = tmp;
@@ -578,9 +578,9 @@ ExpResult TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
 
     // Store the result if it was modified through a pointer
     if (lhs.kind == LHSInfo::Kind::Plain)
-        m_instructions.push_back(Copy{ result, lhs.address });
+        AddInstruction(Copy{ result, lhs.address });
     else
-        m_instructions.push_back(Store{ result, lhs.address });
+        AddInstruction(Store{ result, lhs.address });
 
     return PlainOperand{ result };
 }
@@ -592,18 +592,18 @@ ExpResult TACBuilder::operator()(const parser::ConditionalExpression &c)
     Value result = c.type.isVoid() ? Variant{ "DUMMY" } : CreateTemporaryVariable(c.type);
 
     Value condition = VisitAndConvert(*c.condition);
-    m_instructions.push_back(JumpIfZero{ condition, label_false_branch });
+    AddInstruction(JumpIfZero{ condition, label_false_branch });
 
     Value true_branch_value = VisitAndConvert(*c.trueBranch);
     if (!c.type.isVoid())
-        m_instructions.push_back(Copy{ true_branch_value, result });
-    m_instructions.push_back(Jump{ label_end });
+        AddInstruction(Copy{ true_branch_value, result });
+    AddInstruction(Jump{ label_end });
 
-    m_instructions.push_back(Label{ label_false_branch });
+    AddInstruction(Label{ label_false_branch });
     Value false_branch_value = VisitAndConvert(*c.falseBranch);
     if (!c.type.isVoid())
-        m_instructions.push_back(Copy{ false_branch_value, result });
-    m_instructions.push_back(Label{ label_end });
+        AddInstruction(Copy{ false_branch_value, result });
+    AddInstruction(Label{ label_end });
 
     return PlainOperand{ result };
 }
@@ -616,7 +616,7 @@ ExpResult TACBuilder::operator()(const parser::FunctionCallExpression &f)
         ret.args.push_back(VisitAndConvert(*a));
     if (!f.type.isVoid())
         ret.dst = CreateTemporaryVariable(f.type);
-    m_instructions.push_back(ret);
+    AddInstruction(ret);
     return PlainOperand{ ret.dst ? *ret.dst : Variant{ "DUMMY" } };
 }
 
@@ -633,15 +633,15 @@ ExpResult TACBuilder::operator()(const parser::AddressOfExpression &a)
         Variant dst = CreateTemporaryVariable(Type{
             PointerType{ .referenced = std::make_shared<Type>(GetType(plain->val)) }
         });
-        m_instructions.push_back(GetAddress{ plain->val, dst });
+        AddInstruction(GetAddress{ plain->val, dst });
         return PlainOperand{ dst };
     } else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&inner))
         return PlainOperand{ deref->ptr };
     else if (SubObject *sub = std::get_if<SubObject>(&inner)) {
         Variant base_ptr = CreateTemporaryVariable(a.type);
-        m_instructions.push_back(GetAddress{ Variant{ sub->base_identifier }, base_ptr });
+        AddInstruction(GetAddress{ Variant{ sub->base_identifier }, base_ptr });
         if (sub->offset != 0) {
-            m_instructions.push_back(AddPtr{
+            AddInstruction(AddPtr{
                 .ptr = base_ptr,
                 .index = Constant{ MakeConstantValue(static_cast<long>(sub->offset), Type{ BasicType::Long }) },
                 .scale = 1,
@@ -671,7 +671,7 @@ ExpResult TACBuilder::operator()(const parser::SubscriptExpression &s)
         .scale = element_type->size(m_typeTable),
         .dst = CreateTemporaryVariable(Type{ PointerType{ .referenced = element_type } })
     };
-    m_instructions.push_back(add_ptr);
+    AddInstruction(add_ptr);
     return DereferencedPointer{ add_ptr.dst };
 }
 
@@ -710,7 +710,7 @@ ExpResult TACBuilder::operator()(const parser::DotExpression &d)
         Variant dst_ptr = CreateTemporaryVariable(
             Type{ PointerType{ .referenced = std::make_shared<Type>(d.type) } }
         );
-        m_instructions.push_back(AddPtr{
+        AddInstruction(AddPtr{
             .ptr = deref->ptr,
             .index = Constant{ MakeConstantValue(static_cast<long>(member_offset), Type{ BasicType::Long }) },
             .scale = 1,
@@ -736,7 +736,7 @@ ExpResult TACBuilder::operator()(const parser::ArrowExpression &a)
     Variant dst_ptr = CreateTemporaryVariable(
         Type{ PointerType{ .referenced = std::make_shared<Type>(a.type) } }
     );
-    m_instructions.push_back(AddPtr{
+    AddInstruction(AddPtr{
         .ptr = base_ptr,
         .index = Constant{ MakeConstantValue(static_cast<long>(member_offset), Type{ BasicType::Long }) },
         .scale = 1,
@@ -750,7 +750,7 @@ ExpResult TACBuilder::operator()(const parser::ReturnStatement &r)
     auto ret = Return{};
     if (r.expr)
         ret.val = VisitAndConvert(*r.expr);
-    m_instructions.push_back(ret);
+    AddInstruction(ret);
     return std::monostate();
 }
 
@@ -760,28 +760,28 @@ ExpResult TACBuilder::operator()(const parser::IfStatement &i)
     auto label_end = MakeNameUnique("end");
     if (i.falseBranch) {
         auto label_else = MakeNameUnique("else");
-        m_instructions.push_back(JumpIfZero{ condition, label_else });
+        AddInstruction(JumpIfZero{ condition, label_else });
         std::visit(*this, *i.trueBranch);
-        m_instructions.push_back(Jump{ label_end });
-        m_instructions.push_back(Label{ label_else });
+        AddInstruction(Jump{ label_end });
+        AddInstruction(Label{ label_else });
         std::visit(*this, *i.falseBranch);
     } else {
-        m_instructions.push_back(JumpIfZero{ condition, label_end });
+        AddInstruction(JumpIfZero{ condition, label_end });
         std::visit(*this, *i.trueBranch);
     }
-    m_instructions.push_back(Label{ label_end });
+    AddInstruction(Label{ label_end });
     return std::monostate();
 }
 
 ExpResult TACBuilder::operator()(const parser::GotoStatement &g)
 {
-    m_instructions.push_back(Jump{ g.label });
+    AddInstruction(Jump{ g.label });
     return std::monostate();
 }
 
 ExpResult TACBuilder::operator()(const parser::LabeledStatement &l)
 {
-    m_instructions.push_back(Label{ l.label });
+    AddInstruction(Label{ l.label });
     std::visit(*this, *l.statement);
     return std::monostate();
 }
@@ -806,13 +806,13 @@ ExpResult TACBuilder::operator()(const parser::NullStatement &)
 
 ExpResult TACBuilder::operator()(const parser::BreakStatement &b)
 {
-    m_instructions.push_back(Jump{ std::format("break_{}", b.label) });
+    AddInstruction(Jump{ std::format("break_{}", b.label) });
     return std::monostate();
 }
 
 ExpResult TACBuilder::operator()(const parser::ContinueStatement &c)
 {
-    m_instructions.push_back(Jump{ std::format("continue_{}", c.label) });
+    AddInstruction(Jump{ std::format("continue_{}", c.label) });
     return std::monostate();
 }
 
@@ -821,12 +821,12 @@ ExpResult TACBuilder::operator()(const parser::WhileStatement &w)
     auto label_continue = std::format("continue_{}", w.label);
     auto label_break = std::format("break_{}", w.label);
 
-    m_instructions.push_back(Label{ label_continue });
+    AddInstruction(Label{ label_continue });
     Value condition = VisitAndConvert(*w.condition);
-    m_instructions.push_back(JumpIfZero{ condition, label_break });
+    AddInstruction(JumpIfZero{ condition, label_break });
     std::visit(*this, *w.body);
-    m_instructions.push_back(Jump{ label_continue });
-    m_instructions.push_back(Label{ label_break });
+    AddInstruction(Jump{ label_continue });
+    AddInstruction(Label{ label_break });
     return std::monostate();
 }
 
@@ -834,12 +834,12 @@ ExpResult TACBuilder::operator()(const parser::DoWhileStatement &d)
 {
     auto label_start = std::format("start_{}", d.label);
 
-    m_instructions.push_back(Label{ label_start });
+    AddInstruction(Label{ label_start });
     std::visit(*this, *d.body);
-    m_instructions.push_back(Label{ std::format("continue_{}", d.label) });
+    AddInstruction(Label{ std::format("continue_{}", d.label) });
     Value condition = VisitAndConvert(*d.condition);
-    m_instructions.push_back(JumpIfNotZero{ condition, label_start });
-    m_instructions.push_back(Label{ std::format("break_{}", d.label) });
+    AddInstruction(JumpIfNotZero{ condition, label_start });
+    AddInstruction(Label{ std::format("break_{}", d.label) });
     return std::monostate();
 }
 
@@ -850,19 +850,19 @@ ExpResult TACBuilder::operator()(const parser::ForStatement &f)
 
     if (f.init)
         std::visit(*this, *f.init);
-    m_instructions.push_back(Label{ label_start });
+    AddInstruction(Label{ label_start });
     Value condition;
     if (f.condition)
         condition = VisitAndConvert(*f.condition);
     else
         condition = Constant { 1 };
-    m_instructions.push_back(JumpIfZero{ condition, label_break });
+    AddInstruction(JumpIfZero{ condition, label_break });
     std::visit(*this, *f.body);
-    m_instructions.push_back(Label{ std::format("continue_{}", f.label) });
+    AddInstruction(Label{ std::format("continue_{}", f.label) });
     if (f.update)
         std::visit(*this, *f.update);
-    m_instructions.push_back(Jump{ label_start });
-    m_instructions.push_back(Label{ label_break });
+    AddInstruction(Jump{ label_start });
+    AddInstruction(Label{ label_break });
     return std::monostate();
 }
 
@@ -877,31 +877,31 @@ ExpResult TACBuilder::operator()(const parser::SwitchStatement &s)
         binary.src1 = condition;
         binary.src2 = Constant { c };
         binary.dst = CreateTemporaryVariable(s.type);
-        m_instructions.push_back(binary);
-        m_instructions.push_back(JumpIfZero{
+        AddInstruction(binary);
+        AddInstruction(JumpIfZero{
             binary.dst,
             std::format("case_{}_{}", s.label, toLabel(c))
         });
     }
     if (s.hasDefault)
-        m_instructions.push_back(Jump{ std::format("default_{}", s.label) });
+        AddInstruction(Jump{ std::format("default_{}", s.label) });
     else
-        m_instructions.push_back(Jump{ label_break });
+        AddInstruction(Jump{ label_break });
     std::visit(*this, *s.body);
-    m_instructions.push_back(Label{ label_break });
+    AddInstruction(Label{ label_break });
     return std::monostate();
 }
 
 ExpResult TACBuilder::operator()(const parser::CaseStatement &c)
 {
-    m_instructions.push_back(Label{ c.label });
+    AddInstruction(Label{ c.label });
     std::visit(*this, *c.statement);
     return std::monostate();
 }
 
 ExpResult TACBuilder::operator()(const parser::DefaultStatement &d)
 {
-    m_instructions.push_back(Label{ d.label });
+    AddInstruction(Label{ d.label });
     std::visit(*this, *d.statement);
     return std::monostate();
 }
@@ -919,16 +919,20 @@ ExpResult TACBuilder::operator()(const parser::FunctionDeclaration &f)
     func.params = f.params;
     if (auto body = std::get_if<parser::BlockStatement>(f.body.get())) {
         TACBuilder builder(m_context);
-        func.inst = builder.ConvertBlock(body->items);
+        func.blocks = builder.ConvertFunctionBlock(body->items);
         // Avoid undefined behavior in functions where there is no return.
         // If it already had a return, this extra one won't be executed
         // and will be optimised out in later stages.
+        if (func.blocks.empty())
+            func.blocks.push_back(CFGBlock{ .id = m_nextBlockId++, .instructions = { } });
         const FunctionType *type = f.type.getAs<FunctionType>();
         assert(type);
         if (!type->ret->isScalar())
-            func.inst.push_back(Return{ });
+            func.blocks.back().instructions.push_back(Return{ });
         else
-            func.inst.push_back(Return{ Constant{ MakeConstantValue(0, *(type->ret)) } });
+            func.blocks.back().instructions.push_back(Return{
+                Constant{ MakeConstantValue(0, *(type->ret)) }
+            });
     }
 
     if (const SymbolEntry *entry = m_context->symbolTable->get(f.name))
@@ -958,7 +962,6 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
 
 ExpResult TACBuilder::operator()(const parser::StructDeclaration &)
 {
-    // TODO
     return std::monostate();
 }
 
@@ -998,12 +1001,21 @@ std::list<TopLevel> TACBuilder::ConvertTopLevel(const std::vector<parser::Declar
     return std::move(m_topLevel);
 }
 
-std::list<Instruction> TACBuilder::ConvertBlock(const std::vector<parser::BlockItem> &list)
+std::list<CFGBlock> TACBuilder::ConvertFunctionBlock(const std::vector<parser::BlockItem> &list)
 {
-    m_instructions.clear();
+    m_nextBlockId = 0;
+    m_blocks.clear();
     for (auto &i : list)
         std::visit(*this, i);
-    return std::move(m_instructions);
+
+    if (!m_instructions.empty()) {
+        m_blocks.push_back(CFGBlock{
+            .id = m_nextBlockId++,
+            .instructions = std::move(m_instructions)
+        });
+    }
+
+    return std::move(m_blocks);
 }
 
 void TACBuilder::ProcessStaticSymbols()

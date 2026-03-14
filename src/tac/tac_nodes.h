@@ -95,7 +95,7 @@ namespace tac {
         std::string name; \
         bool global; \
         std::vector<std::string> params; \
-        std::list<Instruction> inst;) \
+        std::list<CFGBlock> blocks;) \
     X(StaticVariable, \
         std::string name; \
         Type type = Type{}; \
@@ -106,9 +106,18 @@ namespace tac {
         Type type; \
         ConstantValue static_init;)
 
+class CFGBlock;
+
 DEFINE_NODES_WITH_COMMON_VARIANT(Value, TAC_VALUE_TYPE_LIST);
 DEFINE_NODES_WITH_COMMON_VARIANT(Instruction, TAC_INSTRUCTION_LIST);
 DEFINE_NODES_WITH_COMMON_VARIANT(TopLevel, TAC_TOP_LEVEL_LIST);
 
+class CFGBlock {
+public:
+    size_t id;
+    std::list<Instruction> instructions;
+    std::list<CFGBlock *> predecessors = {};
+    std::list<CFGBlock *> successors = {};
+};
 
 }; // tac

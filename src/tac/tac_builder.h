@@ -63,8 +63,10 @@ public:
     ExpResult operator()(const parser::CompoundInit &c) override;
     ExpResult operator()(std::monostate) override;
 
-    std::list<TopLevel> ConvertTopLevel(const std::vector<parser::Declaration> &list);
-    std::list<Instruction> ConvertBlock(const std::vector<parser::BlockItem> &list);
+    std::list<TopLevel> ConvertTopLevel(
+        const std::vector<parser::Declaration> &list);
+    std::list<CFGBlock> ConvertFunctionBlock(
+        const std::vector<parser::BlockItem> &list);
 
 private:
     Variant CreateTemporaryVariable(const Type &type);
@@ -86,11 +88,11 @@ private:
             PointerType *ptr_type = GetType(deref->ptr).getAs<PointerType>();
             assert(ptr_type);
             Variant dst = CreateTemporaryVariable(ptr_type->referenced->storedType());
-            m_instructions.push_back(Load{ deref->ptr, dst });
+            AddInstruction(Load{ deref->ptr, dst });
             return dst;
         } else if (SubObject *sub = std::get_if<SubObject>(&result)) {
             Variant dst = CreateTemporaryVariable(GetExpressionType(variants ...));
-            m_instructions.push_back(CopyFromOffset{
+            AddInstruction(CopyFromOffset{
                 .src_identifier = sub->base_identifier,
                 .offset = sub->offset,
                 .dst = dst
@@ -116,8 +118,39 @@ private:
         size_t &offset
     );
 
+    // Functions, static variables and constants of the translation unit
     std::list<TopLevel> m_topLevel;
+    // Building blocks for a Control Flow Graph
+    size_t m_nextBlockId = 0;
+    std::list<CFGBlock> m_blocks;
+    // Storing the instructions of the currently built CFGBlock
     std::list<Instruction> m_instructions;
+
+    template <typename T>
+    void AddInstruction(T &&instruction)
+    {
+        using U = std::decay_t<T>;
+        if constexpr (std::is_same_v<U, Label>) {
+            if (!m_instructions.empty())
+                m_blocks.emplace_back(CFGBlock{
+                    .id = m_nextBlockId++,
+                    .instructions = std::move(m_instructions)
+                });
+            m_instructions.clear();
+            m_instructions.emplace_back(std::forward<T>(instruction));
+        } else if constexpr (std::same_as<T, Jump>
+            || std::same_as<T, JumpIfZero>
+            || std::same_as<T, JumpIfNotZero>
+            || std::same_as<T, Return>) {
+                m_instructions.emplace_back(std::forward<T>(instruction));
+            m_blocks.emplace_back(CFGBlock{
+                .id = m_nextBlockId++,
+                .instructions = std::move(m_instructions)
+            });
+            m_instructions.clear();
+        } else
+            m_instructions.emplace_back(std::forward<T>(instruction));
+    }
 
     Context *m_context;
     TypeTable *m_typeTable;

@@ -222,16 +222,9 @@ void TACPrinter::operator()(const tac::CopyFromOffset &c)
     pad(); std::cout << ")" << std::endl;
 }
 
-void TACPrinter::operator()(const tac::FunctionDefinition &f)
+void TACPrinter::operator()(const tac::FunctionDefinition &)
 {
-    pad();
-    std::cout << (f.global ? "global" : "local");
-    std::cout << " Function(" << f.name << ") {" << std::endl;
-    tab();
-    for (auto &i : f.inst)
-        std::visit(*this, i);
-    shift_tab();
-    pad(); std::cout << "}" << std::endl;
+    assert(false);
 }
 
 void TACPrinter::operator()(const tac::StaticVariable &s)
@@ -260,9 +253,28 @@ void TACPrinter::operator()(const tac::StaticConstant &s)
     pad(); std::cout << "}" << std::endl;
 }
 
-void TACPrinter::print(std::list<TopLevel> instructions) {
-    for (auto &i : instructions)
-        std::visit(*this, i);
+void TACPrinter::print(std::list<TopLevel> topLevel) {
+    for (auto &top_level_item : topLevel) {
+        std::visit([&](auto &item) {
+            using T = std::decay_t<decltype(item)>;
+            if constexpr (std::is_same_v<T, FunctionDefinition>) {
+                pad();
+                std::cout << (item.global ? "global" : "local");
+                std::cout << " Function(" << item.name << ") {" << std::endl;
+                tab();
+                for (auto &block : item.blocks) {
+                    std::cout << "-" << block.id << "--------------------" << std::endl;
+                    tab();
+                    for (auto &instruction : block.instructions)
+                        std::visit(*this, instruction);
+                    shift_tab();
+                }
+                shift_tab();
+                pad(); std::cout << "}" << std::endl;
+            } else
+                std::visit(*this, top_level_item);
+        }, top_level_item);
+    }
 }
 
 } // namespace tac

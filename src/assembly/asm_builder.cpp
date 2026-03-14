@@ -1082,7 +1082,7 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
 
     // Body
     ASMBuilder builder(m_context, m_constants);
-    auto body_instructions = builder.ConvertInstructions(f.inst);
+    auto body_instructions = builder.ConvertFunctionBody(f.blocks);
     std::copy(body_instructions.begin(),
                 body_instructions.end(),
                 std::back_inserter(func.instructions));
@@ -1111,12 +1111,12 @@ Operand ASMBuilder::operator()(const tac::StaticConstant &s)
     return std::monostate();
 }
 
-std::list<TopLevel> ASMBuilder::ConvertTopLevel(const std::list<tac::TopLevel> instructions)
+std::list<TopLevel> ASMBuilder::ConvertTopLevel(const std::list<tac::TopLevel> &topLevel)
 {
     m_topLevel.clear();
     m_constants->clear();
 
-    for (auto &inst : instructions)
+    for (auto &inst : topLevel)
         std::visit(*this, inst);
 
     for (auto const &[value, label] : *m_constants) {
@@ -1130,11 +1130,13 @@ std::list<TopLevel> ASMBuilder::ConvertTopLevel(const std::list<tac::TopLevel> i
     return std::move(m_topLevel);
 }
 
-std::list<Instruction> ASMBuilder::ConvertInstructions(const std::list<tac::Instruction> instructions)
+std::list<Instruction> ASMBuilder::ConvertFunctionBody(const std::list<tac::CFGBlock> &blocks)
 {
     m_instructions.clear();
-    for (auto &inst : instructions)
-        std::visit(*this, inst);
+    for (auto &block : blocks) {
+        for (auto &i : block.instructions)
+            std::visit(*this, i);
+    }
     return std::move(m_instructions);
 }
 

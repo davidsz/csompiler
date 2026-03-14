@@ -281,36 +281,38 @@ static std::list<Instruction>::iterator foldUIntToDouble(
     return std::next(it);
 }
 
-void constantFolding(std::list<Instruction> &instructions, Context *context, bool &changed)
+void constantFolding(std::list<CFGBlock> &blocks, Context *context, bool &changed)
 {
-    for (auto it = instructions.begin(); it != instructions.end();) {
-        it = std::visit([&](auto &obj) {
-            using T = std::decay_t<decltype(obj)>;
-            if constexpr (std::is_same_v<T, Unary>)
-                return foldUnary(it, changed);
-            else if constexpr (std::is_same_v<T, Binary>)
-                return foldBinary(it, changed);
-            else if constexpr (std::is_same_v<T, JumpIfZero>)
-                return foldJumpIfZero(instructions, it, changed);
-            else if constexpr (std::is_same_v<T, JumpIfNotZero>)
-                return foldJumpIfNotZero(instructions, it, changed);
-            else if constexpr (std::is_same_v<T, SignExtend>)
-                return foldSignExtend(it, context, changed);
-            else if constexpr (std::is_same_v<T, Truncate>)
-                return foldTruncate(it, context, changed);
-            else if constexpr (std::is_same_v<T, ZeroExtend>)
-                return foldZeroExtend(it, context, changed);
-            else if constexpr (std::is_same_v<T, DoubleToInt>)
-                return foldDoubleToInt(it, context, changed);
-            else if constexpr (std::is_same_v<T, DoubleToUInt>)
-                return foldDoubleToUInt(it, context, changed);
-            else if constexpr (std::is_same_v<T, IntToDouble>)
-                return foldIntToDouble(it, context, changed);
-            else if constexpr (std::is_same_v<T, UIntToDouble>)
-                return foldUIntToDouble(it, context, changed);
-            else
-                return std::next(it);
-        }, *it);
+    for (auto &block : blocks) {
+        for (auto it = block.instructions.begin(); it != block.instructions.end();) {
+            it = std::visit([&](auto &obj) {
+                using T = std::decay_t<decltype(obj)>;
+                if constexpr (std::is_same_v<T, Unary>)
+                    return foldUnary(it, changed);
+                else if constexpr (std::is_same_v<T, Binary>)
+                    return foldBinary(it, changed);
+                else if constexpr (std::is_same_v<T, JumpIfZero>)
+                    return foldJumpIfZero(block.instructions, it, changed);
+                else if constexpr (std::is_same_v<T, JumpIfNotZero>)
+                    return foldJumpIfNotZero(block.instructions, it, changed);
+                else if constexpr (std::is_same_v<T, SignExtend>)
+                    return foldSignExtend(it, context, changed);
+                else if constexpr (std::is_same_v<T, Truncate>)
+                    return foldTruncate(it, context, changed);
+                else if constexpr (std::is_same_v<T, ZeroExtend>)
+                    return foldZeroExtend(it, context, changed);
+                else if constexpr (std::is_same_v<T, DoubleToInt>)
+                    return foldDoubleToInt(it, context, changed);
+                else if constexpr (std::is_same_v<T, DoubleToUInt>)
+                    return foldDoubleToUInt(it, context, changed);
+                else if constexpr (std::is_same_v<T, IntToDouble>)
+                    return foldIntToDouble(it, context, changed);
+                else if constexpr (std::is_same_v<T, UIntToDouble>)
+                    return foldUIntToDouble(it, context, changed);
+                else
+                    return std::next(it);
+            }, *it);
+        }
     }
 }
 

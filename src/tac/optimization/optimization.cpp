@@ -18,8 +18,9 @@ void apply_optimizations(
                 bool changed = false;
                 do {
                     changed = false;
-                    if (arg.constant_folding)
-                        constantFolding(obj.inst, context, changed);
+                    if (arg.constant_folding) {
+                        constantFolding(obj.blocks, context, changed);
+                    }
                 } while (changed);
             }
         }, top_level_obj);

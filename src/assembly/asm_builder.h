@@ -48,8 +48,8 @@ public:
         return std::monostate();
     }
 
-    std::list<TopLevel> ConvertTopLevel(const std::list<tac::TopLevel>);
-    std::list<Instruction> ConvertInstructions(const std::list<tac::Instruction>);
+    std::list<TopLevel> ConvertTopLevel(const std::list<tac::TopLevel> &);
+    std::list<Instruction> ConvertFunctionBody(const std::list<tac::CFGBlock> &);
 
 private:
     Type GetType(const tac::Value &);

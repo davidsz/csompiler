@@ -20,7 +20,7 @@ void apply_optimizations(
 );
 
 void constantFolding(
-    std::list<Instruction> &instructions,
+    std::list<CFGBlock> &instructions,
     Context *context,
     bool &changed
 );
