@@ -253,7 +253,7 @@ void TACPrinter::operator()(const tac::StaticConstant &s)
     pad(); std::cout << "}" << std::endl;
 }
 
-void TACPrinter::print(std::list<TopLevel> topLevel) {
+void TACPrinter::print(const std::list<TopLevel> &topLevel) {
     for (auto &top_level_item : topLevel) {
         std::visit([&](auto &item) {
             using T = std::decay_t<decltype(item)>;
@@ -263,11 +263,15 @@ void TACPrinter::print(std::list<TopLevel> topLevel) {
                 std::cout << " Function(" << item.name << ") {" << std::endl;
                 tab();
                 for (auto &block : item.blocks) {
-                    std::cout << "-" << block.id << "--------------------" << std::endl;
+                    std::cout << "-" << block.id <<  "--------------------" << std::endl;
                     tab();
                     for (auto &instruction : block.instructions)
                         std::visit(*this, instruction);
                     shift_tab();
+                    std::cout << "--------------------next: ";
+                    for (auto &successor : block.successors)
+                        std::cout << successor->id << " ";
+                    std::cout << std::endl;
                 }
                 shift_tab();
                 pad(); std::cout << "}" << std::endl;

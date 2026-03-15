@@ -3,6 +3,7 @@
 #include "parser/ast_visitor.h"
 #include "tac_nodes.h"
 #include <list>
+#include <map>
 
 class Context;
 
@@ -63,10 +64,12 @@ public:
     ExpResult operator()(const parser::CompoundInit &c) override;
     ExpResult operator()(std::monostate) override;
 
-    std::list<TopLevel> ConvertTopLevel(
-        const std::vector<parser::Declaration> &list);
-    std::list<CFGBlock> ConvertFunctionBlock(
-        const std::vector<parser::BlockItem> &list);
+    void ConvertTopLevel(
+        const std::vector<parser::Declaration> &list,
+        std::list<tac::TopLevel> &top_level_out);
+    void ConvertFunctionBlock(
+        const std::vector<parser::BlockItem> &list,
+        std::list<CFGBlock> &block_list_out);
 
 private:
     Variant CreateTemporaryVariable(const Type &type);
@@ -119,38 +122,41 @@ private:
     );
 
     // Functions, static variables and constants of the translation unit
-    std::list<TopLevel> m_topLevel;
+    std::list<TopLevel> *m_topLevel;
     // Building blocks for a Control Flow Graph
-    size_t m_nextBlockId = 0;
-    std::list<CFGBlock> m_blocks;
+    size_t m_nextBlockId = 1;
+    std::list<CFGBlock> *m_blocks;
+    // Blocks referenced by their starting labels
+    std::map<std::string, CFGBlock *> m_blockLabels;
     // Storing the instructions of the currently built CFGBlock
     std::list<Instruction> m_instructions;
 
+    // Add instruction to the currently built CFGBlock
     template <typename T>
-    void AddInstruction(T &&instruction)
-    {
+    void AddInstruction(T &&instruction) {
         using U = std::decay_t<T>;
         if constexpr (std::is_same_v<U, Label>) {
             if (!m_instructions.empty())
-                m_blocks.emplace_back(CFGBlock{
-                    .id = m_nextBlockId++,
-                    .instructions = std::move(m_instructions)
-                });
+                CommitBlock();
             m_instructions.clear();
             m_instructions.emplace_back(std::forward<T>(instruction));
         } else if constexpr (std::same_as<T, Jump>
             || std::same_as<T, JumpIfZero>
             || std::same_as<T, JumpIfNotZero>
             || std::same_as<T, Return>) {
-                m_instructions.emplace_back(std::forward<T>(instruction));
-            m_blocks.emplace_back(CFGBlock{
-                .id = m_nextBlockId++,
-                .instructions = std::move(m_instructions)
-            });
+            m_instructions.emplace_back(std::forward<T>(instruction));
+            CommitBlock();
             m_instructions.clear();
         } else
             m_instructions.emplace_back(std::forward<T>(instruction));
     }
+
+    // Commit the current CFGBlock to start a new one
+    void CommitBlock();
+    // Finalie the CFG by connecting edges between CFGBlocks
+    void FinalizeControlFlowGraph();
+    // Connect two CFGBlocks
+    void Connect(CFGBlock *from, CFGBlock *to);
 
     Context *m_context;
     TypeTable *m_typeTable;

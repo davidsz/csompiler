@@ -150,8 +150,10 @@ int main(int argc, char **argv)
         return Error::ALL_OK;
 
     // Intermediate representation (TAC)
-    std::list<tac::TopLevel> tacList = tac::from_ast(
+    std::list<tac::TopLevel> tacList;
+    tac::from_ast(
         parser_result.root,
+        tacList,
         context.get());
 #if 1
     std::cout << std::endl << "TAC:" << std::endl;

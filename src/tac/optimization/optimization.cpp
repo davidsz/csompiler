@@ -7,8 +7,7 @@ void apply_optimizations(
     const TACOptimizationArgs &arg,
     Context *context)
 {
-    // Intraprocedural optimization: we iterate through the instructions of each
-    // function body and process them separately.
+    // Intraprocedural optimization: we work on separate functions.
     for (auto &top_level_obj : list) {
         std::visit([&](auto &obj) {
             using T = std::decay_t<decltype(obj)>;

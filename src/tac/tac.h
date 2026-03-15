@@ -7,8 +7,9 @@ class Context;
 
 namespace tac {
 
-std::list<TopLevel> from_ast(
+void from_ast(
     const std::vector<parser::Declaration> &list,
+    std::list<tac::TopLevel> &top_level_out,
     Context *context);
 
 } // namespace tac

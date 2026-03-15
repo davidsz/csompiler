@@ -912,14 +912,18 @@ ExpResult TACBuilder::operator()(const parser::FunctionDeclaration &f)
     if (!f.body)
         return std::monostate();
 
-    auto func = FunctionDefinition{};
+    // Insert it first to its final place, then use that object to avoid all copy/move
+    m_topLevel->emplace_back(FunctionDefinition{});
+    FunctionDefinition &func = std::get<FunctionDefinition>(m_topLevel->back());
+
     func.name = f.name;
     // Nothing to do here with parameters. They already have unique names
     // after semantic analysis and they will be pseudo-registers in ASM.
     func.params = f.params;
+
     if (auto body = std::get_if<parser::BlockStatement>(f.body.get())) {
         TACBuilder builder(m_context);
-        func.blocks = builder.ConvertFunctionBlock(body->items);
+        builder.ConvertFunctionBlock(body->items, func.blocks);
         // Avoid undefined behavior in functions where there is no return.
         // If it already had a return, this extra one won't be executed
         // and will be optimised out in later stages.
@@ -934,11 +938,8 @@ ExpResult TACBuilder::operator()(const parser::FunctionDeclaration &f)
                 Constant{ MakeConstantValue(0, *(type->ret)) }
             });
     }
-
     if (const SymbolEntry *entry = m_context->symbolTable->get(f.name))
         func.global = entry->attrs.global;
-
-    m_topLevel.push_back(func);
     return std::monostate();
 }
 
@@ -990,32 +991,29 @@ TACBuilder::TACBuilder(Context *context)
     assert(m_context);
 }
 
-std::list<TopLevel> TACBuilder::ConvertTopLevel(const std::vector<parser::Declaration> &list)
+void TACBuilder::ConvertTopLevel(
+    const std::vector<parser::Declaration> &list,
+    std::list<tac::TopLevel> &top_level_out)
 {
-    m_topLevel.clear();
+    m_topLevel = &top_level_out;
     for (auto &i : list)
         std::visit(*this, i);
-
     ProcessStaticSymbols();
-
-    return std::move(m_topLevel);
 }
 
-std::list<CFGBlock> TACBuilder::ConvertFunctionBlock(const std::vector<parser::BlockItem> &list)
+void TACBuilder::ConvertFunctionBlock(
+    const std::vector<parser::BlockItem> &list,
+    std::list<CFGBlock> &block_list_out)
 {
-    m_nextBlockId = 0;
-    m_blocks.clear();
+    m_blocks = &block_list_out;
+
     for (auto &i : list)
         std::visit(*this, i);
 
-    if (!m_instructions.empty()) {
-        m_blocks.push_back(CFGBlock{
-            .id = m_nextBlockId++,
-            .instructions = std::move(m_instructions)
-        });
-    }
-
-    return std::move(m_blocks);
+    // Small functions don't even have one complete block; so we create one
+    if (!m_instructions.empty())
+        CommitBlock();
+    FinalizeControlFlowGraph();
 }
 
 void TACBuilder::ProcessStaticSymbols()
@@ -1028,14 +1026,14 @@ void TACBuilder::ProcessStaticSymbols()
                     initializer.push_back(ZeroBytes{ entry.type.size(m_typeTable) });
                 else
                     initializer.push_back(MakeConstantValue(0, entry.type));
-                m_topLevel.push_back(StaticVariable{
+                m_topLevel->push_back(StaticVariable{
                     .name = name,
                     .type = entry.type,
                     .global = entry.attrs.global,
                     .list = initializer
                 });
             } else if (auto initial = std::get_if<Initial>(&entry.attrs.init)) {
-                m_topLevel.push_back(StaticVariable{
+                m_topLevel->push_back(StaticVariable{
                     .name = name,
                     .type = entry.type,
                     .global = entry.attrs.global,
@@ -1043,13 +1041,73 @@ void TACBuilder::ProcessStaticSymbols()
                 });
             }
         } else if (entry.attrs.type == IdentifierAttributes::Constant) {
-            m_topLevel.push_back(StaticConstant{
+            m_topLevel->push_back(StaticConstant{
                 .name = name,
                 .type = entry.type,
                 .static_init = entry.attrs.static_init
             });
         }
     }
+}
+
+void TACBuilder::CommitBlock()
+{
+    CFGBlock &block = m_blocks->emplace_back(CFGBlock {
+        .id = m_nextBlockId++,
+        .instructions = std::move(m_instructions)
+    });
+    if (const Label *label = std::get_if<Label>(&block.instructions.front()))
+        m_blockLabels[label->identifier] = &block;
+}
+
+void TACBuilder::FinalizeControlFlowGraph()
+{
+    // Add entry block
+    CFGBlock &first = m_blocks->front();
+    CFGBlock &entry_block = m_blocks->emplace_front(CFGBlock{
+        .id = 0
+    });
+    Connect(&entry_block, &first);
+
+    // Add exit block
+    CFGBlock &exit_block = m_blocks->emplace_back(CFGBlock{
+        .id = m_blocks->size() - 1
+    });
+
+    // Connect edges
+    for (auto it = m_blocks->begin(); it != m_blocks->end(); it++) {
+        CFGBlock *block = &*it;
+        if (block == &entry_block || block == &exit_block)
+            continue;
+
+        CFGBlock *next_block = (block->id == m_blocks->size())
+            ? &exit_block : &*std::next(it);
+
+        Instruction &last = block->instructions.back();
+        if (std::holds_alternative<Return>(last))
+            Connect(block, &exit_block);
+        else if (const Jump *j = std::get_if<Jump>(&last)) {
+            if (CFGBlock *target = m_blockLabels[j->target])
+                Connect(block, target);
+        } else if (const JumpIfZero *jz = std::get_if<JumpIfZero>(&last)) {
+            if (CFGBlock *target = m_blockLabels[jz->target])
+                Connect(block, target);
+            Connect(block, next_block);
+        } else if (const JumpIfNotZero *jnz = std::get_if<JumpIfNotZero>(&last)) {
+            if (CFGBlock *target = m_blockLabels[jnz->target])
+                Connect(block, target);
+            Connect(block, next_block);
+        } else
+            Connect(block, next_block);
+    }
+}
+
+void TACBuilder::Connect(CFGBlock *from, CFGBlock *to)
+{
+    std::cout << "Connecting " << from->id << "(" << from << ")";
+    std::cout << " to " << to->id << "(" << to << ")" << std::endl;
+    from->successors.push_back(to);
+    to->predecessors.push_back(from);
 }
 
 }; // tac
