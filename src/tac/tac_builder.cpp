@@ -927,14 +927,15 @@ ExpResult TACBuilder::operator()(const parser::FunctionDeclaration &f)
         // Avoid undefined behavior in functions where there is no return.
         // If it already had a return, this extra one won't be executed
         // and will be optimised out in later stages.
-        if (func.blocks.empty())
-            func.blocks.push_back(CFGBlock{ .id = m_nextBlockId++, .instructions = { } });
+        // After ConvertFunctionBlock(), the last CFGBlock is an empty exit block;
+        // we need the block before that one.
+        auto last_block = std::prev(func.blocks.end(), 2);
         const FunctionType *type = f.type.getAs<FunctionType>();
         assert(type);
         if (!type->ret->isScalar())
-            func.blocks.back().instructions.push_back(Return{ });
+            last_block->instructions.push_back(Return{ });
         else
-            func.blocks.back().instructions.push_back(Return{
+            last_block->instructions.push_back(Return{
                 Constant{ MakeConstantValue(0, *(type->ret)) }
             });
     }
@@ -1006,13 +1007,8 @@ void TACBuilder::ConvertFunctionBlock(
     std::list<CFGBlock> &block_list_out)
 {
     m_blocks = &block_list_out;
-
     for (auto &i : list)
         std::visit(*this, i);
-
-    // Small functions don't even have one complete block; so we create one
-    if (!m_instructions.empty())
-        CommitBlock();
     FinalizeControlFlowGraph();
 }
 
@@ -1052,7 +1048,7 @@ void TACBuilder::ProcessStaticSymbols()
 
 void TACBuilder::CommitBlock()
 {
-    CFGBlock &block = m_blocks->emplace_back(CFGBlock {
+    CFGBlock &block = m_blocks->emplace_back(CFGBlock{
         .id = m_nextBlockId++,
         .instructions = std::move(m_instructions)
     });
@@ -1062,6 +1058,10 @@ void TACBuilder::CommitBlock()
 
 void TACBuilder::FinalizeControlFlowGraph()
 {
+    // Small functions don't even have one complete block; so we create one
+    if (m_blocks->empty() || !m_instructions.empty())
+        CommitBlock();
+
     // Add entry block
     CFGBlock &first = m_blocks->front();
     CFGBlock &entry_block = m_blocks->emplace_front(CFGBlock{
@@ -1071,7 +1071,7 @@ void TACBuilder::FinalizeControlFlowGraph()
 
     // Add exit block
     CFGBlock &exit_block = m_blocks->emplace_back(CFGBlock{
-        .id = m_blocks->size() - 1
+        .id = m_blocks->size()
     });
 
     // Connect edges
@@ -1104,8 +1104,6 @@ void TACBuilder::FinalizeControlFlowGraph()
 
 void TACBuilder::Connect(CFGBlock *from, CFGBlock *to)
 {
-    std::cout << "Connecting " << from->id << "(" << from << ")";
-    std::cout << " to " << to->id << "(" << to << ")" << std::endl;
     from->successors.push_back(to);
     to->predecessors.push_back(from);
 }

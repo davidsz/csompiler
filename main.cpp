@@ -7,7 +7,6 @@
 #include "parser/parser.h"
 #include "parser/semantic_analyzer.h"
 #include "parser/type_checker.h"
-#include "tac/optimization/optimization.h"
 #include "tac/tac.h"
 #include "tac/tac_printer.h"
 #include <algorithm>
@@ -195,7 +194,7 @@ int main(int argc, char **argv)
     std::string assemblySource = assembly::from_tac(
         tacList,
         context.get());
-#if 0
+#if 1
     std::cout << std::endl << "ASM:" << std::endl;
     std::cout << assemblySource;
 #endif
