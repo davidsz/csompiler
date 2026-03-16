@@ -747,10 +747,9 @@ ExpResult TACBuilder::operator()(const parser::ArrowExpression &a)
 
 ExpResult TACBuilder::operator()(const parser::ReturnStatement &r)
 {
-    auto ret = Return{};
-    if (r.expr)
-        ret.val = VisitAndConvert(*r.expr);
-    AddInstruction(ret);
+    AddInstruction(Return{
+        .val = r.expr ? std::optional{ VisitAndConvert(*r.expr) } : std::nullopt
+    });
     return std::monostate();
 }
 
@@ -1048,12 +1047,10 @@ void TACBuilder::ProcessStaticSymbols()
 
 void TACBuilder::CommitBlock()
 {
-    CFGBlock &block = m_blocks->emplace_back(CFGBlock{
+    m_blocks->emplace_back(CFGBlock{
         .instructions = std::move(m_instructions),
         .id = m_nextBlockId++
     });
-    if (const Label *label = std::get_if<Label>(&block.instructions.front()))
-        m_blockLabels[label->identifier] = &block;
 }
 
 void TACBuilder::FinalizeControlFlowBlocks()

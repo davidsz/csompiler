@@ -126,8 +126,6 @@ private:
     // Building blocks for a Control Flow Graph
     size_t m_nextBlockId = 1;
     std::list<CFGBlock> *m_blocks;
-    // Blocks referenced by their starting labels
-    std::map<std::string, CFGBlock *> m_blockLabels;
     // Storing the instructions of the currently built CFGBlock
     std::list<Instruction> m_instructions;
 
@@ -140,10 +138,10 @@ private:
                 CommitBlock();
             m_instructions.clear();
             m_instructions.emplace_back(std::forward<T>(instruction));
-        } else if constexpr (std::same_as<T, Jump>
-            || std::same_as<T, JumpIfZero>
-            || std::same_as<T, JumpIfNotZero>
-            || std::same_as<T, Return>) {
+        } else if constexpr (std::same_as<U, Jump>
+            || std::same_as<U, JumpIfZero>
+            || std::same_as<U, JumpIfNotZero>
+            || std::same_as<U, Return>) {
             m_instructions.emplace_back(std::forward<T>(instruction));
             CommitBlock();
             m_instructions.clear();

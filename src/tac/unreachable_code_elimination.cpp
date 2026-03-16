@@ -1,5 +1,4 @@
 #include "tac_nodes.h"
-#include <algorithm>
 
 namespace tac {
 
@@ -16,19 +15,18 @@ static std::list<CFGBlock>::iterator removeBlock(
     std::list<CFGBlock> &blocks,
     std::list<CFGBlock>::iterator it)
 {
-    std::cout << "---------------------------- Removing unreachable block " << it->id << std::endl;
     CFGBlock *block = &*it;
     for (CFGBlock *pred : block->predecessors) {
-        pred->successors.remove(block);
+        pred->successors.erase(block);
         for (CFGBlock *succ : block->successors) {
             if (std::find(pred->successors.begin(), pred->successors.end(), succ) == pred->successors.end()) {
-                pred->successors.push_back(succ);
-                succ->predecessors.push_back(pred);
+                pred->successors.insert(succ);
+                succ->predecessors.insert(pred);
             }
         }
     }
     for (CFGBlock *succ : block->successors)
-        succ->predecessors.remove(block);
+        succ->predecessors.erase(block);
     return blocks.erase(it);
 }
 
@@ -37,17 +35,18 @@ void unreachableCodeElimination(std::list<CFGBlock> &blocks, bool &changed)
     std::set<CFGBlock *> visited_blocks;
     visitBlocks(&blocks.front(), visited_blocks);
     for (auto it = blocks.begin(); it != blocks.end();) {
-        if (it == blocks.begin() || it == std::prev(blocks.end())) {
-            ++it;
-            continue;
-        }
-
         // Removing unreachable blocks
-        if (it->instructions.empty() || !visited_blocks.contains(&*it)) {
+        if (!visited_blocks.contains(&*it)) {
             it = removeBlock(blocks, it);
             changed = true;
             continue;
-        }
+        } else
+            ++it;
+    }
+
+    for (auto it = blocks.begin(); it != blocks.end(); ++it) {
+        if (it == blocks.begin() || it == std::prev(blocks.end()))
+            continue;
 
         // Removing useless jumps
         Instruction &last_instruction = it->instructions.back();
@@ -55,8 +54,7 @@ void unreachableCodeElimination(std::list<CFGBlock> &blocks, bool &changed)
             || std::holds_alternative<JumpIfZero>(last_instruction)
             || std::holds_alternative<JumpIfNotZero>(last_instruction)) {
             CFGBlock *default_successor = &*std::next(it);
-            if (std::all_of(it->successors.begin(), it->successors.end(),
-                [default_successor](CFGBlock *s){ return s == default_successor; })) {
+            if (it->successors.size() == 1 && *it->successors.begin() == default_successor) {
                 it->instructions.pop_back();
                 changed = true;
             }
@@ -66,13 +64,19 @@ void unreachableCodeElimination(std::list<CFGBlock> &blocks, bool &changed)
         Instruction &first_instruction = it->instructions.front();
         if (std::holds_alternative<Label>(first_instruction)) {
             CFGBlock *default_predecessor = &*std::prev(it);
-            if (std::all_of(it->predecessors.begin(), it->predecessors.end(),
-                [default_predecessor](CFGBlock *s){ return s == default_predecessor; })) {
+            if (it->predecessors.size() == 1 && *it->predecessors.begin() == default_predecessor) {
                 it->instructions.pop_front();
                 changed = true;
             }
         }
+    }
 
+    // Removing empty blocks
+    for (auto it = blocks.begin(); it != blocks.end();) {
+        if (it == blocks.begin() || it == std::prev(blocks.end())) {
+            ++it;
+            continue;
+        }
         if (it->instructions.empty()) {
             it = removeBlock(blocks, it);
             changed = true;
