@@ -16,10 +16,18 @@ static std::list<CFGBlock>::iterator removeBlock(
     std::list<CFGBlock> &blocks,
     std::list<CFGBlock>::iterator it)
 {
+    std::cout << "---------------------------- Removing unreachable block " << it->id << std::endl;
     CFGBlock *block = &*it;
-    for (auto &pred : block->predecessors)
+    for (CFGBlock *pred : block->predecessors) {
         pred->successors.remove(block);
-    for (auto &succ : block->successors)
+        for (CFGBlock *succ : block->successors) {
+            if (std::find(pred->successors.begin(), pred->successors.end(), succ) == pred->successors.end()) {
+                pred->successors.push_back(succ);
+                succ->predecessors.push_back(pred);
+            }
+        }
+    }
+    for (CFGBlock *succ : block->successors)
         succ->predecessors.remove(block);
     return blocks.erase(it);
 }

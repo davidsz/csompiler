@@ -1,5 +1,6 @@
 #include "tac.h"
 #include "tac_builder.h"
+#include "tac_printer.h"
 
 namespace tac {
 
@@ -69,17 +70,27 @@ void apply_optimizations(
         std::visit([&](auto &obj) {
             using T = std::decay_t<decltype(obj)>;
             if constexpr (std::is_same_v<T, FunctionDefinition>) {
+                TACPrinter printer;
                 // We don't care about the phase ordering problem of optimizations,
                 // we simply run them until they can't change the program anymore.
                 bool changed = false;
                 do {
                     changed = false;
-                    if (arg.constant_folding) {
+                    if (arg.constant_folding)
                         constantFolding(obj.blocks, context, changed);
-                        rebuildControlFlowEdges(obj.blocks);
-                    }
+                    rebuildControlFlowEdges(obj.blocks);
+
+                    std::cout << std::endl << "TAC after constant folding: " << std::endl;
+                    printer.print(list);
+                    std::cout << std::endl;
+
                     if (arg.unreachable_code_elimination)
                         unreachableCodeElimination(obj.blocks, changed);
+
+                    std::cout << std::endl << "TAC after unreachable code elimination: " << std::endl;
+                    printer.print(list);
+                    std::cout << std::endl;
+
                     if (arg.copy_propagation)
                         copyPropagation(obj.blocks, changed);
                     if (arg.dead_store_elimination)

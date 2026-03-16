@@ -114,7 +114,7 @@ DEFINE_NODES_WITH_COMMON_VARIANT(TopLevel, TAC_TOP_LEVEL_LIST);
 
 class CFGBlock {
 public:
-    std::list<Instruction> instructions;
+    std::list<Instruction> instructions = {};
     std::list<CFGBlock *> predecessors = {};
     std::list<CFGBlock *> successors = {};
     size_t id;

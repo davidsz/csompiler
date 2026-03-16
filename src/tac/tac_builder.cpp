@@ -1009,7 +1009,7 @@ void TACBuilder::ConvertFunctionBlock(
     m_blocks = &block_list_out;
     for (auto &i : list)
         std::visit(*this, i);
-    FinalizeControlFlowGraph();
+    FinalizeControlFlowBlocks();
 }
 
 void TACBuilder::ProcessStaticSymbols()
@@ -1049,25 +1049,23 @@ void TACBuilder::ProcessStaticSymbols()
 void TACBuilder::CommitBlock()
 {
     CFGBlock &block = m_blocks->emplace_back(CFGBlock{
-        .id = m_nextBlockId++,
-        .instructions = std::move(m_instructions)
+        .instructions = std::move(m_instructions),
+        .id = m_nextBlockId++
     });
     if (const Label *label = std::get_if<Label>(&block.instructions.front()))
         m_blockLabels[label->identifier] = &block;
 }
 
-void TACBuilder::FinalizeControlFlowGraph()
+void TACBuilder::FinalizeControlFlowBlocks()
 {
     // Small functions don't even have one complete block; so we create one
     if (m_blocks->empty() || !m_instructions.empty())
         CommitBlock();
 
     // Add entry block
-    CFGBlock &first = m_blocks->front();
-    CFGBlock &entry_block = m_blocks->emplace_front(CFGBlock{
+    m_blocks->emplace_front(CFGBlock{
         .id = 0
     });
-    Connect(&entry_block, &first);
 
     // Extra block for the extra return instruction at the end of functions
     m_blocks->emplace_back(CFGBlock{
@@ -1075,42 +1073,9 @@ void TACBuilder::FinalizeControlFlowGraph()
     });
 
     // Add exit block
-    CFGBlock &exit_block = m_blocks->emplace_back(CFGBlock{
+    m_blocks->emplace_back(CFGBlock{
         .id = m_blocks->size()
     });
-
-    // Connect edges
-    for (auto it = m_blocks->begin(); it != m_blocks->end(); it++) {
-        CFGBlock *block = &*it;
-        if (block == &entry_block || block == &exit_block)
-            continue;
-
-        CFGBlock *next_block = (block->id == m_blocks->size())
-            ? &exit_block : &*std::next(it);
-
-        Instruction &last = block->instructions.back();
-        if (std::holds_alternative<Return>(last))
-            Connect(block, &exit_block);
-        else if (const Jump *j = std::get_if<Jump>(&last)) {
-            if (CFGBlock *target = m_blockLabels[j->target])
-                Connect(block, target);
-        } else if (const JumpIfZero *jz = std::get_if<JumpIfZero>(&last)) {
-            if (CFGBlock *target = m_blockLabels[jz->target])
-                Connect(block, target);
-            Connect(block, next_block);
-        } else if (const JumpIfNotZero *jnz = std::get_if<JumpIfNotZero>(&last)) {
-            if (CFGBlock *target = m_blockLabels[jnz->target])
-                Connect(block, target);
-            Connect(block, next_block);
-        } else
-            Connect(block, next_block);
-    }
-}
-
-void TACBuilder::Connect(CFGBlock *from, CFGBlock *to)
-{
-    from->successors.push_back(to);
-    to->predecessors.push_back(from);
 }
 
 }; // tac
