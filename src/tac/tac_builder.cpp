@@ -1069,6 +1069,11 @@ void TACBuilder::FinalizeControlFlowGraph()
     });
     Connect(&entry_block, &first);
 
+    // Extra block for the extra return instruction at the end of functions
+    m_blocks->emplace_back(CFGBlock{
+        .id = m_blocks->size()
+    });
+
     // Add exit block
     CFGBlock &exit_block = m_blocks->emplace_back(CFGBlock{
         .id = m_blocks->size()
