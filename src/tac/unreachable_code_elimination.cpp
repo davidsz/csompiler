@@ -1,4 +1,5 @@
 #include "tac_nodes.h"
+#include <algorithm>
 
 namespace tac {
 
