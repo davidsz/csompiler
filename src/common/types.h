@@ -107,9 +107,10 @@ struct VoidType {
     bool operator==(const VoidType &other) const;
 };
 
-struct StructType {
+struct AggregateType {
     std::string tag;
-    bool operator==(const StructType &other) const;
+    bool is_union = false;
+    bool operator==(const AggregateType &other) const;
 };
 
 using TypeInfo = std::variant<
@@ -119,7 +120,7 @@ using TypeInfo = std::variant<
     PointerType,
     ArrayType,
     VoidType,
-    StructType
+    AggregateType
 >;
 
 struct Type {
@@ -137,7 +138,7 @@ struct Type {
     bool isVoid() const;
     bool isVoidPointer() const;
     bool isArray() const;
-    bool isStruct() const;
+    bool isAggregate() const;
     bool isInteger() const;
     bool isComplete(const TypeTable *) const;
     bool isCompletePointer(const TypeTable *) const;

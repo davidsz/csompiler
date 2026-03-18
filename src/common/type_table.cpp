@@ -2,11 +2,11 @@
 #include <algorithm>
 #include <iostream>
 
-const TypeTable::StructMemberEntry *
-TypeTable::StructEntry::find(const std::string &name) const
+const TypeTable::AggregateMemberEntry *
+TypeTable::AggregateEntry::find(const std::string &name) const
 {
     auto it = std::find_if(members.begin(), members.end(),
-        [&name](const StructMemberEntry &m) -> bool {
+        [&name](const AggregateMemberEntry &m) -> bool {
             return m.name == name;
         }
     );
@@ -15,12 +15,12 @@ TypeTable::StructEntry::find(const std::string &name) const
     return &*it;
 }
 
-void TypeTable::insert(const std::string &tag, const TypeTable::StructEntry &entry)
+void TypeTable::insert(const std::string &tag, const TypeTable::AggregateEntry &entry)
 {
     m_map[tag] = entry;
 }
 
-const TypeTable::StructEntry *TypeTable::get(const std::string &tag) const
+const TypeTable::AggregateEntry *TypeTable::get(const std::string &tag) const
 {
     auto it = m_map.find(tag);
     if (it != m_map.end())
@@ -36,7 +36,7 @@ bool TypeTable::contains(const std::string &tag) const
 void TypeTable::print() const
 {
     for (auto &[tag, entry] : m_map) {
-        std::cout << "Struct " << tag << "(size: " << entry.size
+        std::cout << "Aggregate " << tag << "(size: " << entry.size
                   << ", alignment: " << entry.alignment << ") {" << std::endl;
         for (auto &member : entry.members)
             std::cout << "    " << member.name << " - " << member.type << std::endl;

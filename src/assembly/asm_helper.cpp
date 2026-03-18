@@ -4,19 +4,19 @@
 
 namespace assembly {
 
-static std::vector<Type> flattenTypes(const TypeTable::StructEntry *entry, const TypeTable *type_table)
+static std::vector<Type> flattenTypes(const TypeTable::AggregateEntry *entry, const TypeTable *type_table)
 {
     std::vector<Type> ret;
     for (auto &m : entry->members) {
-        if (const StructType *struct_type = m.type.getAs<StructType>()) {
-            auto member_entry = type_table->get(struct_type->tag);
+        if (const AggregateType *aggr_type = m.type.getAs<AggregateType>()) {
+            auto member_entry = type_table->get(aggr_type->tag);
             assert(member_entry);
             auto nested = flattenTypes(member_entry, type_table);
             ret.insert(ret.end(), nested.begin(), nested.end());
         } else if (const ArrayType *array_type = m.type.getAs<ArrayType>()) {
             for (size_t i = 0; i < array_type->count; i++) {
-                if (const StructType *nested_struct = array_type->element->getAs<StructType>()) {
-                    auto member_entry = type_table->get(nested_struct->tag);
+                if (const AggregateType *nested_aggr = array_type->element->getAs<AggregateType>()) {
+                    auto member_entry = type_table->get(nested_aggr->tag);
                     assert(member_entry);
                     auto nested = flattenTypes(member_entry, type_table);
                     ret.insert(ret.end(), nested.begin(), nested.end());
@@ -31,17 +31,17 @@ static std::vector<Type> flattenTypes(const TypeTable::StructEntry *entry, const
     return ret;
 }
 
-std::vector<StructClass> classifyStruct(const TypeTable::StructEntry *entry, const TypeTable *type_table)
+std::vector<AggregateClass> classifyAggregate(const TypeTable::AggregateEntry *entry, const TypeTable *type_table)
 {
     if (entry->members.empty()) {
         assert(false);
         return {};
     }
 
-    // The struct can't fit on two registers
+    // The struct/union can't fit on two registers
     int size = static_cast<int>(entry->size);
     if (size > 16) {
-        std::vector<StructClass> ret;
+        std::vector<AggregateClass> ret;
         while (size > 0) {
             ret.push_back(MEMORY);
             size -= 8;

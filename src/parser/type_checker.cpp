@@ -224,21 +224,21 @@ TypeChecker::ToConstantValueList(const Initializer *init, const Type &type)
         return ret;
     }
 
-    // Struct
-    if (const StructType *struct_type = type.getAs<StructType>()) {
+    // Aggregate types
+    if (const AggregateType *aggr_type = type.getAs<AggregateType>()) {
         if (std::holds_alternative<SingleInit>(*init))
-            Abort("Can't initialize a struct with a single initializer");
+            Abort("Can't initialize an aggregate with a single initializer");
         const CompoundInit *compound = std::get_if<CompoundInit>(init);
         assert(compound);
 
-        auto entry = m_typeTable->get(struct_type->tag);
+        auto entry = m_typeTable->get(aggr_type->tag);
         if (entry->members.size() < compound->list.size())
-            Abort("Too many initializers for the struct.");
+            Abort("Too many initializers for the aggregate type.");
 
         size_t i = 0;
         size_t current_offset = 0;
         for (auto &member_init : compound->list) {
-            const TypeTable::StructMemberEntry &member = entry->members[i];
+            const TypeTable::AggregateMemberEntry &member = entry->members[i];
             // Insert member padding if necessary
             if (member.offset != current_offset)
                 ret.push_back(ZeroBytes{ member.offset - current_offset });
@@ -251,7 +251,7 @@ TypeChecker::ToConstantValueList(const Initializer *init, const Type &type)
             current_offset = member.offset + member_size;
             i++;
         }
-        // Pad the whole struct
+        // Pad the whole aggregate
         if (current_offset != entry->size)
             ret.push_back(ZeroBytes{ entry->size - current_offset });
         return ret;
@@ -263,7 +263,7 @@ TypeChecker::ToConstantValueList(const Initializer *init, const Type &type)
         if (auto c = std::get_if<ConstantExpression>(single->expr.get()))
             ret.push_back(ConvertValue(c->value, type));
         else if (std::holds_alternative<StringExpression>(*single->expr)) {
-            // Initializing a char* member of a static struct
+            // Initializing a char* member of a static aggregate
             // Non-member static pointers are handled directly by InitializeStaticPointer()
             InitialValue i = InitializeStaticPointer(init, type);
             Initial *initial = std::get_if<Initial>(&i);
@@ -295,10 +295,10 @@ Type TypeChecker::VisitAndConvert(std::unique_ptr<Expression> &expr)
         expr = std::make_unique<Expression>(std::move(addr));
         return new_type;
     }
-    if (const StructType *struct_type = type.getAs<StructType>()) {
-        const std::string &tag = struct_type->tag;
+    if (const AggregateType *aggr_type = type.getAs<AggregateType>()) {
+        const std::string &tag = aggr_type->tag;
         if (!m_typeTable->contains(tag))
-            Abort(std::format("Invalid use of incomplete struct type '{}'", tag));
+            Abort(std::format("Invalid use of incomplete aggregate type '{}'", tag));
         return type;
     }
     return type;
@@ -617,9 +617,9 @@ Type TypeChecker::operator()(ConditionalExpression &c)
             common_type = *cpt;
         else
             Abort("Expressions have incompatible pointer types");
-    } else if (true_type.isStruct() || false_type.isStruct()) {
+    } else if (true_type.isAggregate() || false_type.isAggregate()) {
         if (true_type != false_type)
-            Abort("Expressions have incompatible struct types");
+            Abort("Expressions have incompatible aggregate types");
         c.type = true_type;
         return c.type;
     } else
@@ -712,14 +712,14 @@ Type TypeChecker::operator()(SizeOfTypeExpression &s)
 Type TypeChecker::operator()(DotExpression &d)
 {
     Type type = VisitAndConvert(d.expr);
-    const StructType *struct_type = type.getAs<StructType>();
-    if (!struct_type)
-        Abort("Can't access member of a non-struct type");
-    auto entry = m_typeTable->get(struct_type->tag);
+    const AggregateType *aggr_type = type.getAs<AggregateType>();
+    if (!aggr_type)
+        Abort("Can't access member of a non-aggregate type");
+    auto entry = m_typeTable->get(aggr_type->tag);
     if (auto member = entry->find(d.identifier))
         d.type = member->type;
     else
-        Abort(std::format("Member '{}' not found in struct '{}'", d.identifier, struct_type->tag));
+        Abort(std::format("Member '{}' not found in aggregate '{}'", d.identifier, aggr_type->tag));
     return d.type;
 }
 
@@ -729,14 +729,14 @@ Type TypeChecker::operator()(ArrowExpression &a)
     const PointerType *pointer_type = type.getAs<PointerType>();
     if (!pointer_type)
         Abort("Can't access member of a non-pointer type");
-    const StructType *struct_type = pointer_type->referenced->getAs<StructType>();
-    if (!struct_type)
-        Abort("Can't access member of a non-struct type");
-    auto entry = m_typeTable->get(struct_type->tag);
+    const AggregateType *aggr_type = pointer_type->referenced->getAs<AggregateType>();
+    if (!aggr_type)
+        Abort("Can't access member of a non-aggregate type");
+    auto entry = m_typeTable->get(aggr_type->tag);
     if (auto member = entry->find(a.identifier))
         a.type = member->type;
     else
-        Abort(std::format("Member '{}' not found in struct '{}'", a.identifier, struct_type->tag));
+        Abort(std::format("Member '{}' not found in aggregate '{}'", a.identifier, aggr_type->tag));
     return a.type;
 }
 
@@ -971,7 +971,7 @@ Type TypeChecker::operator()(VariableDeclaration &v)
     // v.type was already determined during the AST build
     if (v.type.isVoid())
         Abort("Can't declare a variable of type void");
-    // Accept a variable declaration with an incomplete structure type
+    // Accept a variable declaration with an incomplete aggregate type
     // only if it has the extern storage class and no initializer.
     if (!v.type.isComplete(m_typeTable) && (v.init || v.storage != StorageExtern))
         Abort("Can't initialize an incomplete variable");
@@ -1089,7 +1089,7 @@ Type TypeChecker::operator()(AggregateTypeDeclaration &a)
         Abort(std::format("Redeclaration of aggregate type '{}'", a.tag));
 
     // Validation; calculation of sizes, alignments, offsets
-    TypeTable::StructEntry entry;
+    TypeTable::AggregateEntry entry;
     size_t aggregate_size = 0;
     size_t aggregate_alignment = 0;
     std::unordered_set<std::string> member_names;
@@ -1103,7 +1103,7 @@ Type TypeChecker::operator()(AggregateTypeDeclaration &a)
 
         size_t member_alignment = m.type.alignment(m_typeTable);
         size_t member_offset = roundUp(aggregate_size, member_alignment);
-        entry.members.emplace_back(TypeTable::StructMemberEntry{
+        entry.members.emplace_back(TypeTable::AggregateMemberEntry{
             .name = m.name,
             .type = m.type,
             .offset = member_offset
@@ -1167,10 +1167,10 @@ Type TypeChecker::operator()(CompoundInit &c)
         }
         m_targetTypeForInitializer = outer_target;
         c.type = outer_target;
-    } else if (const StructType *struct_type = m_targetTypeForInitializer.getAs<StructType>()) {
-        auto entry = m_typeTable->get(struct_type->tag);
+    } else if (const AggregateType *aggr_type = m_targetTypeForInitializer.getAs<AggregateType>()) {
+        auto entry = m_typeTable->get(aggr_type->tag);
         if (c.list.size() > entry->members.size())
-            Abort("Too many initializers for the struct.");
+            Abort("Too many initializers for the aggregate type.");
 
         Type outer_target = m_targetTypeForInitializer;
         size_t i = 0;

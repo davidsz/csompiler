@@ -85,16 +85,16 @@ static std::vector<WordType> getMemoryFragments(size_t size)
     return ret;
 }
 
-static AssemblyType getStructPartType(size_t offset, size_t struct_size)
+static AssemblyType getAggregatePartType(size_t offset, size_t size)
 {
-    size_t byte_from_end = struct_size - offset;
+    size_t byte_from_end = size - offset;
     if (byte_from_end >= 8)
         return AssemblyType{ Quadword };
     if (byte_from_end == 4)
         return AssemblyType{ Longword };
     if (byte_from_end == 1)
         return AssemblyType{ Byte };
-    // Irregular size struct; "not word-aligned tail fragment"
+    // Irregular size struct/union; "not word-aligned tail fragment"
     return AssemblyType{ ByteArray{ byte_from_end, 8 } };
 }
 
@@ -117,8 +117,8 @@ static ClassifiedParams classifyParameters(
     for (const auto &p : parameters) {
         Operand operand = getOperand(p);
         Type type = getType(p);
-        const StructType *struct_type = type.getAs<StructType>();
-        if (!struct_type) {
+        const AggregateType *aggr_type = type.getAs<AggregateType>();
+        if (!aggr_type) {
             WordType word_type = type.wordType();
             if (word_type == WordType::Doubleword) {
                 if (result.double_regs.size() < 8)
@@ -143,10 +143,10 @@ static ClassifiedParams classifyParameters(
             continue;
         }
 
-        // Parameter is a struct
-        size_t struct_size = type.size(typeTable);
-        const TypeTable::StructEntry *entry = typeTable->get(struct_type->tag);
-        std::vector<StructClass> classes = classifyStruct(entry, typeTable);
+        // Parameter is an aggregate type
+        size_t aggregate_size = type.size(typeTable);
+        const TypeTable::AggregateEntry *entry = typeTable->get(aggr_type->tag);
+        std::vector<AggregateClass> classes = classifyAggregate(entry, typeTable);
         bool use_stack = true;
         if (classes.front() != MEMORY) {
             std::vector<std::pair<Operand, AssemblyType>> tentative_ints;
@@ -157,7 +157,7 @@ static ClassifiedParams classifyParameters(
                 if (c == SSE)
                     tentative_doubles.push_back(pseudo);
                 else {
-                    AssemblyType part_type = getStructPartType(offset, struct_size);
+                    AssemblyType part_type = getAggregatePartType(offset, aggregate_size);
                     tentative_ints.push_back({ pseudo, part_type });
                 }
                 offset += 8;
@@ -183,7 +183,7 @@ static ClassifiedParams classifyParameters(
                 if (c == SSE)
                     part_type = AssemblyType{ WordType::Doubleword };
                 else
-                    part_type = getStructPartType(offset, struct_size);
+                    part_type = getAggregatePartType(offset, aggregate_size);
                 result.stack.push_back({ pseudo, part_type });
                 offset += 8;
             }
@@ -209,11 +209,11 @@ static ClassifiedReturn classifyReturnValue(
     else if (type.isScalar())
         ret.int_values.push_back({ operand, AssemblyType{ type.wordType() } });
     else {
-        const StructType *struct_type = type.getAs<StructType>();
-        assert(struct_type);
-        size_t struct_size = type.size(typeTable);
-        const TypeTable::StructEntry *entry = typeTable->get(struct_type->tag);
-        auto classes = classifyStruct(entry, typeTable);
+        const AggregateType *aggr_type = type.getAs<AggregateType>();
+        assert(aggr_type);
+        size_t aggregate_size = type.size(typeTable);
+        const TypeTable::AggregateEntry *entry = typeTable->get(aggr_type->tag);
+        auto classes = classifyAggregate(entry, typeTable);
         if (classes.front() == MEMORY)
             ret.in_memory = true;
         else {
@@ -223,7 +223,7 @@ static ClassifiedReturn classifyReturnValue(
                 if (c == SSE)
                     ret.double_values.push_back(op);
                 else if (c == INTEGER) {
-                    AssemblyType part_type = getStructPartType(offset, struct_size);
+                    AssemblyType part_type = getAggregatePartType(offset, aggregate_size);
                     ret.int_values.push_back({ op, part_type });
                 } else if (c == MEMORY)
                     assert(false);
@@ -263,15 +263,15 @@ WordType ASMBuilder::GetWordType(const tac::Value &value)
     return GetType(value).wordType();
 }
 
-const TypeTable::StructEntry *ASMBuilder::GetStructEntry(const std::string *name)
+const TypeTable::AggregateEntry *ASMBuilder::GetAggregateEntry(const std::string *name)
 {
     if (!name)
         return nullptr;
     Type type = m_symbolTable->getType(*name);
-    const StructType *struct_type = type.getAs<StructType>();
-    if (!struct_type)
+    const AggregateType *aggr_type = type.getAs<AggregateType>();
+    if (!aggr_type)
         return nullptr;
-    return m_typeTable->get(struct_type->tag);
+    return m_typeTable->get(aggr_type->tag);
 }
 
 void ASMBuilder::Comment(std::list<Instruction> &i, const std::string &text)
@@ -464,7 +464,7 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
 Operand ASMBuilder::operator()(const tac::Copy &c)
 {
     const std::string *src_name = getString(c.src);
-    if (auto entry = GetStructEntry(src_name)) {
+    if (auto entry = GetAggregateEntry(src_name)) {
         CopyBytes(
             m_instructions,
             PseudoAggregate{ *src_name, 0 },
@@ -501,9 +501,9 @@ Operand ASMBuilder::operator()(const tac::Load &l)
         Quadword
     });
 
-    // Struct: copy chunks of data stored at offsets from the address in RAX
+    // Struct/union: copy chunks of data stored at offsets from the address in RAX
     const std::string *dst_name = getString(l.dst);
-    if (auto entry = GetStructEntry(dst_name)) {
+    if (auto entry = GetAggregateEntry(dst_name)) {
         CopyBytes(
             m_instructions,
             Memory{ AX, 0 },
@@ -530,9 +530,9 @@ Operand ASMBuilder::operator()(const tac::Store &s)
         Quadword
     });
 
-    // Struct: copy chunks of data stored to the address in RAX
+    // Struct/union: copy chunks of data stored to the address in RAX
     const std::string *src_name = getString(s.src);
-    if (auto entry = GetStructEntry(src_name)) {
+    if (auto entry = GetAggregateEntry(src_name)) {
         CopyBytes(
             m_instructions,
             PseudoAggregate{ *src_name, 0 },
@@ -943,7 +943,7 @@ Operand ASMBuilder::operator()(const tac::AddPtr &a)
 Operand ASMBuilder::operator()(const tac::CopyToOffset &c)
 {
     const std::string *src_name = getString(c.src);
-    if (auto entry = GetStructEntry(src_name)) {
+    if (auto entry = GetAggregateEntry(src_name)) {
         CopyBytes(
             m_instructions,
             PseudoAggregate{ *src_name, 0 },
@@ -963,7 +963,7 @@ Operand ASMBuilder::operator()(const tac::CopyToOffset &c)
 Operand ASMBuilder::operator()(const tac::CopyFromOffset &c)
 {
     const std::string *dst_name = getString(c.dst);
-    if (auto entry = GetStructEntry(dst_name)) {
+    if (auto entry = GetAggregateEntry(dst_name)) {
         CopyBytes(
             m_instructions,
             PseudoAggregate{ c.src_identifier, c.offset },
@@ -993,7 +993,7 @@ Operand ASMBuilder::operator()(const tac::Constant &c)
 Operand ASMBuilder::operator()(const tac::Variant &v)
 {
     auto entry = m_symbolTable->get(v.name);
-    if (entry->type.isArray() || entry->type.isStruct())
+    if (entry->type.isArray() || entry->type.isAggregate())
         return PseudoAggregate{ v.name, 0 };
     else
         return Pseudo{ v.name };
@@ -1007,9 +1007,9 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
 
     bool return_in_memory = false;
     const FunctionType *func_type = m_symbolTable->getType(f.name).getAs<FunctionType>();
-    if (const StructType *struct_type = func_type->ret->getAs<StructType>()) {
-        auto struct_entry = m_typeTable->get(struct_type->tag);
-        std::vector<StructClass> classes = classifyStruct(struct_entry, m_typeTable);
+    if (const AggregateType *aggr_type = func_type->ret->getAs<AggregateType>()) {
+        auto aggr_entry = m_typeTable->get(aggr_type->tag);
+        std::vector<AggregateClass> classes = classifyAggregate(aggr_entry, m_typeTable);
         return_in_memory = (classes.front() == MEMORY);
     }
 

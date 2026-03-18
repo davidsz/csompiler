@@ -21,9 +21,9 @@ ASMSymbolTable::ASMSymbolTable(
             });
         } else if (const FunctionType *func_type = entry.type.getAs<FunctionType>()) {
             bool return_on_stack = false;
-            if (const StructType *struct_type = func_type->ret->getAs<StructType>()) {
-                if (auto struct_entry = type_table->get(struct_type->tag)) {
-                    std::vector<StructClass> classes = classifyStruct(struct_entry, type_table);
+            if (const AggregateType *aggr_type = func_type->ret->getAs<AggregateType>()) {
+                if (auto aggr_entry = type_table->get(aggr_type->tag)) {
+                    std::vector<AggregateClass> classes = classifyAggregate(aggr_entry, type_table);
                     return_on_stack = (classes.front() == MEMORY);
                 }
             }
@@ -46,10 +46,10 @@ ASMSymbolTable::ASMSymbolTable(
                     || entry.attrs.type == IdentifierAttributes::Constant,
                 .is_constant = entry.attrs.type == IdentifierAttributes::Constant
             });
-        } else if (const auto *struct_type = entry.type.getAs<StructType>()) {
+        } else if (const AggregateType *aggr_type = entry.type.getAs<AggregateType>()) {
             AssemblyType type = AssemblyType{ ByteArray{ 0, 0} }; // Dummy type
-            if (auto struct_entry = type_table->get(struct_type->tag))
-                type = AssemblyType{ ByteArray{ struct_entry->size, struct_entry->alignment } };
+            if (auto aggr_entry = type_table->get(aggr_type->tag))
+                type = AssemblyType{ ByteArray{ aggr_entry->size, aggr_entry->alignment } };
             insert(name, ObjEntry{
                 .type = type,
                 .is_static = entry.attrs.type == IdentifierAttributes::Static

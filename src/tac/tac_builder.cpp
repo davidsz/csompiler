@@ -115,8 +115,8 @@ void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, size_t 
         return;
     }
 
-    if (const StructType *struct_type = type.getAs<StructType>()) {
-        auto entry = m_typeTable->get(struct_type->tag);
+    if (const AggregateType *aggr_type = type.getAs<AggregateType>()) {
+        auto entry = m_typeTable->get(aggr_type->tag);
         for (auto &member : entry->members) {
             size_t member_offset = offset + member.offset;
             EmitZeroInit(member.type, base, member_offset);
@@ -210,8 +210,8 @@ void TACBuilder::EmitRuntimeInit(
         return;
     }
 
-    if (const StructType *struct_type = type.getAs<StructType>()) {
-        auto entry = m_typeTable->get(struct_type->tag);
+    if (const AggregateType *aggr_type = type.getAs<AggregateType>()) {
+        auto entry = m_typeTable->get(aggr_type->tag);
 
         // Single (struct) init for a struct type
         if (auto single = std::get_if<parser::SingleInit>(init)) {
@@ -227,7 +227,7 @@ void TACBuilder::EmitRuntimeInit(
         assert(compound);
         size_t i = 0;
         for (; i < compound->list.size() && i < entry->members.size(); i++) {
-            const TypeTable::StructMemberEntry &member = entry->members[i];
+            const TypeTable::AggregateMemberEntry &member = entry->members[i];
             size_t member_offset = offset + member.offset;
             EmitRuntimeInit(
                 compound->list[i].get(),
@@ -238,7 +238,7 @@ void TACBuilder::EmitRuntimeInit(
         }
 
         for (; i < entry->members.size(); ++i) {
-            const TypeTable::StructMemberEntry &member = entry->members[i];
+            const TypeTable::AggregateMemberEntry &member = entry->members[i];
             size_t member_offset = offset + member.offset;
             EmitZeroInit(member.type, base, member_offset);
         }
@@ -696,9 +696,9 @@ ExpResult TACBuilder::operator()(const parser::SizeOfTypeExpression &s)
 ExpResult TACBuilder::operator()(const parser::DotExpression &d)
 {
     Type type = GetExpressionType(*d.expr);
-    const StructType *struct_type = type.getAs<StructType>();
-    assert(struct_type);
-    auto struct_entry = m_typeTable->get(struct_type->tag);
+    const AggregateType *aggr_type = type.getAs<AggregateType>();
+    assert(aggr_type);
+    auto struct_entry = m_typeTable->get(aggr_type->tag);
     size_t member_offset = struct_entry->find(d.identifier)->offset;
     ExpResult inner_object = std::visit(*this, *d.expr);
     if (PlainOperand *plain = std::get_if<PlainOperand>(&inner_object)) {
@@ -727,10 +727,10 @@ ExpResult TACBuilder::operator()(const parser::ArrowExpression &a)
 {
     const PointerType *pointer_type = GetExpressionType(*a.expr).getAs<PointerType>();
     assert(pointer_type);
-    const StructType *struct_type = pointer_type->referenced->getAs<StructType>();
-    assert(struct_type);
+    const AggregateType *aggr_type = pointer_type->referenced->getAs<AggregateType>();
+    assert(aggr_type);
     // TODO: If member_offset is 0, we don't need the AddPtr
-    auto struct_entry = m_typeTable->get(struct_type->tag);
+    auto struct_entry = m_typeTable->get(aggr_type->tag);
     size_t member_offset = struct_entry->find(a.identifier)->offset;
     Value base_ptr = VisitAndConvert(*a.expr);
     Variant dst_ptr = CreateTemporaryVariable(
@@ -1017,7 +1017,7 @@ void TACBuilder::ProcessStaticSymbols()
         if (entry.attrs.type == IdentifierAttributes::Static) {
             if (std::holds_alternative<Tentative>(entry.attrs.init)) {
                 std::vector<ConstantValue> initializer;
-                if (entry.type.isArray() || entry.type.isStruct())
+                if (entry.type.isArray() || entry.type.isAggregate())
                     initializer.push_back(ZeroBytes{ entry.type.size(m_typeTable) });
                 else
                     initializer.push_back(MakeConstantValue(0, entry.type));

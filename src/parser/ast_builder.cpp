@@ -932,11 +932,11 @@ std::pair<StorageClass, Type> ASTBuilder::ParseTypeSpecifierList()
         if (next->isIdentifier() && afterStructKeyword) {
             if (!type_specifiers.empty())
                 Abort("Can't use 'struct' with other type specifiers.");
-            type = Type{ StructType{ Consume(TokenType::Identifier) } };
+            type = Type{ AggregateType{ Consume(TokenType::Identifier), false } };
         } else if (next->isIdentifier() && afterUnionKeyword) {
             if (!type_specifiers.empty())
                 Abort("Can't use 'union' with other type specifiers.");
-            type = Type{ StructType{ Consume(TokenType::Identifier) } };
+            type = Type{ AggregateType{ Consume(TokenType::Identifier), true } };
         }
         break;
     }
@@ -983,11 +983,11 @@ Type ASTBuilder::ParseTypes()
         if (next->isIdentifier() && afterStructKeyword) {
             if (!type_specifiers.empty())
                 Abort("Can't use 'struct' with other type specifiers.");
-            return Type{ StructType{ Consume(TokenType::Identifier) } };
+            return Type{ AggregateType{ Consume(TokenType::Identifier), false } };
         } else if (next->isIdentifier() && afterUnionKeyword) {
             if (!type_specifiers.empty())
                 Abort("Can't use 'union' with other type specifiers.");
-            return Type{ StructType{ Consume(TokenType::Identifier) } };
+            return Type{ AggregateType{ Consume(TokenType::Identifier), true } };
         }
         break;
     }

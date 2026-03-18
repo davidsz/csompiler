@@ -7,24 +7,24 @@
 
 class TypeTable {
 public:
-    struct StructMemberEntry {
+    struct AggregateMemberEntry {
         std::string name;
         Type type;
         size_t offset;
     };
-    struct StructEntry {
+    struct AggregateEntry {
         size_t size;
         size_t alignment;
-        std::vector<StructMemberEntry> members;
+        std::vector<AggregateMemberEntry> members;
 
-        const StructMemberEntry *find(const std::string &name) const;
+        const AggregateMemberEntry *find(const std::string &name) const;
     };
 
-    void insert(const std::string &tag, const StructEntry &entry);
-    const StructEntry *get(const std::string &tag) const;
+    void insert(const std::string &tag, const AggregateEntry &entry);
+    const AggregateEntry *get(const std::string &tag) const;
     bool contains(const std::string &tag) const;
     void print() const;
 
 private:
-    std::unordered_map<std::string, StructEntry> m_map;
+    std::unordered_map<std::string, AggregateEntry> m_map;
 };

@@ -59,11 +59,11 @@ std::optional<std::string> SemanticAnalyzer::lookupAggregateTag(const std::strin
 // Call it only in the IDENTIFIER_RESOLUTION stage
 void SemanticAnalyzer::ValidateTypeSpecifier(Type &type)
 {
-    if (auto struct_type = type.getAs<StructType>()) {
-        if (auto unique_tag = lookupAggregateTag(struct_type->tag))
-            struct_type->tag = *unique_tag;
+    if (auto aggr_type = type.getAs<AggregateType>()) {
+        if (auto unique_tag = lookupAggregateTag(aggr_type->tag))
+            aggr_type->tag = *unique_tag;
         else
-            Abort(std::format("Undeclared aggregate type '{}'", struct_type->tag));
+            Abort(std::format("Undeclared aggregate type '{}'", aggr_type->tag));
     } else if (auto pointer_type = type.getAs<PointerType>())
         ValidateTypeSpecifier(*pointer_type->referenced);
     else if (auto array_type = type.getAs<ArrayType>())

@@ -173,7 +173,7 @@ bool VoidType::operator==(const VoidType &) const
     return true;
 }
 
-bool StructType::operator==(const StructType &other) const
+bool AggregateType::operator==(const AggregateType &other) const
 {
     return tag == other.tag;
 }
@@ -212,9 +212,9 @@ bool Type::isArray() const
     return std::holds_alternative<ArrayType>(t);
 }
 
-bool Type::isStruct() const
+bool Type::isAggregate() const
 {
-    return std::holds_alternative<StructType>(t);
+    return std::holds_alternative<AggregateType>(t);
 }
 
 bool Type::isInteger() const
@@ -241,8 +241,8 @@ bool Type::isComplete(const TypeTable *table) const
 {
     if (isVoid())
         return false;
-    if (auto struct_type = getAs<StructType>())
-        return table->contains(struct_type->tag);
+    if (auto aggr_type = getAs<AggregateType>())
+        return table->contains(aggr_type->tag);
     return true;
 }
 
@@ -255,7 +255,7 @@ bool Type::isCompletePointer(const TypeTable *table) const
 
 bool Type::isScalar() const
 {
-    return !isVoid() && !isArray() && !isFunction() && !isStruct();
+    return !isVoid() && !isArray() && !isFunction() && !isAggregate();
 }
 
 bool Type::isSigned() const
@@ -329,9 +329,9 @@ size_t Type::size(const TypeTable *table) const
         return 8;
     if (const ArrayType *arr = std::get_if<ArrayType>(&t))
         return arr->element->size(table) * arr->count;
-    if (const StructType *struct_type = std::get_if<StructType>(&t)) {
-        auto entry = table->get(struct_type->tag);
-        // Handle tentative structs on higher levels
+    if (const AggregateType *aggr_type = std::get_if<AggregateType>(&t)) {
+        auto entry = table->get(aggr_type->tag);
+        // Handle tentative aggregates on higher levels
         assert(entry);
         return entry->size;
     }
@@ -358,9 +358,9 @@ size_t Type::alignment(const TypeTable *table) const
 {
     if (auto array_type = std::get_if<ArrayType>(&t))
         return array_type->element->alignment(table);
-    if (auto struct_type = std::get_if<StructType>(&t)) {
-        auto entry = table->get(struct_type->tag);
-        assert(entry); // Incomplete struct
+    if (auto aggr_type = std::get_if<AggregateType>(&t)) {
+        auto entry = table->get(aggr_type->tag);
+        assert(entry); // Incomplete aggregate type
         return entry->alignment;
     }
     return size(table);
@@ -444,9 +444,12 @@ std::ostream &operator<<(std::ostream &os, const Type &type)
             os << "ArrayType(" << *obj.element << ")[" << obj.count << "]";
         else if constexpr (std::is_same_v<T, VoidType>)
             os << "VoidType";
-        else if constexpr (std::is_same_v<T, StructType>)
-            os << "StructType(" << obj.tag << ")";
-        else
+        else if constexpr (std::is_same_v<T, AggregateType>) {
+            if (obj.is_union)
+                os << "Union(" << obj.tag << ")";
+            else
+                os << "Struct(" << obj.tag << ")";
+        } else
             os << "typeless";
     }, type.t);
     return os;
