@@ -22,9 +22,10 @@ namespace parser {
         Type type; \
         std::string identifier; \
         std::unique_ptr<Initializer> init;) \
-    X(StructDeclaration, \
+    X(AggregateTypeDeclaration, \
         std::string tag; \
-        std::vector<MemberDeclaration> members;)
+        std::vector<MemberDeclaration> members; \
+        bool is_union;)
 
 struct MemberDeclaration {
     Type type;

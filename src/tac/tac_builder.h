@@ -59,7 +59,7 @@ public:
     ExpResult operator()(const parser::DefaultStatement &d) override;
     ExpResult operator()(const parser::FunctionDeclaration &f) override;
     ExpResult operator()(const parser::VariableDeclaration &v) override;
-    ExpResult operator()(const parser::StructDeclaration &s) override;
+    ExpResult operator()(const parser::AggregateTypeDeclaration &a) override;
     ExpResult operator()(const parser::SingleInit &s) override;
     ExpResult operator()(const parser::CompoundInit &c) override;
     ExpResult operator()(std::monostate) override;

@@ -602,31 +602,33 @@ Declaration ASTBuilder::ParseDeclaration(bool only_variable)
     LOG("ParseDeclaration");
     auto next = Peek();
 
-    // Struct type declaration; will handle struct type variables below
-    if (next->isKeyword() && next->value() == "struct"
+    // Aggregate type declaration (description of a struct or a union type)
+    if (next->isKeyword() && (next->value() == "struct" || next->value() == "union")
         && Peek(1)->isIdentifier()
         && ((Peek(2)->isPunctator() && Peek(2)->value() == "{")
         || (Peek(2)->isPunctator() && Peek(2)->value() == ";"))) {
         if (only_variable)
-            Abort("Struct declaration is not allowed");
-        Consume(TokenType::Keyword, "struct");
-        auto decl = StructDeclaration{
+            Abort("Aggregate type declaration is not allowed");
+        bool is_union_declaration = next->value() == "union";
+        Consume(TokenType::Keyword, is_union_declaration ? "union" : "struct");
+        auto decl = AggregateTypeDeclaration{
             .tag = Consume(TokenType::Identifier),
             .members = {},
+            .is_union = is_union_declaration
         };
 
         next = Peek();
-        // struct s;
+        // "struct s;" or "union u;"
         if (next->isPunctator() && next->value() == ";") {
             Consume(TokenType::Punctator, ";");
             return decl;
         }
 
-        // struct s { ... };
+        // "struct s { ... };" or "union u { ... };"
         Consume(TokenType::Punctator, "{");
         next = Peek();
         do {
-            // Struct member declarations
+            // Member declarations
             // No storage classes and don't accept function declarations for now
             Type base_type = ParseTypes();
             Declarator declarator = ParseDeclarator();
@@ -897,10 +899,13 @@ std::pair<StorageClass, Type> ASTBuilder::ParseTypeSpecifierList()
     std::vector<StorageClass> storage_classes;
     std::optional<lexer::Token> next;
     bool afterStructKeyword = false;
+    bool afterUnionKeyword = false;
     while ((next = Peek())) {
         if (auto storage = GetStorageClass(next->value())) {
             if (afterStructKeyword)
                 Abort("Expected struct tag after 'struct' keyword");
+            else if (afterUnionKeyword)
+                Abort("Expected union tag after 'union' keyword");
             storage_classes.push_back(*storage);
             Consume(TokenType::Keyword);
             continue;
@@ -908,9 +913,15 @@ std::pair<StorageClass, Type> ASTBuilder::ParseTypeSpecifierList()
         if (next->isKeyword() && IsTypeSpecifier(next->value())) {
             if (afterStructKeyword)
                 Abort("Expected struct tag after 'struct' keyword");
+            else if (afterUnionKeyword)
+                Abort("Expected union tag after 'union' keyword");
             if (next->value() == "struct") {
                 Consume(TokenType::Keyword);
                 afterStructKeyword = true;
+                continue;
+            } else if (next->value() == "union") {
+                Consume(TokenType::Keyword);
+                afterUnionKeyword = true;
                 continue;
             }
             auto [it, inserted] = type_specifiers.insert(Consume(TokenType::Keyword));
@@ -921,6 +932,10 @@ std::pair<StorageClass, Type> ASTBuilder::ParseTypeSpecifierList()
         if (next->isIdentifier() && afterStructKeyword) {
             if (!type_specifiers.empty())
                 Abort("Can't use 'struct' with other type specifiers.");
+            type = Type{ StructType{ Consume(TokenType::Identifier) } };
+        } else if (next->isIdentifier() && afterUnionKeyword) {
+            if (!type_specifiers.empty())
+                Abort("Can't use 'union' with other type specifiers.");
             type = Type{ StructType{ Consume(TokenType::Identifier) } };
         }
         break;
@@ -944,13 +959,20 @@ Type ASTBuilder::ParseTypes()
     std::set<std::string> type_specifiers;
     std::optional<lexer::Token> next;
     bool afterStructKeyword = false;
+    bool afterUnionKeyword = false;
     while ((next = Peek())) {
         if (next->isKeyword() && IsTypeSpecifier(next->value())) {
             if (afterStructKeyword)
                 Abort("Expected struct tag after 'struct' keyword");
+            else if (afterUnionKeyword)
+                Abort("Expected union tag after 'union' keyword");
             if (next->value() == "struct") {
                 Consume(TokenType::Keyword);
                 afterStructKeyword = true;
+                continue;
+            } else if (next->value() == "union") {
+                Consume(TokenType::Keyword);
+                afterUnionKeyword = true;
                 continue;
             }
             auto [it, inserted] = type_specifiers.insert(Consume(TokenType::Keyword));
@@ -961,6 +983,10 @@ Type ASTBuilder::ParseTypes()
         if (next->isIdentifier() && afterStructKeyword) {
             if (!type_specifiers.empty())
                 Abort("Can't use 'struct' with other type specifiers.");
+            return Type{ StructType{ Consume(TokenType::Identifier) } };
+        } else if (next->isIdentifier() && afterUnionKeyword) {
+            if (!type_specifiers.empty())
+                Abort("Can't use 'union' with other type specifiers.");
             return Type{ StructType{ Consume(TokenType::Identifier) } };
         }
         break;

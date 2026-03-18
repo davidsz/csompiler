@@ -312,11 +312,13 @@ void ASTPrinter::operator()(const VariableDeclaration &v)
     }
 }
 
-void ASTPrinter::operator()(const StructDeclaration &s)
+void ASTPrinter::operator()(const AggregateTypeDeclaration &a)
 {
-    pad(); std::cout << "StructDeclaration(" << s.tag << ") " << std::endl;
+    pad();
+    std::cout << (a.is_union ? "UnionDeclaration" : "StructDeclaration");
+    std::cout << "(" << a.tag << ") " << std::endl;
     tab();
-    for (auto &member : s.members) {
+    for (auto &member : a.members) {
         pad(); std::cout << member.type << " " << member.name << std::endl;
     }
     shift_tab();

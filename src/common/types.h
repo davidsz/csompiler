@@ -18,7 +18,8 @@ class TypeTable;
     X("double") \
     X("char") \
     X("void") \
-    X("struct")
+    X("struct") \
+    X("union")
 
 #define STORAGE_CLASS_LIST(X) \
     X(StorageStatic, "static") \
@@ -67,7 +68,6 @@ struct AssemblyType {
     size_t alignment() const;
 };
 
-// TODO: Remove this and replace with .size() when possible
 uint8_t GetBytesOfWordType(WordType type);
 //---
 

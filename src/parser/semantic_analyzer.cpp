@@ -17,13 +17,13 @@ struct SemanticError : public std::runtime_error
 void SemanticAnalyzer::enterScope()
 {
     m_variableFunctionScopes.emplace_back();
-    m_structureTagScopes.emplace_back();
+    m_aggregateTagScopes.emplace_back();
 }
 
 void SemanticAnalyzer::leaveScope()
 {
     m_variableFunctionScopes.pop_back();
-    m_structureTagScopes.pop_back();
+    m_aggregateTagScopes.pop_back();
 }
 
 SemanticAnalyzer::Scope &SemanticAnalyzer::currentScope()
@@ -41,14 +41,14 @@ SemanticAnalyzer::IdentifierInfo *SemanticAnalyzer::lookupIdentifier(const std::
     return nullptr;
 }
 
-SemanticAnalyzer::StructTagScope &SemanticAnalyzer::currentStructTagScope()
+SemanticAnalyzer::AggregateTagScope &SemanticAnalyzer::currentAggregateTagScope()
 {
-    return m_structureTagScopes.back();
+    return m_aggregateTagScopes.back();
 }
 
-std::optional<std::string> SemanticAnalyzer::lookupStructTag(const std::string &name)
+std::optional<std::string> SemanticAnalyzer::lookupAggregateTag(const std::string &name)
 {
-    for (auto s = m_structureTagScopes.rbegin(); s != m_structureTagScopes.rend(); s++) {
+    for (auto s = m_aggregateTagScopes.rbegin(); s != m_aggregateTagScopes.rend(); s++) {
         auto found = s->find(name);
         if (found != s->end())
             return found->second;
@@ -60,10 +60,10 @@ std::optional<std::string> SemanticAnalyzer::lookupStructTag(const std::string &
 void SemanticAnalyzer::ValidateTypeSpecifier(Type &type)
 {
     if (auto struct_type = type.getAs<StructType>()) {
-        if (auto unique_tag = lookupStructTag(struct_type->tag))
+        if (auto unique_tag = lookupAggregateTag(struct_type->tag))
             struct_type->tag = *unique_tag;
         else
-            Abort(std::format("Undeclared struct type '{}'", struct_type->tag));
+            Abort(std::format("Undeclared aggregate type '{}'", struct_type->tag));
     } else if (auto pointer_type = type.getAs<PointerType>())
         ValidateTypeSpecifier(*pointer_type->referenced);
     else if (auto array_type = type.getAs<ArrayType>())
@@ -499,18 +499,18 @@ void SemanticAnalyzer::operator()(VariableDeclaration &v)
         std::visit(*this, *v.init);
 }
 
-void SemanticAnalyzer::operator()(StructDeclaration &s)
+void SemanticAnalyzer::operator()(AggregateTypeDeclaration &a)
 {
     if (m_currentStage == IDENTIFIER_RESOLUTION) {
-        std::optional<std::string> prev_entry = lookupStructTag(s.tag);
-        if (!prev_entry || currentStructTagScope().find(s.tag) == currentStructTagScope().end()) {
-            std::string unique_tag = MakeNameUnique(s.tag);
-            currentStructTagScope()[s.tag] = unique_tag;
-            s.tag = unique_tag;
+        std::optional<std::string> prev_entry = lookupAggregateTag(a.tag);
+        if (!prev_entry || currentAggregateTagScope().find(a.tag) == currentAggregateTagScope().end()) {
+            std::string unique_tag = MakeNameUnique(a.tag);
+            currentAggregateTagScope()[a.tag] = unique_tag;
+            a.tag = unique_tag;
         } else
-            s.tag = *prev_entry;
+            a.tag = *prev_entry;
 
-        for (auto &m : s.members)
+        for (auto &m : a.members)
             ValidateTypeSpecifier(m.type);
     }
 }

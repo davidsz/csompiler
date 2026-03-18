@@ -1079,44 +1079,44 @@ Type TypeChecker::operator()(VariableDeclaration &v)
     return Type{ std::monostate() };
 }
 
-Type TypeChecker::operator()(StructDeclaration &s)
+Type TypeChecker::operator()(AggregateTypeDeclaration &a)
 {
-    // Don't process incomplete structs
-    if (s.members.empty())
+    // Don't process incomplete aggregates
+    if (a.members.empty())
         return Type{ std::monostate() };
 
-    if (m_typeTable->get(s.tag))
-        Abort(std::format("Redeclaration of struct '{}'", s.tag));
+    if (m_typeTable->get(a.tag))
+        Abort(std::format("Redeclaration of aggregate type '{}'", a.tag));
 
     // Validation; calculation of sizes, alignments, offsets
     TypeTable::StructEntry entry;
-    size_t struct_size = 0;
-    size_t struct_alignment = 0;
+    size_t aggregate_size = 0;
+    size_t aggregate_alignment = 0;
     std::unordered_set<std::string> member_names;
-    for (auto &m : s.members) {
+    for (auto &m : a.members) {
         ValidateTypeSpecifier(m.type);
         if (member_names.contains(m.name))
-            Abort(std::format("Member names should be unique in struct '{}'", s.tag));
+            Abort(std::format("Member names should be unique in aggregate type '{}'", a.tag));
         if (m.type.isArray() && !m.type.getAs<ArrayType>()->element->isComplete(m_typeTable))
-            Abort(std::format("Array member '{}' of struct '{}' is incomplete", m.name, s.tag));
+            Abort(std::format("Array member '{}' of aggregate type '{}' is incomplete", m.name, a.tag));
         member_names.insert(m.name);
 
         size_t member_alignment = m.type.alignment(m_typeTable);
-        size_t member_offset = roundUp(struct_size, member_alignment);
+        size_t member_offset = roundUp(aggregate_size, member_alignment);
         entry.members.emplace_back(TypeTable::StructMemberEntry{
             .name = m.name,
             .type = m.type,
             .offset = member_offset
         });
 
-        struct_alignment = std::max(struct_alignment, member_alignment);
-        struct_size = member_offset + m.type.size(m_typeTable);
+        aggregate_alignment = std::max(aggregate_alignment, member_alignment);
+        aggregate_size = member_offset + m.type.size(m_typeTable);
     }
-    entry.size = roundUp(struct_size, struct_alignment);
-    entry.alignment = struct_alignment;
+    entry.size = roundUp(aggregate_size, aggregate_alignment);
+    entry.alignment = aggregate_alignment;
 
     // Insert it into the type table
-    m_typeTable->insert(s.tag, entry);
+    m_typeTable->insert(a.tag, entry);
     return Type{ std::monostate() };
 }
 

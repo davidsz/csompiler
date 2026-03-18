@@ -46,7 +46,7 @@ public:
     Type operator()(DefaultStatement &d) override;
     Type operator()(FunctionDeclaration &f) override;
     Type operator()(VariableDeclaration &v) override;
-    Type operator()(StructDeclaration &s) override;
+    Type operator()(AggregateTypeDeclaration &a) override;
     Type operator()(SingleInit &s) override;
     Type operator()(CompoundInit &c) override;
     Type operator()(std::monostate) override;

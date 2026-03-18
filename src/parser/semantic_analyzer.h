@@ -53,7 +53,7 @@ struct SemanticAnalyzer : public IASTMutatingVisitor<void> {
     void operator()(DefaultStatement &d) override;
     void operator()(FunctionDeclaration &f) override;
     void operator()(VariableDeclaration &v) override;
-    void operator()(StructDeclaration &s) override;
+    void operator()(AggregateTypeDeclaration &a) override;
     void operator()(SingleInit &s) override;
     void operator()(CompoundInit &c) override;
     void operator()(std::monostate) override;
@@ -77,14 +77,14 @@ private:
     Scope &currentScope();
     IdentifierInfo *lookupIdentifier(const std::string &name);
 
-    // Structure tags have different scopes, because they represent types
-    using StructTagScope = std::unordered_map<std::string, std::string>;
-    std::vector<StructTagScope> m_structureTagScopes;
-    StructTagScope &currentStructTagScope();
-    std::optional<std::string> lookupStructTag(const std::string &name);
+    // Aggregate tags have different scopes, because they represent types
+    using AggregateTagScope = std::unordered_map<std::string, std::string>;
+    std::vector<AggregateTagScope> m_aggregateTagScopes;
+    AggregateTagScope &currentAggregateTagScope();
+    std::optional<std::string> lookupAggregateTag(const std::string &name);
 
     // Not the same as TypeChecker::ValidateTypeSpecifier(),
-    // this resolves structure tags
+    // this resolves aggregate tags
     void ValidateTypeSpecifier(Type &type);
 
     std::string m_currentFunction = "";

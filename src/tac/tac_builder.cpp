@@ -961,7 +961,7 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
     return std::monostate();
 }
 
-ExpResult TACBuilder::operator()(const parser::StructDeclaration &)
+ExpResult TACBuilder::operator()(const parser::AggregateTypeDeclaration &)
 {
     return std::monostate();
 }
