@@ -246,7 +246,7 @@ void TACBuilder::EmitRuntimeInit(
         size_t i = 0;
         for (; i < compound->list.size() && i < entry->members.size(); i++) {
             const TypeTable::AggregateMemberEntry &member = entry->members[i];
-            size_t member_offset = aggr_type->is_union ? 0 : offset + member.offset;
+            size_t member_offset = aggr_type->is_union ? offset : offset + member.offset;
             EmitRuntimeInit(
                 compound->list[i].get(),
                 base,
@@ -258,7 +258,7 @@ void TACBuilder::EmitRuntimeInit(
         if (!aggr_type->is_union) {
             for (; i < entry->members.size(); ++i) {
                 const TypeTable::AggregateMemberEntry &member = entry->members[i];
-                size_t member_offset = aggr_type->is_union ? 0 : offset + member.offset;
+                size_t member_offset = offset + member.offset;
                 EmitZeroInit(member.type, base, member_offset);
             }
         }
