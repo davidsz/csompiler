@@ -69,8 +69,8 @@ private:
 
     // Variable / function name scopes
     struct IdentifierInfo {
-        std::string uniqueName;
-        bool hasLinkage;
+        std::string unique_name;
+        bool has_linkage;
     };
     using Scope = std::unordered_map<std::string, IdentifierInfo>;
     std::vector<Scope> m_variableFunctionScopes;
@@ -78,10 +78,14 @@ private:
     IdentifierInfo *lookupIdentifier(const std::string &name);
 
     // Aggregate tags have different scopes, because they represent types
-    using AggregateTagScope = std::unordered_map<std::string, std::string>;
+    struct AggregateInfo {
+        std::string unique_name;
+        bool is_union;
+    };
+    using AggregateTagScope = std::unordered_map<std::string, AggregateInfo>;
     std::vector<AggregateTagScope> m_aggregateTagScopes;
     AggregateTagScope &currentAggregateTagScope();
-    std::optional<std::string> lookupAggregateTag(const std::string &name);
+    AggregateInfo *lookupAggregateTag(const std::string &name);
 
     // Not the same as TypeChecker::ValidateTypeSpecifier(),
     // this resolves aggregate tags

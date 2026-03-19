@@ -175,7 +175,7 @@ bool VoidType::operator==(const VoidType &) const
 
 bool AggregateType::operator==(const AggregateType &other) const
 {
-    return tag == other.tag;
+    return tag == other.tag && is_union == other.is_union;
 }
 
 bool Type::isBasic(BasicType type) const

@@ -46,22 +46,23 @@ SemanticAnalyzer::AggregateTagScope &SemanticAnalyzer::currentAggregateTagScope(
     return m_aggregateTagScopes.back();
 }
 
-std::optional<std::string> SemanticAnalyzer::lookupAggregateTag(const std::string &name)
+SemanticAnalyzer::AggregateInfo *SemanticAnalyzer::lookupAggregateTag(const std::string &name)
 {
     for (auto s = m_aggregateTagScopes.rbegin(); s != m_aggregateTagScopes.rend(); s++) {
         auto found = s->find(name);
         if (found != s->end())
-            return found->second;
+            return &found->second;
     }
-    return std::nullopt;
+    return nullptr;
 }
 
 // Call it only in the IDENTIFIER_RESOLUTION stage
 void SemanticAnalyzer::ValidateTypeSpecifier(Type &type)
 {
     if (auto aggr_type = type.getAs<AggregateType>()) {
-        if (auto unique_tag = lookupAggregateTag(aggr_type->tag))
-            aggr_type->tag = *unique_tag;
+        auto aggregate_info = lookupAggregateTag(aggr_type->tag);
+        if (aggregate_info && aggregate_info->is_union == aggr_type->is_union)
+            aggr_type->tag = aggregate_info->unique_name;
         else
             Abort(std::format("Undeclared aggregate type '{}'", aggr_type->tag));
     } else if (auto pointer_type = type.getAs<PointerType>())
@@ -114,7 +115,7 @@ void SemanticAnalyzer::operator()(VariableExpression &v)
         return;
 
     if (auto info = lookupIdentifier(v.identifier))
-        v.identifier = info->uniqueName;
+        v.identifier = info->unique_name;
     else
         Abort(std::format("Undeclared variable '{}'", v.identifier));
 }
@@ -164,7 +165,7 @@ void SemanticAnalyzer::operator()(FunctionCallExpression &f)
         // We assign it as a new name to catch errors later like the identifier
         // is being a variable name which can't be called.
         if (auto info = lookupIdentifier(f.identifier))
-            f.identifier = info->uniqueName;
+            f.identifier = info->unique_name;
         else
             Abort(std::format("Undeclared function '{}' can not be called", f.identifier));
     }
@@ -418,12 +419,12 @@ void SemanticAnalyzer::operator()(FunctionDeclaration &f)
 
         // Resolve the function name first
         auto it = currentScope().find(f.name);
-        if (it != currentScope().end() && !it->second.hasLinkage)
+        if (it != currentScope().end() && !it->second.has_linkage)
             Abort(std::format("Duplicate function declaration ({})", f.name));
 
         currentScope()[f.name] = IdentifierInfo {
-            .uniqueName = f.name,
-            .hasLinkage = true
+            .unique_name = f.name,
+            .has_linkage = true
         };
 
         // Function arguments introduce a new variable scope
@@ -435,8 +436,8 @@ void SemanticAnalyzer::operator()(FunctionDeclaration &f)
                 Abort(std::format("Duplicate function parameter ({})", p));
             std::string unique_name = MakeNameUnique(p);
             currentScope()[p] = IdentifierInfo {
-                .uniqueName = unique_name,
-                .hasLinkage = false
+                .unique_name = unique_name,
+                .has_linkage = false
             };
             new_params.push_back(unique_name);
         }
@@ -464,31 +465,31 @@ void SemanticAnalyzer::operator()(VariableDeclaration &v)
         if (m_variableFunctionScopes.size() == 1) {
             // Top level declarations
             currentScope()[v.identifier] = IdentifierInfo {
-                .uniqueName = v.identifier,
-                .hasLinkage = true
+                .unique_name = v.identifier,
+                .has_linkage = true
             };
         } else {
             // Block level variables
             // Extern declaration conflicts within the same scope
             auto prev = currentScope().find(v.identifier);
             if (prev != currentScope().end()) {
-                if (!prev->second.hasLinkage || v.storage != StorageExtern)
+                if (!prev->second.has_linkage || v.storage != StorageExtern)
                     Abort(std::format("Conflicting local declaration ({})", v.identifier));
             }
 
             if (v.storage == StorageExtern) {
                 // Don't rename extern variables
                 currentScope()[v.identifier] = IdentifierInfo{
-                    .uniqueName = v.identifier,
-                    .hasLinkage = true
+                    .unique_name = v.identifier,
+                    .has_linkage = true
                 };
             } else {
                 // Give variables globally unique names; different variables
                 // can have the same names in different scopes
                 std::string unique_name = MakeNameUnique(v.identifier);
                 currentScope()[v.identifier] = IdentifierInfo{
-                    .uniqueName = unique_name,
-                    .hasLinkage = false
+                    .unique_name = unique_name,
+                    .has_linkage = false
                 };
                 v.identifier = unique_name;
             }
@@ -502,13 +503,20 @@ void SemanticAnalyzer::operator()(VariableDeclaration &v)
 void SemanticAnalyzer::operator()(AggregateTypeDeclaration &a)
 {
     if (m_currentStage == IDENTIFIER_RESOLUTION) {
-        std::optional<std::string> prev_entry = lookupAggregateTag(a.tag);
-        if (!prev_entry || currentAggregateTagScope().find(a.tag) == currentAggregateTagScope().end()) {
+        auto aggregate_info = lookupAggregateTag(a.tag);
+        if (!aggregate_info || currentAggregateTagScope().find(a.tag) == currentAggregateTagScope().end()) {
             std::string unique_tag = MakeNameUnique(a.tag);
-            currentAggregateTagScope()[a.tag] = unique_tag;
+            currentAggregateTagScope()[a.tag] = AggregateInfo{
+                .unique_name = unique_tag,
+                .is_union = a.is_union
+            };
             a.tag = unique_tag;
-        } else
-            a.tag = *prev_entry;
+        } else {
+            if (aggregate_info->is_union == a.is_union)
+                a.tag = aggregate_info->unique_name;
+            else
+                Abort(std::format("Conflicting declaration of aggregate type '{}'", a.tag));
+        }
 
         for (auto &m : a.members)
             ValidateTypeSpecifier(m.type);

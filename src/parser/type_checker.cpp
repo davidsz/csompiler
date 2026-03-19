@@ -411,7 +411,8 @@ Type TypeChecker::operator()(BinaryExpression &b)
         return b.type;
     }
 
-    if (left_type.isBasic(Double) || right_type.isBasic(Double)) {
+    if (left_type.isBasic(Double) || right_type.isBasic(Double)
+        || left_type.isAggregate() || right_type.isAggregate()) {
         if (b.op == BinaryOperator::Remainder
             || b.op == BinaryOperator::LeftShift
             || b.op == BinaryOperator::RightShift
@@ -551,6 +552,9 @@ Type TypeChecker::operator()(CompoundAssignmentExpression &c)
             || c.op == BinaryOperator::AssignBitwiseOr)
             Abort("The type of the compound operation can't be double.");
     }
+
+    if (left_type.isAggregate() || right_type.isAggregate())
+        Abort("The type of the compound operation can't be an aggregate one.");
 
     // Pointer arithmetics
     if (left_type.isPointer()) {
@@ -1168,6 +1172,9 @@ Type TypeChecker::operator()(CompoundInit &c)
         m_targetTypeForInitializer = outer_target;
         c.type = outer_target;
     } else if (const AggregateType *aggr_type = m_targetTypeForInitializer.getAs<AggregateType>()) {
+        if (aggr_type->is_union && c.list.size() > 1)
+            Abort("Too many initializers for the union type.");
+
         auto entry = m_typeTable->get(aggr_type->tag);
         if (c.list.size() > entry->members.size())
             Abort("Too many initializers for the aggregate type.");
