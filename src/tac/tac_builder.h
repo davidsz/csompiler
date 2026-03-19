@@ -107,9 +107,11 @@ private:
     }
 
     struct LHSInfo {
-        enum class Kind { Plain, Deref } kind;
+        enum class Kind { Plain, Deref, SubObj } kind;
         Value address;          // Where to write the result
         Type original_type;     // Before a potential cast
+        std::string base;
+        size_t offset = 0;
     };
     LHSInfo AnalyzeLHS(const parser::Expression &expr);
 

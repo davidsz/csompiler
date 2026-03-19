@@ -1106,7 +1106,9 @@ Type TypeChecker::operator()(AggregateTypeDeclaration &a)
         member_names.insert(m.name);
 
         size_t member_alignment = m.type.alignment(m_typeTable);
-        size_t member_offset = roundUp(aggregate_size, member_alignment);
+        size_t member_offset = 0;
+        if (!a.is_union)
+            member_offset = roundUp(aggregate_size, member_alignment);
         entry.members.emplace_back(TypeTable::AggregateMemberEntry{
             .name = m.name,
             .type = m.type,
@@ -1114,7 +1116,10 @@ Type TypeChecker::operator()(AggregateTypeDeclaration &a)
         });
 
         aggregate_alignment = std::max(aggregate_alignment, member_alignment);
-        aggregate_size = member_offset + m.type.size(m_typeTable);
+        if (a.is_union)
+            aggregate_size = std::max(aggregate_size, m.type.size(m_typeTable));
+        else
+            aggregate_size = member_offset + m.type.size(m_typeTable);
     }
     entry.size = roundUp(aggregate_size, aggregate_alignment);
     entry.alignment = aggregate_alignment;

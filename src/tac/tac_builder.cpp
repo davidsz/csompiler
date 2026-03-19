@@ -51,11 +51,10 @@ Variant TACBuilder::CastValue(
 TACBuilder::LHSInfo TACBuilder::AnalyzeLHS(const parser::Expression &expr)
 {
     if (const auto *var = std::get_if<parser::VariableExpression>(&expr)) {
-        Variant v{ var->identifier };
         return {
             .kind = LHSInfo::Kind::Plain,
-            .address = v,
-            .original_type = GetType(v)
+            .address = Variant{ var->identifier },
+            .original_type = var->type
         };
     }
 
@@ -64,43 +63,62 @@ TACBuilder::LHSInfo TACBuilder::AnalyzeLHS(const parser::Expression &expr)
 
     if (const auto *deref = std::get_if<parser::DereferenceExpression>(&expr)) {
         Value ptr = VisitAndConvert(*deref->expr);
-        PointerType *pt = GetType(ptr).getAs<PointerType>();
-        assert(pt);
         return {
             .kind = LHSInfo::Kind::Deref,
             .address = ptr,
-            .original_type = *pt->referenced
+            .original_type = deref->type
         };
     }
 
     if (const auto *sub = std::get_if<parser::SubscriptExpression>(&expr)) {
-        Value lhs = VisitAndConvert(*sub->pointer);
-        Value rhs = VisitAndConvert(*sub->index);
-        Type lhs_type = GetType(lhs);
-
-        Value pointer_operand = lhs_type.isPointer() ? lhs : rhs;
-        Value integer_operand = lhs_type.isPointer() ? rhs : lhs;
-
-        const PointerType *pt = GetType(pointer_operand).getAs<PointerType>();
-        assert(pt);
-
-        Type element_type = pt->referenced->storedType();
-
-        Variant addr = CreateTemporaryVariable(
-            Type{ PointerType{ .referenced = std::make_shared<Type>(element_type) } }
-        );
-
-        AddInstruction(AddPtr{
-            .ptr   = pointer_operand,
-            .index = integer_operand,
-            .scale = element_type.size(m_typeTable),
-            .dst   = addr
-        });
-
+        ExpResult result = std::visit(*this, expr);
+        DereferencedPointer *deref = std::get_if<DereferencedPointer>(&result);
+        assert(deref);
         return {
             .kind = LHSInfo::Kind::Deref,
-            .address = addr,
-            .original_type = element_type
+            .address = deref->ptr,
+            .original_type = sub->type
+        };
+    }
+
+    if (const auto *dot = std::get_if<parser::DotExpression>(&expr)) {
+        ExpResult result = std::visit(*this, expr);
+        if (auto *plain = std::get_if<PlainOperand>(&result)) {
+            Variant *var = std::get_if<Variant>(&plain->val);
+            assert(var);
+            return {
+                .kind = LHSInfo::Kind::Plain,
+                .address = *var,
+                .original_type = dot->type
+            };
+        }
+        if (auto *sub = std::get_if<SubObject>(&result)) {
+            return {
+                .kind = LHSInfo::Kind::SubObj,
+                .original_type = dot->type,
+                .base = sub->base_identifier,
+                .offset = sub->offset
+            };
+        }
+        if (auto *deref = std::get_if<DereferencedPointer>(&result)) {
+            return {
+                .kind = LHSInfo::Kind::Deref,
+                .address = deref->ptr,
+                .original_type = dot->type
+            };
+        }
+
+        assert(false);
+    }
+
+    if (const auto *arr = std::get_if<parser::ArrowExpression>(&expr)) {
+        ExpResult result = std::visit(*this, expr);
+        auto *deref = std::get_if<DereferencedPointer>(&result);
+        assert(deref);
+        return {
+            .kind = LHSInfo::Kind::Deref,
+            .address = deref->ptr,
+            .original_type = arr->type
         };
     }
 
@@ -213,7 +231,7 @@ void TACBuilder::EmitRuntimeInit(
     if (const AggregateType *aggr_type = type.getAs<AggregateType>()) {
         auto entry = m_typeTable->get(aggr_type->tag);
 
-        // Single (struct) init for a struct type
+        // Single init for an aggregate type
         if (auto single = std::get_if<parser::SingleInit>(init)) {
             assert(single->expr);
             Value v = VisitAndConvert(*single->expr);
@@ -222,13 +240,13 @@ void TACBuilder::EmitRuntimeInit(
             return;
         }
 
-        // Compound initializer for a struct type
+        // Compound initializer for an aggregate type
         auto compound = std::get_if<parser::CompoundInit>(init);
         assert(compound);
         size_t i = 0;
         for (; i < compound->list.size() && i < entry->members.size(); i++) {
             const TypeTable::AggregateMemberEntry &member = entry->members[i];
-            size_t member_offset = offset + member.offset;
+            size_t member_offset = aggr_type->is_union ? 0 : offset + member.offset;
             EmitRuntimeInit(
                 compound->list[i].get(),
                 base,
@@ -237,10 +255,12 @@ void TACBuilder::EmitRuntimeInit(
             );
         }
 
-        for (; i < entry->members.size(); ++i) {
-            const TypeTable::AggregateMemberEntry &member = entry->members[i];
-            size_t member_offset = offset + member.offset;
-            EmitZeroInit(member.type, base, member_offset);
+        if (!aggr_type->is_union) {
+            for (; i < entry->members.size(); ++i) {
+                const TypeTable::AggregateMemberEntry &member = entry->members[i];
+                size_t member_offset = aggr_type->is_union ? 0 : offset + member.offset;
+                EmitZeroInit(member.type, base, member_offset);
+            }
         }
         offset += entry->size;
         return;
@@ -338,8 +358,15 @@ ExpResult TACBuilder::operator()(const parser::UnaryExpression &u)
         Variant old_val = CreateTemporaryVariable(lhs.original_type.storedType());
         if (lhs.kind == LHSInfo::Kind::Plain)
             AddInstruction(Copy{ lhs.address, old_val });
-        else
+        else if (lhs.kind == LHSInfo::Kind::Deref)
             AddInstruction(Load{ lhs.address, old_val });
+        else if (lhs.kind == LHSInfo::Kind::SubObj) {
+            AddInstruction(CopyFromOffset{
+                .src_identifier = lhs.base,
+                .offset = lhs.offset,
+                .dst = old_val
+            });
+        }
 
         // Cast if needed
         Value typed_val = old_val;
@@ -375,8 +402,15 @@ ExpResult TACBuilder::operator()(const parser::UnaryExpression &u)
         // Store the result back
         if (lhs.kind == LHSInfo::Kind::Plain)
             AddInstruction(Copy{ result_to_store, lhs.address });
-        else
+        else if (lhs.kind == LHSInfo::Kind::Deref)
             AddInstruction(Store{ result_to_store, lhs.address });
+        else if (lhs.kind == LHSInfo::Kind::SubObj) {
+            AddInstruction(CopyToOffset{
+                .src = result_to_store,
+                .dst_identifier = lhs.base,
+                .offset = lhs.offset
+            });
+        }
 
         // The return value depends on the operator type
         return PlainOperand{ u.postfix ? typed_val : new_value };
@@ -539,8 +573,15 @@ ExpResult TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
     Variant old_val = CreateTemporaryVariable(lhs.original_type.storedType());
     if (lhs.kind == LHSInfo::Kind::Plain)
         AddInstruction(Copy{ lhs.address, old_val });
-    else
+    else if (lhs.kind == LHSInfo::Kind::Deref)
         AddInstruction(Load{ lhs.address, old_val });
+    else if (lhs.kind == LHSInfo::Kind::SubObj) {
+        AddInstruction(CopyFromOffset{
+            .src_identifier = lhs.base,
+            .offset = lhs.offset,
+            .dst = old_val
+        });
+    }
 
     // Cast the left side if needed
     Value typed_left = old_val;
@@ -579,8 +620,15 @@ ExpResult TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
     // Store the result if it was modified through a pointer
     if (lhs.kind == LHSInfo::Kind::Plain)
         AddInstruction(Copy{ result, lhs.address });
-    else
+    else if (lhs.kind == LHSInfo::Kind::Deref)
         AddInstruction(Store{ result, lhs.address });
+    else if (lhs.kind == LHSInfo::Kind::SubObj) {
+        AddInstruction(CopyToOffset{
+            .src = result,
+            .dst_identifier = lhs.base,
+            .offset = lhs.offset
+        });
+    }
 
     return PlainOperand{ result };
 }
@@ -698,8 +746,8 @@ ExpResult TACBuilder::operator()(const parser::DotExpression &d)
     Type type = GetExpressionType(*d.expr);
     const AggregateType *aggr_type = type.getAs<AggregateType>();
     assert(aggr_type);
-    auto struct_entry = m_typeTable->get(aggr_type->tag);
-    size_t member_offset = struct_entry->find(d.identifier)->offset;
+    auto aggr_entry = m_typeTable->get(aggr_type->tag);
+    size_t member_offset = aggr_entry->find(d.identifier)->offset;
     ExpResult inner_object = std::visit(*this, *d.expr);
     if (PlainOperand *plain = std::get_if<PlainOperand>(&inner_object)) {
         Variant *var = std::get_if<Variant>(&plain->val);
@@ -730,8 +778,8 @@ ExpResult TACBuilder::operator()(const parser::ArrowExpression &a)
     const AggregateType *aggr_type = pointer_type->referenced->getAs<AggregateType>();
     assert(aggr_type);
     // TODO: If member_offset is 0, we don't need the AddPtr
-    auto struct_entry = m_typeTable->get(aggr_type->tag);
-    size_t member_offset = struct_entry->find(a.identifier)->offset;
+    auto aggr_entry = m_typeTable->get(aggr_type->tag);
+    size_t member_offset = aggr_entry->find(a.identifier)->offset;
     Value base_ptr = VisitAndConvert(*a.expr);
     Variant dst_ptr = CreateTemporaryVariable(
         Type{ PointerType{ .referenced = std::make_shared<Type>(a.type) } }
