@@ -95,6 +95,7 @@ TACBuilder::LHSInfo TACBuilder::AnalyzeLHS(const parser::Expression &expr)
         if (auto *sub = std::get_if<SubObject>(&result)) {
             return {
                 .kind = LHSInfo::Kind::SubObj,
+                .address = Value{},
                 .original_type = dot->type,
                 .base = sub->base_identifier,
                 .offset = sub->offset
