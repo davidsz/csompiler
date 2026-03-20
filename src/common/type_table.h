@@ -16,6 +16,7 @@ public:
         size_t size;
         size_t alignment;
         std::vector<AggregateMemberEntry> members;
+        bool is_union = false;
 
         const AggregateMemberEntry *find(const std::string &name) const;
     };

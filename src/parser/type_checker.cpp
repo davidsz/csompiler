@@ -1123,6 +1123,7 @@ Type TypeChecker::operator()(AggregateTypeDeclaration &a)
     }
     entry.size = roundUp(aggregate_size, aggregate_alignment);
     entry.alignment = aggregate_alignment;
+    entry.is_union = a.is_union;
 
     // Insert it into the type table
     m_typeTable->insert(a.tag, entry);
