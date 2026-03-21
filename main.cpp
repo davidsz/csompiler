@@ -117,47 +117,47 @@ int main(int argc, char **argv)
 
 #if 0
     std::cout << std::endl << "AST:" << std::endl;
-    parser::ASTPrinter astPrinter;
-    astPrinter.print(parser_result.root);
+    parser::ASTPrinter ast_printer;
+    ast_printer.print(parser_result.root);
 #endif
 
     if (has_flag("parse"))
         return Error::ALL_OK;
 
     // Semantic analysis
-    parser::SemanticAnalyzer semanticAnalyzer;
-    if (Error error = semanticAnalyzer.CheckAndMutate(parser_result.root))
+    parser::SemanticAnalyzer semantic_analyzer;
+    if (Error error = semantic_analyzer.CheckAndMutate(parser_result.root))
         return error;
 
 #if 0
     std::cout << std::endl << "After semantic analysis:" << std::endl;
-    parser::ASTPrinter semanticPrinter;
-    semanticPrinter.print(parser_result.root);
+    parser::ASTPrinter semantic_printer;
+    semantic_printer.print(parser_result.root);
 #endif
 
-    parser::TypeChecker typeChecker(context.get());
-    if (Error error = typeChecker.CheckAndMutate(parser_result.root))
+    parser::TypeChecker type_checker(context.get());
+    if (Error error = type_checker.CheckAndMutate(parser_result.root))
         return error;
 
 #if 0
     std::cout << std::endl << "After type checking:" << std::endl;
-    parser::ASTPrinter typePrinter;
-    typePrinter.print(parser_result.root);
+    parser::ASTPrinter type_printer;
+    type_printer.print(parser_result.root);
 #endif
 
     if (has_flag("validate"))
         return Error::ALL_OK;
 
     // Intermediate representation (TAC)
-    std::list<tac::TopLevel> tacList;
+    std::list<tac::TopLevel> tac_list;
     tac::from_ast(
         parser_result.root,
-        tacList,
+        tac_list,
         context.get());
 #if 1
     std::cout << std::endl << "TAC:" << std::endl;
-    tac::TACPrinter tacPrinter;
-    tacPrinter.print(tacList);
+    tac::TACPrinter tac_printer;
+    tac_printer.print(tac_list);
 #endif
 
 #if 0
@@ -179,24 +179,24 @@ int main(int argc, char **argv)
     };
     if (has_flag("optimize"))
         tac_args = { true, true, true, true };
-    tac::apply_optimizations(tacList, tac_args, context.get());
+    tac::apply_optimizations(tac_list, tac_args, context.get());
 
 #if 1
     std::cout << std::endl << "TAC after optimizations:" << std::endl;
-    tac::TACPrinter optimizedTacPrinter;
-    optimizedTacPrinter.print(tacList);
+    tac::TACPrinter optimized_tac_printer;
+    optimized_tac_printer.print(tac_list);
 #endif
 
     if (has_flag("tacky"))
         return Error::ALL_OK;
 
     // Assembly generation
-    std::string assemblySource = assembly::from_tac(
-        tacList,
+    std::string assembly_source = assembly::from_tac(
+        tac_list,
         context.get());
 #if 1
     std::cout << std::endl << "ASM:" << std::endl;
-    std::cout << assemblySource;
+    std::cout << assembly_source;
 #endif
 
     if (has_flag("codegen"))
@@ -208,7 +208,7 @@ int main(int argc, char **argv)
     std::ofstream output_assembly_file(output_assembly_path);
     if (!output_assembly_file)
         throw std::runtime_error("Can't open file: " + output_assembly_path.string());
-    output_assembly_file << assemblySource;
+    output_assembly_file << assembly_source;
     output_assembly_file.close();
 
     if (has_flag("S"))

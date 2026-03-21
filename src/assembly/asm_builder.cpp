@@ -1,5 +1,4 @@
 #include "asm_builder.h"
-#include "asm_helper.h"
 #include "common/context.h"
 #include "common/labeling.h"
 #include <format>
@@ -108,7 +107,7 @@ template<typename T, typename GetTypeFn, typename GetOperandFn>
 static ClassifiedParams classifyParameters(
     const std::vector<T> &parameters,
     bool return_in_memory,
-    TypeTable *typeTable,
+    TypeTable *type_table,
     GetTypeFn getType,
     GetOperandFn getOperand)
 {
@@ -144,9 +143,9 @@ static ClassifiedParams classifyParameters(
         }
 
         // Parameter is an aggregate type
-        size_t aggregate_size = type.size(typeTable);
-        const TypeTable::AggregateEntry *entry = typeTable->get(aggr_type->tag);
-        std::vector<AggregateClass> classes = classifyAggregate(entry, typeTable);
+        size_t aggregate_size = type.size(type_table);
+        TypeTable::AggregateEntry *entry = type_table->get(aggr_type->tag);
+        auto &classes = entry->classes(type_table);
         bool use_stack = true;
         if (classes.front() != MEMORY) {
             std::vector<std::pair<Operand, AssemblyType>> tentative_ints;
@@ -201,7 +200,7 @@ struct ClassifiedReturn {
 static ClassifiedReturn classifyReturnValue(
     const Operand &operand,
     const Type &type,
-    const TypeTable *typeTable)
+    TypeTable *type_table)
 {
     ClassifiedReturn ret;
     if (type.isBasic(Double))
@@ -211,9 +210,9 @@ static ClassifiedReturn classifyReturnValue(
     else {
         const AggregateType *aggr_type = type.getAs<AggregateType>();
         assert(aggr_type);
-        size_t aggregate_size = type.size(typeTable);
-        const TypeTable::AggregateEntry *entry = typeTable->get(aggr_type->tag);
-        auto classes = classifyAggregate(entry, typeTable);
+        size_t aggregate_size = type.size(type_table);
+        TypeTable::AggregateEntry *entry = type_table->get(aggr_type->tag);
+        auto &classes = entry->classes(type_table);
         if (classes.front() == MEMORY)
             ret.in_memory = true;
         else {
@@ -263,7 +262,7 @@ WordType ASMBuilder::GetWordType(const tac::Value &value)
     return GetType(value).wordType();
 }
 
-const TypeTable::AggregateEntry *ASMBuilder::GetAggregateEntry(const std::string *name)
+TypeTable::AggregateEntry *ASMBuilder::GetAggregateEntry(const std::string *name)
 {
     if (!name)
         return nullptr;
@@ -1009,7 +1008,7 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     const FunctionType *func_type = m_symbolTable->getType(f.name).getAs<FunctionType>();
     if (const AggregateType *aggr_type = func_type->ret->getAs<AggregateType>()) {
         auto aggr_entry = m_typeTable->get(aggr_type->tag);
-        std::vector<AggregateClass> classes = classifyAggregate(aggr_entry, m_typeTable);
+        auto &classes = aggr_entry->classes(m_typeTable);
         return_in_memory = (classes.front() == MEMORY);
     }
 

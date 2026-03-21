@@ -147,8 +147,8 @@ struct Type {
     bool isArithmetic() const;
     bool isCharacter() const;
     bool isInitialized() const;
-    size_t size(const TypeTable *) const;
-    size_t alignment(const TypeTable *) const;
+    size_t size(TypeTable *) const;
+    size_t alignment(TypeTable *) const;
     WordType wordType() const;
     Type storedType() const;
     Type promotedType() const;

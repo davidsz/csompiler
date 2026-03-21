@@ -323,7 +323,7 @@ bool Type::isInitialized() const
     return !std::holds_alternative<std::monostate>(t);
 }
 
-size_t Type::size(const TypeTable *table) const
+size_t Type::size(TypeTable *table) const
 {
     if (isPointer())
         return 8;
@@ -354,7 +354,7 @@ size_t Type::size(const TypeTable *table) const
     }
 }
 
-size_t Type::alignment(const TypeTable *table) const
+size_t Type::alignment(TypeTable *table) const
 {
     if (auto array_type = std::get_if<ArrayType>(&t))
         return array_type->element->alignment(table);

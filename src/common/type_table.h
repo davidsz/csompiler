@@ -5,6 +5,12 @@
 #include <unordered_map>
 #include <vector>
 
+enum AggregateClass {
+    INTEGER,
+    SSE,
+    MEMORY
+};
+
 class TypeTable {
 public:
     struct AggregateMemberEntry {
@@ -13,16 +19,18 @@ public:
         size_t offset;
     };
     struct AggregateEntry {
+        std::vector<AggregateMemberEntry> members;
+        std::vector<AggregateClass> eight_byte_classes = {};
         size_t size;
         size_t alignment;
-        std::vector<AggregateMemberEntry> members;
         bool is_union = false;
 
         const AggregateMemberEntry *find(const std::string &name) const;
+        const std::vector<AggregateClass> &classes(TypeTable *type_table);
     };
 
     void insert(const std::string &tag, const AggregateEntry &entry);
-    const AggregateEntry *get(const std::string &tag) const;
+    AggregateEntry *get(const std::string &tag);
     bool contains(const std::string &tag) const;
     void print() const;
 

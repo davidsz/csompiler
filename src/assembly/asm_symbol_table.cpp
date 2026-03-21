@@ -1,5 +1,4 @@
 #include "asm_symbol_table.h"
-#include "asm_helper.h"
 #include "common/context.h"
 #include <cassert>
 
@@ -23,7 +22,7 @@ ASMSymbolTable::ASMSymbolTable(
             bool return_on_stack = false;
             if (const AggregateType *aggr_type = func_type->ret->getAs<AggregateType>()) {
                 if (auto aggr_entry = type_table->get(aggr_type->tag)) {
-                    std::vector<AggregateClass> classes = classifyAggregate(aggr_entry, type_table);
+                    auto &classes = aggr_entry->classes(type_table);
                     return_on_stack = (classes.front() == MEMORY);
                 }
             }
