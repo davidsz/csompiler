@@ -84,7 +84,7 @@ void apply_optimizations(
                     if (arg.unreachable_code_elimination)
                         unreachableCodeElimination(obj.blocks, changed);
                     if (arg.copy_propagation)
-                        copyPropagation(obj.blocks, changed);
+                        copyPropagation(obj.blocks, context, changed);
                     if (arg.dead_store_elimination)
                         deadStoreElimination(obj.blocks, changed);
                 } while (changed);

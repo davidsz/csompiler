@@ -120,4 +120,14 @@ public:
     size_t id;
 };
 
+inline bool operator==(const Constant &a, const Constant &b)
+{
+    return a.value == b.value;
+}
+
+inline bool operator==(const Variant &a, const Variant &b)
+{
+    return a.name == b.name;
+}
+
 }; // tac

@@ -41,7 +41,6 @@ Type getType(const ConstantValue &v);
 bool isPositiveZero(const ConstantValue &v);
 size_t byteSizeOf(const ConstantValue &v);
 
-// TODO: Implement a real getAs with pointer return
 template <typename T>
 T castTo(const ConstantValue &v) {
     return std::visit([&](auto value) -> T {
@@ -56,3 +55,4 @@ T castTo(const ConstantValue &v) {
 ConstantValue ConvertValue(const ConstantValue &v, const Type &t);
 ConstantValue MakeConstantValue(long value, const Type &type);
 ConstantValue MakeConstantValue(long value, BasicType type);
+bool operator==(const ConstantValue &a, const ConstantValue &b);
