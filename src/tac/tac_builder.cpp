@@ -296,13 +296,12 @@ Type TACBuilder::GetType(const Value &value)
     }
 }
 
-Type TACBuilder::GetExpressionType(const parser::Expression &expr)
+const Type &TACBuilder::GetExpressionType(const parser::Expression &expr)
 {
-    return std::visit([](const auto &node) -> Type {
+    return std::visit([](const auto &node) -> const Type & {
         using T = std::decay_t<decltype(node)>;
         if constexpr (std::is_same_v<T, std::monostate>) {
             assert(false);
-            return Type{};
         } else {
             return node.type;
         }

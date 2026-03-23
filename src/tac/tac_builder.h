@@ -79,7 +79,7 @@ private:
         const Type &from_type,
         const Type &to_type);
     Type GetType(const Value &value);
-    Type GetExpressionType(const parser::Expression &expr);
+    const Type &GetExpressionType(const parser::Expression &expr);
     void ProcessStaticSymbols();
 
     template <typename... Variants>
@@ -88,7 +88,8 @@ private:
         if (PlainOperand *plain = std::get_if<PlainOperand>(&result))
             return plain->val;
         else if (DereferencedPointer *deref = std::get_if<DereferencedPointer>(&result)) {
-            PointerType *ptr_type = GetType(deref->ptr).getAs<PointerType>();
+            Type type = GetType(deref->ptr);
+            PointerType *ptr_type = type.getAs<PointerType>();
             assert(ptr_type);
             Variant dst = CreateTemporaryVariable(ptr_type->referenced->storedType());
             AddInstruction(Load{ deref->ptr, dst });

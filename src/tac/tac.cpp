@@ -16,6 +16,8 @@ static void rebuildControlFlowEdges(std::list<CFGBlock> &blocks)
     for (auto &block : blocks) {
         block.predecessors.clear();
         block.successors.clear();
+        if (block.instructions.empty())
+            continue;
         if (const Label *label = std::get_if<Label>(&block.instructions.front()))
             blockLabels[label->identifier] = &block;
     }
@@ -31,6 +33,8 @@ static void rebuildControlFlowEdges(std::list<CFGBlock> &blocks)
             connect(block, next_block);
             continue;
         }
+        if (block->instructions.empty())
+            continue;
         Instruction &last = block->instructions.back();
         if (std::holds_alternative<Return>(last))
             connect(block, exit_block);
