@@ -48,80 +48,25 @@ Variant TACBuilder::CastValue(
     return dst;
 }
 
-TACBuilder::LHSInfo TACBuilder::AnalyzeLHS(const parser::Expression &expr)
+std::pair<ExpResult, Type> TACBuilder::VisitLHS(const parser::Expression &expr)
 {
-    if (const auto *var = std::get_if<parser::VariableExpression>(&expr)) {
-        return {
-            .kind = LHSInfo::Kind::Plain,
-            .address = Variant{ var->identifier },
-            .original_type = var->type
-        };
-    }
+    if (const auto *var = std::get_if<parser::VariableExpression>(&expr))
+        return std::make_pair(std::visit(*this, expr), var->type);
 
     if (const auto *cast = std::get_if<parser::CastExpression>(&expr))
-        return AnalyzeLHS(*cast->expr);
+        return VisitLHS(*cast->expr);
 
-    if (const auto *deref = std::get_if<parser::DereferenceExpression>(&expr)) {
-        Value ptr = VisitAndConvert(*deref->expr);
-        return {
-            .kind = LHSInfo::Kind::Deref,
-            .address = ptr,
-            .original_type = deref->type
-        };
-    }
+    if (const auto *deref = std::get_if<parser::DereferenceExpression>(&expr))
+        return std::make_pair(std::visit(*this, expr), deref->type);
 
-    if (const auto *sub = std::get_if<parser::SubscriptExpression>(&expr)) {
-        ExpResult result = std::visit(*this, expr);
-        DereferencedPointer *deref = std::get_if<DereferencedPointer>(&result);
-        assert(deref);
-        return {
-            .kind = LHSInfo::Kind::Deref,
-            .address = deref->ptr,
-            .original_type = sub->type
-        };
-    }
+    if (const auto *sub = std::get_if<parser::SubscriptExpression>(&expr))
+        return std::make_pair(std::visit(*this, expr), sub->type);
 
-    if (const auto *dot = std::get_if<parser::DotExpression>(&expr)) {
-        ExpResult result = std::visit(*this, expr);
-        if (auto *plain = std::get_if<PlainOperand>(&result)) {
-            Variant *var = std::get_if<Variant>(&plain->val);
-            assert(var);
-            return {
-                .kind = LHSInfo::Kind::Plain,
-                .address = *var,
-                .original_type = dot->type
-            };
-        }
-        if (auto *sub = std::get_if<SubObject>(&result)) {
-            return {
-                .kind = LHSInfo::Kind::SubObj,
-                .address = Value{},
-                .original_type = dot->type,
-                .base = sub->base_identifier,
-                .offset = sub->offset
-            };
-        }
-        if (auto *deref = std::get_if<DereferencedPointer>(&result)) {
-            return {
-                .kind = LHSInfo::Kind::Deref,
-                .address = deref->ptr,
-                .original_type = dot->type
-            };
-        }
+    if (const auto *dot = std::get_if<parser::DotExpression>(&expr))
+        return std::make_pair(std::visit(*this, expr), dot->type);
 
-        assert(false);
-    }
-
-    if (const auto *arr = std::get_if<parser::ArrowExpression>(&expr)) {
-        ExpResult result = std::visit(*this, expr);
-        auto *deref = std::get_if<DereferencedPointer>(&result);
-        assert(deref);
-        return {
-            .kind = LHSInfo::Kind::Deref,
-            .address = deref->ptr,
-            .original_type = arr->type
-        };
-    }
+    if (const auto *arr = std::get_if<parser::ArrowExpression>(&expr))
+        return std::make_pair(std::visit(*this, expr), arr->type);
 
     assert(false);
 }
@@ -351,27 +296,27 @@ ExpResult TACBuilder::operator()(const parser::UnaryExpression &u)
 {
     // Implement mutating unary operators as binaries ( a++ -> a = a + 1 )
     if (u.op == UnaryOperator::Increment || u.op == UnaryOperator::Decrement) {
-        // We visit the lhs only once
-        LHSInfo lhs = AnalyzeLHS(*u.expr);
+        // We gather all the information and perform all side effects in one visit of the LHS
+        const auto &[lhs, lhs_type] = VisitLHS(*u.expr);
 
         // Load current value if it's a pointer dereference
-        Variant old_val = CreateTemporaryVariable(lhs.original_type.storedType());
-        if (lhs.kind == LHSInfo::Kind::Plain)
-            AddInstruction(Copy{ lhs.address, old_val });
-        else if (lhs.kind == LHSInfo::Kind::Deref)
-            AddInstruction(Load{ lhs.address, old_val });
-        else if (lhs.kind == LHSInfo::Kind::SubObj) {
+        Variant old_val = CreateTemporaryVariable(lhs_type.storedType());
+        if (const PlainOperand *plain = std::get_if<PlainOperand>(&lhs))
+            AddInstruction(Copy{ plain->val, old_val });
+        else if (const DereferencedPointer *deref = std::get_if<DereferencedPointer>(&lhs))
+            AddInstruction(Load{ deref->ptr, old_val });
+        else if (const SubObject *sub = std::get_if<SubObject>(&lhs)) {
             AddInstruction(CopyFromOffset{
-                .src_identifier = lhs.base,
-                .offset = lhs.offset,
+                .src_identifier = sub->base_identifier,
+                .offset = sub->offset,
                 .dst = old_val
             });
         }
 
         // Cast if needed
         Value typed_val = old_val;
-        if (lhs.original_type != u.type)
-            typed_val = CastValue(m_instructions, old_val, lhs.original_type, u.type);
+        if (lhs_type != u.type)
+            typed_val = CastValue(m_instructions, old_val, lhs_type, u.type);
 
         // Increment/Decrement
         Variant new_value = CreateTemporaryVariable(u.type.storedType());
@@ -396,19 +341,19 @@ ExpResult TACBuilder::operator()(const parser::UnaryExpression &u)
 
         // Cast back if needed
         Value result_to_store = new_value;
-        if (u.type != lhs.original_type)
-            result_to_store = CastValue(m_instructions, new_value, u.type, lhs.original_type.storedType());
+        if (u.type != lhs_type)
+            result_to_store = CastValue(m_instructions, new_value, u.type, lhs_type.storedType());
 
         // Store the result back
-        if (lhs.kind == LHSInfo::Kind::Plain)
-            AddInstruction(Copy{ result_to_store, lhs.address });
-        else if (lhs.kind == LHSInfo::Kind::Deref)
-            AddInstruction(Store{ result_to_store, lhs.address });
-        else if (lhs.kind == LHSInfo::Kind::SubObj) {
+        if (const PlainOperand *plain = std::get_if<PlainOperand>(&lhs))
+            AddInstruction(Copy{ result_to_store, plain->val });
+        else if (const DereferencedPointer *deref = std::get_if<DereferencedPointer>(&lhs))
+            AddInstruction(Store{ result_to_store, deref->ptr });
+        else if (const SubObject *sub = std::get_if<SubObject>(&lhs)) {
             AddInstruction(CopyToOffset{
                 .src = result_to_store,
-                .dst_identifier = lhs.base,
-                .offset = lhs.offset
+                .dst_identifier = sub->base_identifier,
+                .offset = sub->offset
             });
         }
 
@@ -561,32 +506,27 @@ ExpResult TACBuilder::operator()(const parser::AssignmentExpression &a)
 
 ExpResult TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
 {
-    // Handling compound assignments becomes a complex task when their lvalue
-    // is nested in cast expressions and/or pointer dereferences. To avoid multiplied
-    // side effects and get the correct assignment address we visit it only in case of
-    // pointer dereference, otherwise we do all the cast operations manually.
-
-    // We visit the lhs only once
-    LHSInfo lhs = AnalyzeLHS(*c.lhs);
+    // We gather all the information and perform all side effects in one visit of the LHS
+    const auto &[lhs, lhs_type] = VisitLHS(*c.lhs);
 
     // Load the value if lhs is a pointer dereference
-    Variant old_val = CreateTemporaryVariable(lhs.original_type.storedType());
-    if (lhs.kind == LHSInfo::Kind::Plain)
-        AddInstruction(Copy{ lhs.address, old_val });
-    else if (lhs.kind == LHSInfo::Kind::Deref)
-        AddInstruction(Load{ lhs.address, old_val });
-    else if (lhs.kind == LHSInfo::Kind::SubObj) {
+    Variant old_val = CreateTemporaryVariable(lhs_type.storedType());
+    if (const PlainOperand *plain = std::get_if<PlainOperand>(&lhs))
+        AddInstruction(Copy{ plain->val, old_val });
+    else if (const DereferencedPointer *deref = std::get_if<DereferencedPointer>(&lhs))
+        AddInstruction(Load{ deref->ptr, old_val });
+    else if (const SubObject *sub = std::get_if<SubObject>(&lhs)) {
         AddInstruction(CopyFromOffset{
-            .src_identifier = lhs.base,
-            .offset = lhs.offset,
+            .src_identifier = sub->base_identifier,
+            .offset =sub->offset,
             .dst = old_val
         });
     }
 
     // Cast the left side if needed
     Value typed_left = old_val;
-    if (lhs.original_type != c.inner_type)
-        typed_left = CastValue(m_instructions, typed_left, lhs.original_type, c.inner_type);
+    if (lhs_type != c.inner_type)
+        typed_left = CastValue(m_instructions, typed_left, lhs_type, c.inner_type);
 
     Value rhs = VisitAndConvert(*c.rhs);
 
@@ -618,15 +558,15 @@ ExpResult TACBuilder::operator()(const parser::CompoundAssignmentExpression &c)
         result = CastValue(m_instructions, tmp, c.inner_type, c.type.storedType());
 
     // Store the result if it was modified through a pointer
-    if (lhs.kind == LHSInfo::Kind::Plain)
-        AddInstruction(Copy{ result, lhs.address });
-    else if (lhs.kind == LHSInfo::Kind::Deref)
-        AddInstruction(Store{ result, lhs.address });
-    else if (lhs.kind == LHSInfo::Kind::SubObj) {
+    if (const PlainOperand *plain = std::get_if<PlainOperand>(&lhs))
+        AddInstruction(Copy{ result, plain->val });
+    else if (const DereferencedPointer *deref = std::get_if<DereferencedPointer>(&lhs))
+        AddInstruction(Store{ result, deref->ptr });
+    else if (const SubObject *sub = std::get_if<SubObject>(&lhs)) {
         AddInstruction(CopyToOffset{
             .src = result,
-            .dst_identifier = lhs.base,
-            .offset = lhs.offset
+            .dst_identifier = sub->base_identifier,
+            .offset = sub->offset
         });
     }
 

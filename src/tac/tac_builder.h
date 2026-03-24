@@ -107,15 +107,7 @@ private:
         return std::monostate();
     }
 
-    struct LHSInfo {
-        enum class Kind { Plain, Deref, SubObj } kind;
-        Value address;          // Where to write the result
-        Type original_type;     // Before a potential cast
-        std::string base = "";
-        size_t offset = 0;
-    };
-    LHSInfo AnalyzeLHS(const parser::Expression &expr);
-
+    std::pair<ExpResult, Type> VisitLHS(const parser::Expression &expr);
     void EmitZeroInit(const Type &type, const std::string &base, size_t &offset);
     void EmitRuntimeInit(
         const parser::Initializer *init,
