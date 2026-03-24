@@ -109,11 +109,16 @@ private:
 
     std::pair<ExpResult, Type> VisitLHS(const parser::Expression &expr);
     void EmitZeroInit(const Type &type, const std::string &base, size_t &offset);
-    void EmitRuntimeInit(
+    void EmitRuntimeInitForNonScalar(
         const parser::Initializer *init,
         const std::string &base,
         const Type &type,
         size_t &offset
+    );
+    void EmitRuntimeInitForScalar(
+        const parser::Initializer *init,
+        const std::string &base,
+        const Type &type
     );
 
     // Functions, static variables and constants of the translation unit

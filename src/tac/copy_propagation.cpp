@@ -7,6 +7,16 @@ namespace tac {
 static std::map<const Instruction *, std::set<const Copy *>> s_instructionAnnotations;
 static std::map<const CFGBlock *, std::set<const Copy *>> s_blockAnnotations;
 
+static bool containsReverseCopy(
+    const std::set<const Copy *> &copies,
+    const Copy *copy)
+{
+    for (const Copy *rc : copies)
+        if (rc->src == copy->dst && rc->dst == copy->src)
+            return true;
+    return false;
+}
+
 // Transfer function: takes all the Copy instructions that reach the begin-
 // ning of a basic block and calculates which copies reach each individual
 // instruction within the block. It also calculates which copies reach the
@@ -19,7 +29,7 @@ static void transfer(
     for (const auto &instruction : block->instructions) {
         s_instructionAnnotations[&instruction] = current_reaching_copies;
         if (const Copy *copy = std::get_if<Copy>(&instruction)) {
-            if (current_reaching_copies.contains(copy))
+            if (containsReverseCopy(current_reaching_copies, copy))
                 continue;
             for (auto reaching_copy = current_reaching_copies.begin();
                 reaching_copy != current_reaching_copies.end();) {
@@ -117,7 +127,7 @@ static void findReachingCopies(const std::list<CFGBlock> &blocks)
     while (!worklist.empty()) {
         const CFGBlock *block = worklist.front();
         worklist.pop_front();
-        std::set<const Copy *> &old_annotations = s_blockAnnotations[block];
+        std::set<const Copy *> old_annotations = s_blockAnnotations[block];
         std::set<const Copy *> incoming_copies = meet(block, all_copies);
         transfer(block, incoming_copies);
         if (old_annotations != s_blockAnnotations[block]) {
@@ -156,16 +166,24 @@ static void rewriteInstruction(
 {
     if (Copy *copy = std::get_if<Copy>(&instr)) {
         for (auto rcopy : reaching_copies) {
-            if (rcopy == copy || (rcopy->src == copy->dst || rcopy->dst == copy->src))
+            if (rcopy == copy || (rcopy->src == copy->dst && rcopy->dst == copy->src))
                 return;
         }
         copy->src = newOperand(copy->src, reaching_copies, changed);
+        return;
     }
-    if (Unary *unary = std::get_if<Unary>(&instr))
+    if (Unary *unary = std::get_if<Unary>(&instr)) {
         unary->src = newOperand(unary->src, reaching_copies, changed);
+        return;
+    }
     if (Binary *binary = std::get_if<Binary>(&instr)) {
         binary->src1 = newOperand(binary->src1, reaching_copies, changed);
         binary->src2 = newOperand(binary->src2, reaching_copies, changed);
+        return;
+    }
+    if (Return *ret = std::get_if<Return>(&instr)) {
+        ret->val = newOperand(*ret->val, reaching_copies, changed);
+        return;
     }
 }
 

@@ -186,10 +186,13 @@ static std::list<Instruction>::iterator postprocessMov(std::list<Instruction> &a
     } else if (obj.type == Longword && isFourBytesImm(obj.src)) {
         // GCC throws a warning then we directly use MOVL to truncate an immediate value from 64 to 32 bits
         // TODO: Just modulo 256 the source operand
+        // TODO: Revisit on Linux
+        /*
         auto current = obj;
         it = asmList.erase(it);
         it = asmList.emplace(it, Mov{ current.src, Reg{ R10, 8 }, Quadword });
         it = asmList.emplace(std::next(it), Mov{ Reg{ R10, 4 }, current.dst, Longword });
+        */
     }
     return std::next(it);
 }

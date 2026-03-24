@@ -97,7 +97,7 @@ void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, size_t 
     offset += type.storedType().size(m_typeTable);
 }
 
-void TACBuilder::EmitRuntimeInit(
+void TACBuilder::EmitRuntimeInitForNonScalar(
     const parser::Initializer *init,
     const std::string &base,
     const Type &type,
@@ -164,7 +164,7 @@ void TACBuilder::EmitRuntimeInit(
 
         size_t initialized_count = 0;
         for (auto &elem : compound->list) {
-            EmitRuntimeInit(elem.get(), base, element_type, offset);
+            EmitRuntimeInitForNonScalar(elem.get(), base, element_type, offset);
             initialized_count++;
         }
 
@@ -193,7 +193,7 @@ void TACBuilder::EmitRuntimeInit(
         for (; i < compound->list.size() && i < entry->members.size(); i++) {
             const TypeTable::AggregateMemberEntry &member = entry->members[i];
             size_t member_offset = aggr_type->is_union ? offset : offset + member.offset;
-            EmitRuntimeInit(
+            EmitRuntimeInitForNonScalar(
                 compound->list[i].get(),
                 base,
                 member.type,
@@ -212,7 +212,7 @@ void TACBuilder::EmitRuntimeInit(
         return;
     }
 
-    // Single initializer for a scalar type
+    // Single initializer for a scalar member of a compound type
     if (auto single = std::get_if<parser::SingleInit>(init)) {
         if (!single->expr)
             EmitZeroInit(type, base, offset);
@@ -225,6 +225,29 @@ void TACBuilder::EmitRuntimeInit(
     }
 
     assert(false);
+}
+
+void TACBuilder::EmitRuntimeInitForScalar(
+    const parser::Initializer *init,
+    const std::string &base,
+    const Type &type)
+{
+    // Use only Copy instructions to be able to differentiate later
+    // from CopyToOffsets of arrays and aggregate types
+    assert(init);
+    auto single = std::get_if<parser::SingleInit>(init);
+    assert(single);
+    if (!single->expr) {
+        AddInstruction(Copy{
+            Constant{ MakeConstantValue(0, type) },
+            Variant{ base }
+        });
+    } else {
+        AddInstruction(Copy{
+            VisitAndConvert(*single->expr),
+            Variant{ base }
+        });
+    }
 }
 
 Type TACBuilder::GetType(const Value &value)
@@ -945,7 +968,10 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
         return std::monostate();
 
     size_t offset = 0;
-    EmitRuntimeInit(v.init.get(), v.identifier, entry->type, offset);
+    if (entry->type.isScalar())
+        EmitRuntimeInitForScalar(v.init.get(), v.identifier, entry->type);
+    else
+        EmitRuntimeInitForNonScalar(v.init.get(), v.identifier, entry->type, offset);
     return std::monostate();
 }
 
