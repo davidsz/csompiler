@@ -134,15 +134,6 @@ static bool isOneBytesImm(const Operand &op)
     return false;
 }
 
-static bool isFourBytesImm(const Operand &op)
-{
-    if (const Imm *imm = std::get_if<Imm>(&op)) {
-        return static_cast<int64_t>(imm->value) >= std::numeric_limits<int32_t>::lowest() ||
-               static_cast<int64_t>(imm->value) <= std::numeric_limits<int32_t>::max();
-    }
-    return false;
-}
-
 // "The assembler permits an immediate value in addq, imulq, subq, cmpq, or pushq only if
 // it can be represented as a signed 32-bit integer. That’s because these instructions all
 // sign extend their immediate operands from 32 to 64 bits. If an immediate value can
@@ -183,16 +174,10 @@ static std::list<Instruction>::iterator postprocessMov(std::list<Instruction> &a
     } else if (obj.type == Byte && isOneBytesImm(obj.src)) {
         Imm *src = std::get_if<Imm>(&obj.src);
         src->value = src->value % 256;
-    } else if (obj.type == Longword && isFourBytesImm(obj.src)) {
-        // GCC throws a warning then we directly use MOVL to truncate an immediate value from 64 to 32 bits
-        // TODO: Just modulo 256 the source operand
-        // TODO: Revisit on Linux
-        /*
-        auto current = obj;
-        it = asmList.erase(it);
-        it = asmList.emplace(it, Mov{ current.src, Reg{ R10, 8 }, Quadword });
-        it = asmList.emplace(std::next(it), Mov{ Reg{ R10, 4 }, current.dst, Longword });
-        */
+    } else if (obj.type == Longword && isEightBytesImm(obj.src)) {
+        // GCC throws a warning when we directly use MOVL to truncate an immediate value from 64 to 32 bits
+        Imm *src = std::get_if<Imm>(&obj.src);
+        src->value = uint32_t(src->value);
     }
     return std::next(it);
 }

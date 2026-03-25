@@ -163,6 +163,7 @@ ConstantValue MakeConstantValue(long value, BasicType type)
 }
 
 DIAG_PUSH
+DIAG_IGNORE("-Wconversion")
 DIAG_IGNORE("-Wsign-compare")
 bool operator==(const ConstantValue &a, const ConstantValue &b)
 {

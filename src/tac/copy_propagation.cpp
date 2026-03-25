@@ -1,5 +1,6 @@
 #include "tac_nodes.h"
 #include "common/context.h"
+#include <algorithm>
 #include <map>
 
 namespace tac {
