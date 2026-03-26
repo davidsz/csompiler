@@ -125,12 +125,10 @@ static bool isMemoryAddress(const Operand &op)
         || std::holds_alternative<Indexed>(op);
 }
 
-static bool isOneBytesImm(const Operand &op)
+static bool immLongerThanOneByte(const Operand &op)
 {
-    if (const Imm *imm = std::get_if<Imm>(&op)) {
-        return static_cast<int64_t>(imm->value) >= std::numeric_limits<int8_t>::lowest() ||
-               static_cast<int64_t>(imm->value) <= std::numeric_limits<int8_t>::max();
-    }
+    if (const Imm *imm = std::get_if<Imm>(&op))
+        return static_cast<int64_t>(imm->value) > std::numeric_limits<int8_t>::max();
     return false;
 }
 
@@ -139,11 +137,13 @@ static bool isOneBytesImm(const Operand &op)
 // sign extend their immediate operands from 32 to 64 bits. If an immediate value can
 // be represented in 32 bits only as an unsigned integer—which implies that its upper
 // bit is set—sign extending it will change its value."
-static bool isEightBytesImm(const Operand &op)
+static bool immLongerThanFourByte(const Operand &op)
 {
+    // Also check for negative overflow
     if (const Imm *imm = std::get_if<Imm>(&op)) {
-        return static_cast<int64_t>(imm->value) <= std::numeric_limits<int32_t>::lowest() ||
-               static_cast<int64_t>(imm->value) >= std::numeric_limits<int32_t>::max();
+        int64_t v = static_cast<int64_t>(imm->value);
+        return v < std::numeric_limits<int32_t>::lowest() ||
+               v > std::numeric_limits<int32_t>::max();
     }
     return false;
 }
@@ -171,13 +171,13 @@ static std::list<Instruction>::iterator postprocessMov(std::list<Instruction> &a
             it = asmList.emplace(it, Mov{current.src, Reg{R10, bytes}, current.type});
             it = asmList.emplace(std::next(it), Mov{Reg{R10, bytes}, current.dst, current.type});
         }
-    } else if (obj.type == Byte && isOneBytesImm(obj.src)) {
-        Imm *src = std::get_if<Imm>(&obj.src);
-        src->value = src->value % 256;
-    } else if (obj.type == Longword && isEightBytesImm(obj.src)) {
+    } else if (obj.type == Byte && immLongerThanOneByte(obj.src)) {
+        if (Imm *src = std::get_if<Imm>(&obj.src))
+            src->value = src->value % 256;
+    } else if (obj.type == Longword && immLongerThanFourByte(obj.src)) {
         // GCC throws a warning when we directly use MOVL to truncate an immediate value from 64 to 32 bits
         Imm *src = std::get_if<Imm>(&obj.src);
-        src->value = uint32_t(src->value);
+        src->value = int32_t(src->value);
     }
     return std::next(it);
 }
@@ -327,7 +327,7 @@ static std::list<Instruction>::iterator postprocessSetCC(std::list<Instruction> 
 static std::list<Instruction>::iterator postprocessPush(std::list<Instruction> &asmList, std::list<Instruction>::iterator it)
 {
     auto &obj = std::get<Push>(*it);
-    if (isEightBytesImm(obj.op)) {
+    if (immLongerThanFourByte(obj.op)) {
         // PUSHQ can handle quadwords only
         auto current = obj;
         it = asmList.erase(it);

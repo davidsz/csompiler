@@ -37,7 +37,7 @@ namespace assembly {
         Register reg; \
         uint8_t bytes = 4;) \
     X(Imm, \
-        uint64_t value;) \
+        int64_t value;) \
     X(Pseudo, \
         std::string name;) \
     X(PseudoAggregate, \

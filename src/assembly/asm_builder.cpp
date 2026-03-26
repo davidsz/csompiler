@@ -439,7 +439,7 @@ Operand ASMBuilder::operator()(const tac::Binary &b)
             m_instructions.push_back(Label{ unordered_label });
             // NaN != x is always true, other comparisons are always false
             m_instructions.push_back(Mov{
-                Imm{ static_cast<uint64_t>(b.op == BinaryOperator::NotEqual ? 1 : 0) },
+                Imm{ static_cast<int64_t>(b.op == BinaryOperator::NotEqual ? 1 : 0) },
                 dst,
                 dstType
             });
@@ -659,7 +659,7 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
         Comment(m_instructions, "Allocating stack");
         m_instructions.push_back(Binary{
             ASMBinaryOperator::Sub_AB,
-            Imm{ stack_padding },
+            Imm{ static_cast<int64_t>(stack_padding) },
             Reg{ SP, 8 },
             WordType::Quadword
         });
@@ -726,7 +726,7 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
         Comment(m_instructions, "Clearing the stack");
         m_instructions.push_back(Binary{
             Add_AB,
-            Imm{ bytes_to_remove },
+            Imm{ static_cast<int64_t>(bytes_to_remove) },
             Reg{ SP, 8 },
             WordType::Quadword
         });
@@ -836,7 +836,7 @@ Operand ASMBuilder::operator()(const tac::DoubleToUInt &d)
         m_instructions.push_back(Mov{ src, Reg{ XMM0, 8 }, Doubleword });
         m_instructions.push_back(Binary{ Sub_AB, Data{ upper_bound }, Reg{ XMM0, 8 }, Doubleword });
         m_instructions.push_back(Cvttsd2si{ Reg{ XMM0, 8 }, dst, Quadword });
-        m_instructions.push_back(Mov{ Imm{ 9223372036854775808ULL }, Reg{ AX, 8 }, Quadword });
+        m_instructions.push_back(Mov{ Imm{ static_cast<int64_t>(0x8000000000000000ULL) }, Reg{ AX, 8 }, Quadword });
         m_instructions.push_back(Binary{ Add_AB, Reg{ AX, 8 }, dst, Quadword });
         m_instructions.push_back(Label{ end_label });
     } else
@@ -928,7 +928,7 @@ Operand ASMBuilder::operator()(const tac::AddPtr &a)
     // We have to multiply the scale by the index using an ASM instruction
     m_instructions.push_back(Binary{
         Mult_AB,
-        Imm{ static_cast<uint64_t>(a.scale) },
+        Imm{ static_cast<int64_t>(a.scale) },
         Reg{ DX, 8 },
         Quadword
     });
@@ -986,7 +986,7 @@ Operand ASMBuilder::operator()(const tac::Constant &c)
         // and avoid duplications
         return Data{ AddConstant(c.value, GenerateTempVariableName()) };
     }
-    return Imm{ castTo<uint64_t>(c.value) };
+    return Imm{ castTo<int64_t>(c.value) };
 }
 
 Operand ASMBuilder::operator()(const tac::Variant &v)

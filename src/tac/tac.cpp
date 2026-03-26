@@ -29,12 +29,10 @@ static void rebuildControlFlowEdges(std::list<CFGBlock> &blocks)
         CFGBlock *block = &*it;
         CFGBlock *next_block = (block == exit_block)
             ? exit_block : &*std::next(it);
-        if (block == entry_block) {
+        if (block == entry_block || block->instructions.empty()) {
             connect(block, next_block);
             continue;
         }
-        if (block->instructions.empty())
-            continue;
         Instruction &last = block->instructions.back();
         if (std::holds_alternative<Return>(last))
             connect(block, exit_block);
