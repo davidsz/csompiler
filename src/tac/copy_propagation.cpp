@@ -4,19 +4,46 @@
 #include <map>
 
 namespace tac {
-
-static std::map<const Instruction *, std::set<const Copy *>> s_instructionAnnotations;
-static std::map<const CFGBlock *, std::set<const Copy *>> s_blockAnnotations;
-
-static bool containsReverseCopy(
-    const std::set<const Copy *> &copies,
-    const Copy *copy)
+/*
+static void printValue(const Value &v)
 {
-    for (const Copy *rc : copies)
-        if (rc->src == copy->dst && rc->dst == copy->src)
-            return true;
-    return false;
+    std::visit([](const auto &val) {
+        using T = std::decay_t<decltype(val)>;
+
+        if constexpr (std::is_same_v<T, Constant>) {
+            std::visit([](const auto &c) {
+                std::cout << toString(c);
+            }, val.value);
+        }
+        else if constexpr (std::is_same_v<T, Variant>) {
+            std::cout << val.name;
+        }
+    }, v);
 }
+
+static void printCopy(const Copy &c)
+{
+    std::cout << "[";
+    printValue(c.dst);
+    std::cout << " <- ";
+    printValue(c.src);
+    std::cout << "]";
+}
+
+static void debugReachingCopies(const std::set<Copy> &reaching_copies)
+{
+    std::cout << "Reaching copies (" << reaching_copies.size() << "):\n";
+
+    for (const Copy &c : reaching_copies) {
+        std::cout << "  ";
+        printCopy(c);
+        std::cout << "\n";
+    }
+}
+*/
+
+static std::map<const Instruction *, std::set<Copy>> s_instructionAnnotations;
+static std::map<const CFGBlock *, std::set<Copy>> s_blockAnnotations;
 
 // Transfer function: takes all the Copy instructions that reach the begin-
 // ning of a basic block and calculates which copies reach each individual
@@ -24,22 +51,23 @@ static bool containsReverseCopy(
 // end of the block, just after the final instruction.
 static void transfer(
     const CFGBlock *block,
-    const std::set<const Copy *> &initial_reaching_copies)
+    const std::set<Copy> &initial_reaching_copies)
 {
-    std::set<const Copy *> current_reaching_copies = initial_reaching_copies;
+    std::set<Copy> current_reaching_copies = initial_reaching_copies;
     for (const auto &instruction : block->instructions) {
         s_instructionAnnotations[&instruction] = current_reaching_copies;
         if (const Copy *copy = std::get_if<Copy>(&instruction)) {
-            if (containsReverseCopy(current_reaching_copies, copy))
+            // Check for reversed copy
+            if (current_reaching_copies.contains(Copy{ copy->dst, copy->src }))
                 continue;
             for (auto reaching_copy = current_reaching_copies.begin();
                 reaching_copy != current_reaching_copies.end();) {
-                if ((*reaching_copy)->src == copy->dst || (*reaching_copy)->dst == copy->dst)
+                if (reaching_copy->src == copy->dst || reaching_copy->dst == copy->dst)
                     reaching_copy = current_reaching_copies.erase(reaching_copy);
                 else
                     ++reaching_copy;
             }
-            current_reaching_copies.insert(copy);
+            current_reaching_copies.insert(*copy);
         }
         if (const FunctionCall *func_call = std::get_if<FunctionCall>(&instruction)) {
             for (auto reaching_copy = current_reaching_copies.begin();
@@ -50,7 +78,7 @@ static void transfer(
                 assert(entry);
                 if (entry->attrs.type == IdentifierAttributes::Static)
                 */
-                if (func_call->dst && ((*reaching_copy)->src == func_call->dst || (*reaching_copy)->dst == func_call->dst))
+                if (func_call->dst && (reaching_copy->src == func_call->dst || reaching_copy->dst == func_call->dst))
                     reaching_copy = current_reaching_copies.erase(reaching_copy);
                 else
                     ++reaching_copy;
@@ -59,7 +87,7 @@ static void transfer(
         if (const Unary *unary = std::get_if<Unary>(&instruction)) {
             for (auto reaching_copy = current_reaching_copies.begin();
                 reaching_copy != current_reaching_copies.end();) {
-                if ((*reaching_copy)->src == unary->dst || (*reaching_copy)->dst == unary->dst)
+                if (reaching_copy->src == unary->dst || reaching_copy->dst == unary->dst)
                     reaching_copy = current_reaching_copies.erase(reaching_copy);
                 else
                     ++reaching_copy;
@@ -68,7 +96,7 @@ static void transfer(
         if (const Binary *binary = std::get_if<Binary>(&instruction)) {
             for (auto reaching_copy = current_reaching_copies.begin();
                 reaching_copy != current_reaching_copies.end();) {
-                if ((*reaching_copy)->src == binary->dst || (*reaching_copy)->dst == binary->dst)
+                if (reaching_copy->src == binary->dst || reaching_copy->dst == binary->dst)
                     reaching_copy = current_reaching_copies.erase(reaching_copy);
                 else
                     ++reaching_copy;
@@ -81,16 +109,16 @@ static void transfer(
 
 // Meet operator: propagates information about reaching copies
 // from one block to another.
-static std::set<const Copy *> meet(
+static std::set<Copy> meet(
     const CFGBlock *block,
-    const std::set<const Copy *> &all_copies)
+    const std::set<Copy> &all_copies)
 {
-    std::set<const Copy *> incoming_copies = all_copies;
+    std::set<Copy> incoming_copies = all_copies;
     const std::set<CFGBlock *> &preds = block->predecessors;
     for (auto pred = preds.begin(); pred != preds.end(); ++pred) {
         if ((*pred)->id == 0) // Entry
             return {};
-        const std::set<const Copy *> &pred_out_copies = s_blockAnnotations[*pred];
+        const std::set<Copy> &pred_out_copies = s_blockAnnotations[*pred];
         // Intersection of incoming_copies and pred_out_copies
         for (auto it = incoming_copies.begin(); it != incoming_copies.end();) {
             if (!pred_out_copies.contains(*it))
@@ -108,11 +136,11 @@ static void findReachingCopies(const std::list<CFGBlock> &blocks)
 {
     size_t exit_id = blocks.back().id;
 
-    std::set<const Copy *> all_copies;
+    std::set<Copy> all_copies;
     for (auto &block : blocks) {
         for (auto &instr : block.instructions) {
             if (const Copy *copy = std::get_if<Copy>(&instr))
-                all_copies.insert(copy);
+                all_copies.insert(*copy);
         }
     }
 
@@ -128,8 +156,8 @@ static void findReachingCopies(const std::list<CFGBlock> &blocks)
     while (!worklist.empty()) {
         const CFGBlock *block = worklist.front();
         worklist.pop_front();
-        std::set<const Copy *> old_annotations = s_blockAnnotations[block];
-        std::set<const Copy *> incoming_copies = meet(block, all_copies);
+        std::set<Copy> old_annotations = s_blockAnnotations[block];
+        std::set<Copy> incoming_copies = meet(block, all_copies);
         transfer(block, incoming_copies);
         if (old_annotations != s_blockAnnotations[block]) {
             for (auto succ : block->successors) {
@@ -146,15 +174,15 @@ static void findReachingCopies(const std::list<CFGBlock> &blocks)
 
 static Value newOperand(
     Value &operand,
-    std::set<const Copy *> &reaching_copies,
+    std::set<Copy> &reaching_copies,
     bool &changed)
 {
     if (std::holds_alternative<Constant>(operand))
         return operand;
-    for (auto rcopy : reaching_copies) {
-        if (rcopy->dst == operand) {
+    for (const Copy &rcopy : reaching_copies) {
+        if (rcopy.dst == operand) {
             changed = true;
-            return rcopy->src;
+            return rcopy.src;
         }
     }
     return operand;
@@ -162,12 +190,12 @@ static Value newOperand(
 
 static void rewriteInstruction(
     Instruction &instr,
-    std::set<const Copy *> &reaching_copies,
+    std::set<Copy> &reaching_copies,
     bool &changed)
 {
     if (Copy *copy = std::get_if<Copy>(&instr)) {
-        for (auto rcopy : reaching_copies) {
-            if (rcopy == copy || (rcopy->src == copy->dst && rcopy->dst == copy->src))
+        for (const Copy &rcopy : reaching_copies) {
+            if (rcopy == *copy || (rcopy.src == copy->dst && rcopy.dst == copy->src))
                 return;
         }
         copy->src = newOperand(copy->src, reaching_copies, changed);

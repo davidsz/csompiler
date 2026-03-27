@@ -130,4 +130,31 @@ inline bool operator==(const Variant &a, const Variant &b)
     return a.name == b.name;
 }
 
+inline bool operator<(const Value &a, const Value &b)
+{
+    if (a.index() != b.index())
+        return a.index() < b.index();
+    if (const Constant *ca = std::get_if<Constant>(&a))
+        return ca->value < std::get<Constant>(b).value;
+    if (const Variant *va = std::get_if<Variant>(&a))
+        return va->name < std::get<Variant>(b).name;
+    return false;
+}
+
+inline bool operator==(const Copy &a, const Copy &b)
+{
+    if (a.src == b.src && a.dst == b.dst)
+        return true;
+    return false;
+}
+
+inline bool operator<(const Copy &a, const Copy &b)
+{
+    if (a.dst < b.dst)
+        return true;
+    if (b.dst < a.dst)
+        return false;
+    return a.src < b.src;
+}
+
 }; // tac

@@ -56,3 +56,4 @@ ConstantValue ConvertValue(const ConstantValue &v, const Type &t);
 ConstantValue MakeConstantValue(long value, const Type &type);
 ConstantValue MakeConstantValue(long value, BasicType type);
 bool operator==(const ConstantValue &a, const ConstantValue &b);
+bool operator<(const ConstantValue &a, const ConstantValue &b);

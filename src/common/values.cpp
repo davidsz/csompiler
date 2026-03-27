@@ -187,4 +187,27 @@ bool operator==(const ConstantValue &a, const ConstantValue &b)
         }
     }, a, b);
 }
+
+bool operator<(const ConstantValue &a, const ConstantValue &b)
+{
+    if (a.index() < b.index())
+        return true;
+    return std::visit([](const auto &x, const auto &y) -> bool {
+        using T = std::decay_t<decltype(x)>;
+        if constexpr (
+            std::is_same_v<T, int> ||
+            std::is_same_v<T, long> ||
+            std::is_same_v<T, uint32_t> ||
+            std::is_same_v<T, uint64_t> ||
+            std::is_same_v<T, double> ||
+            std::is_same_v<T, char> ||
+            std::is_same_v<T, unsigned char>
+        ) {
+            return x < y;
+        } else {
+            assert(false);
+            return false;
+        }
+    }, a, b);
+}
 DIAG_POP
