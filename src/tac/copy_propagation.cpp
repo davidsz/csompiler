@@ -45,13 +45,25 @@ static void debugReachingCopies(const std::set<Copy> &reaching_copies)
 static std::map<const Instruction *, std::set<Copy>> s_instructionAnnotations;
 static std::map<const CFGBlock *, std::set<Copy>> s_blockAnnotations;
 
+static inline bool isStatic(const Value &v, SymbolTable *symbol_table)
+{
+    if (std::holds_alternative<Constant>(v))
+        return false;
+    const Variant *var = std::get_if<Variant>(&v);
+    assert(var);
+    const SymbolEntry *entry = symbol_table->get(var->name);
+    assert(entry);
+    return entry->attrs.type == IdentifierAttributes::Static;
+}
+
 // Transfer function: takes all the Copy instructions that reach the begin-
 // ning of a basic block and calculates which copies reach each individual
 // instruction within the block. It also calculates which copies reach the
 // end of the block, just after the final instruction.
 static void transfer(
     const CFGBlock *block,
-    const std::set<Copy> &initial_reaching_copies)
+    const std::set<Copy> &initial_reaching_copies,
+    SymbolTable *symbol_table)
 {
     std::set<Copy> current_reaching_copies = initial_reaching_copies;
     for (const auto &instruction : block->instructions) {
@@ -72,16 +84,15 @@ static void transfer(
         if (const FunctionCall *func_call = std::get_if<FunctionCall>(&instruction)) {
             for (auto reaching_copy = current_reaching_copies.begin();
                 reaching_copy != current_reaching_copies.end();) {
-                // TODO: if copy.src is static or copy.dst is static -> remove
-                /*
-                const SymbolEntry *entry = m_context->symbolTable->get(v.identifier);
-                assert(entry);
-                if (entry->attrs.type == IdentifierAttributes::Static)
-                */
-                if (func_call->dst && (reaching_copy->src == func_call->dst || reaching_copy->dst == func_call->dst))
+                if (isStatic(reaching_copy->src, symbol_table) || isStatic(reaching_copy->dst, symbol_table)) {
                     reaching_copy = current_reaching_copies.erase(reaching_copy);
-                else
-                    ++reaching_copy;
+                    continue;
+                }
+                if (func_call->dst && (reaching_copy->src == func_call->dst || reaching_copy->dst == func_call->dst)) {
+                    reaching_copy = current_reaching_copies.erase(reaching_copy);
+                    continue;
+                }
+                ++reaching_copy;
             }
         }
         if (const Unary *unary = std::get_if<Unary>(&instruction)) {
@@ -132,7 +143,7 @@ static std::set<Copy> meet(
 
 // Iterative algorithm: implements a forward data flow analysis using
 // the transfer function and meet operator defined above.
-static void findReachingCopies(const std::list<CFGBlock> &blocks)
+static void findReachingCopies(const std::list<CFGBlock> &blocks, SymbolTable *symbol_table)
 {
     size_t exit_id = blocks.back().id;
 
@@ -158,7 +169,7 @@ static void findReachingCopies(const std::list<CFGBlock> &blocks)
         worklist.pop_front();
         std::set<Copy> old_annotations = s_blockAnnotations[block];
         std::set<Copy> incoming_copies = meet(block, all_copies);
-        transfer(block, incoming_copies);
+        transfer(block, incoming_copies, symbol_table);
         if (old_annotations != s_blockAnnotations[block]) {
             for (auto succ : block->successors) {
                 if (succ->id == 0)
@@ -188,7 +199,8 @@ static Value newOperand(
     return operand;
 }
 
-static void rewriteInstruction(
+// Returns true if the instruction can be removed
+static bool rewriteInstruction(
     Instruction &instr,
     std::set<Copy> &reaching_copies,
     bool &changed)
@@ -196,34 +208,39 @@ static void rewriteInstruction(
     if (Copy *copy = std::get_if<Copy>(&instr)) {
         for (const Copy &rcopy : reaching_copies) {
             if (rcopy == *copy || (rcopy.src == copy->dst && rcopy.dst == copy->src))
-                return;
+                return true;
         }
         copy->src = newOperand(copy->src, reaching_copies, changed);
-        return;
-    }
-    if (Unary *unary = std::get_if<Unary>(&instr)) {
+    } else if (Unary *unary = std::get_if<Unary>(&instr))
         unary->src = newOperand(unary->src, reaching_copies, changed);
-        return;
-    }
-    if (Binary *binary = std::get_if<Binary>(&instr)) {
+    else if (Binary *binary = std::get_if<Binary>(&instr)) {
         binary->src1 = newOperand(binary->src1, reaching_copies, changed);
         binary->src2 = newOperand(binary->src2, reaching_copies, changed);
-        return;
-    }
-    if (Return *ret = std::get_if<Return>(&instr)) {
+    } else if (Return *ret = std::get_if<Return>(&instr))
         ret->val = newOperand(*ret->val, reaching_copies, changed);
-        return;
-    }
+    else if (FunctionCall *fc = std::get_if<FunctionCall>(&instr)) {
+        for (auto &arg : fc->args)
+            arg = newOperand(arg, reaching_copies, changed);
+    } else if (JumpIfZero *jz = std::get_if<JumpIfZero>(&instr))
+        jz->condition = newOperand(jz->condition, reaching_copies, changed);
+    else if (JumpIfNotZero *jnz = std::get_if<JumpIfNotZero>(&instr))
+        jnz->condition = newOperand(jnz->condition, reaching_copies, changed);
+    return false;
 }
 
-void copyPropagation(std::list<CFGBlock> &blocks, Context *, bool &changed)
+void copyPropagation(std::list<CFGBlock> &blocks, Context *context, bool &changed)
 {
     s_instructionAnnotations.clear();
     s_blockAnnotations.clear();
-    findReachingCopies(blocks);
+    findReachingCopies(blocks, context->symbolTable.get());
     for (auto &block : blocks) {
-        for (auto &instr : block.instructions)
-            rewriteInstruction(instr, s_instructionAnnotations[&instr], changed);
+        for (auto it = block.instructions.begin(); it != block.instructions.end();) {
+            if (rewriteInstruction(*it, s_instructionAnnotations[&*it], changed)) {
+                changed = true;
+                it = block.instructions.erase(it);
+            } else
+                ++it;
+        }
     }
 }
 

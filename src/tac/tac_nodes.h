@@ -143,9 +143,7 @@ inline bool operator<(const Value &a, const Value &b)
 
 inline bool operator==(const Copy &a, const Copy &b)
 {
-    if (a.src == b.src && a.dst == b.dst)
-        return true;
-    return false;
+    return a.src == b.src && a.dst == b.dst;
 }
 
 inline bool operator<(const Copy &a, const Copy &b)
