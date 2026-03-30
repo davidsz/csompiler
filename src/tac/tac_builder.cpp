@@ -97,7 +97,7 @@ void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, size_t 
     offset += type.storedType().size(m_typeTable);
 }
 
-void TACBuilder::EmitRuntimeInitForNonScalar(
+void TACBuilder::EmitRuntimeInitNested(
     const parser::Initializer *init,
     const std::string &base,
     const Type &type,
@@ -164,7 +164,7 @@ void TACBuilder::EmitRuntimeInitForNonScalar(
 
         size_t initialized_count = 0;
         for (auto &elem : compound->list) {
-            EmitRuntimeInitForNonScalar(elem.get(), base, element_type, offset);
+            EmitRuntimeInitNested(elem.get(), base, element_type, offset);
             initialized_count++;
         }
 
@@ -193,7 +193,7 @@ void TACBuilder::EmitRuntimeInitForNonScalar(
         for (; i < compound->list.size() && i < entry->members.size(); i++) {
             const TypeTable::AggregateMemberEntry &member = entry->members[i];
             size_t member_offset = aggr_type->is_union ? offset : offset + member.offset;
-            EmitRuntimeInitForNonScalar(
+            EmitRuntimeInitNested(
                 compound->list[i].get(),
                 base,
                 member.type,
@@ -227,7 +227,7 @@ void TACBuilder::EmitRuntimeInitForNonScalar(
     assert(false);
 }
 
-void TACBuilder::EmitRuntimeInitForScalar(
+void TACBuilder::EmitRuntimeInitTopLevel(
     const parser::Initializer *init,
     const std::string &base,
     const Type &type)
@@ -254,14 +254,10 @@ Type TACBuilder::GetType(const Value &value)
 {
     if (auto c = std::get_if<Constant>(&value))
         return getType(c->value);
-    else if (auto v = std::get_if<Variant>(&value)) {
-        const SymbolEntry *entry = m_context->symbolTable->get(v->name);
-        assert(entry);
-        return entry->type;
-    } else {
-        assert(false);
-        return Type{ BasicType::Int };
-    }
+    auto v = std::get_if<Variant>(&value);
+    const SymbolEntry *entry = m_context->symbolTable->get(v->name);
+    assert(entry);
+    return entry->type;
 }
 
 const Type &TACBuilder::GetExpressionType(const parser::Expression &expr)
@@ -967,11 +963,13 @@ ExpResult TACBuilder::operator()(const parser::VariableDeclaration &v)
     if (!v.init)
         return std::monostate();
 
+    // The concept is to use Copy instructions only when initializing a single object with
+    // a single initializer; and use CopyToOffset for all subobjects.
     size_t offset = 0;
-    if (entry->type.isScalar())
-        EmitRuntimeInitForScalar(v.init.get(), v.identifier, entry->type);
+    if (entry->type.isScalar() || (entry->type.isAggregate() && std::holds_alternative<parser::SingleInit>(*v.init)))
+        EmitRuntimeInitTopLevel(v.init.get(), v.identifier, entry->type);
     else
-        EmitRuntimeInitForNonScalar(v.init.get(), v.identifier, entry->type, offset);
+        EmitRuntimeInitNested(v.init.get(), v.identifier, entry->type, offset);
     return std::monostate();
 }
 

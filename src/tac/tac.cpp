@@ -1,7 +1,103 @@
 #include "tac.h"
+#include "common/context.h"
 #include "tac_builder.h"
 
 namespace tac {
+
+template <typename Fn>
+static void forEachValue(const Instruction &instr, Fn &&fn)
+{
+    std::visit([&](const auto &i) {
+        using T = std::decay_t<decltype(i)>;
+        if constexpr (std::is_same_v<T, Return>) {
+            if (i.val)
+                fn(*i.val);
+        } else if constexpr (std::is_same_v<T, Unary>) {
+            fn(i.src);
+            fn(i.dst);
+        } else if constexpr (std::is_same_v<T, Binary>) {
+            fn(i.src1);
+            fn(i.src2);
+            fn(i.dst);
+        } else if constexpr (std::is_same_v<T, Copy>) {
+            fn(i.src);
+            fn(i.dst);
+        } else if constexpr (std::is_same_v<T, GetAddress>) {
+            fn(i.src);
+            fn(i.dst);
+        } else if constexpr (std::is_same_v<T, Load>) {
+            fn(i.src_ptr);
+            fn(i.dst);
+        } else if constexpr (std::is_same_v<T, Store>) {
+            fn(i.src);
+            fn(i.dst_ptr);
+        } else if constexpr (std::is_same_v<T, Jump>) {
+        } else if constexpr (std::is_same_v<T, JumpIfZero>) {
+            fn(i.condition);
+        } else if constexpr (std::is_same_v<T, JumpIfNotZero>) {
+            fn(i.condition);
+        } else if constexpr (std::is_same_v<T, Label>) {
+        } else if constexpr (std::is_same_v<T, FunctionCall>) {
+            for (const auto &arg : i.args)
+                fn(arg);
+            if (i.dst)
+                fn(*i.dst);
+        } else if constexpr (std::is_same_v<T, SignExtend>) {
+            fn(i.src);
+            fn(i.dst);
+        } else if constexpr (std::is_same_v<T, Truncate>) {
+            fn(i.src);
+            fn(i.dst);
+        } else if constexpr (std::is_same_v<T, ZeroExtend>) {
+            fn(i.src);
+            fn(i.dst);
+        } else if constexpr (std::is_same_v<T, DoubleToInt>) {
+            fn(i.src);
+            fn(i.dst);
+        } else if constexpr (std::is_same_v<T, DoubleToUInt>) {
+            fn(i.src);
+            fn(i.dst);
+        } else if constexpr (std::is_same_v<T, IntToDouble>) {
+            fn(i.src);
+            fn(i.dst);
+        } else if constexpr (std::is_same_v<T, UIntToDouble>) {
+            fn(i.src);
+            fn(i.dst);
+        } else if constexpr (std::is_same_v<T, AddPtr>) {
+            fn(i.ptr);
+            fn(i.index);
+            fn(i.dst);
+        } else if constexpr (std::is_same_v<T, CopyToOffset>) {
+            fn(i.src);
+        } else if constexpr (std::is_same_v<T, CopyFromOffset>) {
+            fn(i.dst);
+        }
+    }, instr);
+}
+
+static std::set<Value> collectAliasedVariants(
+    std::list<CFGBlock> &blocks,
+    SymbolTable *symbol_table)
+{
+    std::set<Value> ret;
+    for (auto &block : blocks) {
+        for (const auto &instr : block.instructions) {
+            // Address was taken by GetAddress
+            if (const GetAddress *ga = std::get_if<GetAddress>(&instr))
+                ret.insert(ga->src);
+            // Include all static variables
+            forEachValue(instr, [&](const Value &v) {
+                if (const Variant *var = std::get_if<Variant>(&v)) {
+                    const SymbolEntry *entry = symbol_table->get(var->name);
+                    assert(entry);
+                    if (entry->attrs.type == IdentifierAttributes::Static)
+                        ret.insert(v);
+                }
+            });
+        }
+    }
+    return ret;
+}
 
 static void connect(CFGBlock *from, CFGBlock *to)
 {
@@ -71,18 +167,22 @@ void apply_optimizations(
         std::visit([&](auto &obj) {
             using T = std::decay_t<decltype(obj)>;
             if constexpr (std::is_same_v<T, FunctionDefinition>) {
+                // std::cout << "--- Function " << obj.name << " ---\n";
                 // We don't care about the phase ordering problem of optimizations,
                 // we simply run them until they can't change the program anymore.
                 bool changed = false;
                 do {
                     changed = false;
+                    std::set<Value> aliased_vars = collectAliasedVariants(
+                        obj.blocks,
+                        context->symbolTable.get());
                     if (arg.constant_folding)
                         constantFolding(obj.blocks, context, changed);
                     rebuildControlFlowEdges(obj.blocks);
                     if (arg.unreachable_code_elimination)
                         unreachableCodeElimination(obj.blocks, changed);
                     if (arg.copy_propagation)
-                        copyPropagation(obj.blocks, context, changed);
+                        copyPropagation(obj.blocks, aliased_vars, context, changed);
                     if (arg.dead_store_elimination)
                         deadStoreElimination(obj.blocks, changed);
                 } while (changed);

@@ -4,56 +4,41 @@
 #include <map>
 
 namespace tac {
-/*
-static void printValue(const Value &v)
-{
-    std::visit([](const auto &val) {
-        using T = std::decay_t<decltype(val)>;
-
-        if constexpr (std::is_same_v<T, Constant>) {
-            std::visit([](const auto &c) {
-                std::cout << toString(c);
-            }, val.value);
-        }
-        else if constexpr (std::is_same_v<T, Variant>) {
-            std::cout << val.name;
-        }
-    }, v);
-}
-
-static void printCopy(const Copy &c)
-{
-    std::cout << "[";
-    printValue(c.dst);
-    std::cout << " <- ";
-    printValue(c.src);
-    std::cout << "]";
-}
-
-static void debugReachingCopies(const std::set<Copy> &reaching_copies)
-{
-    std::cout << "Reaching copies (" << reaching_copies.size() << "):\n";
-
-    for (const Copy &c : reaching_copies) {
-        std::cout << "  ";
-        printCopy(c);
-        std::cout << "\n";
-    }
-}
-*/
 
 static std::map<const Instruction *, std::set<Copy>> s_instructionAnnotations;
 static std::map<const CFGBlock *, std::set<Copy>> s_blockAnnotations;
 
-static inline bool isStatic(const Value &v, SymbolTable *symbol_table)
+static Type getType(const Value &value, SymbolTable *symbol_table)
 {
-    if (std::holds_alternative<Constant>(v))
-        return false;
-    const Variant *var = std::get_if<Variant>(&v);
-    assert(var);
-    const SymbolEntry *entry = symbol_table->get(var->name);
+    if (auto c = std::get_if<Constant>(&value))
+        return getType(c->value);
+    auto v = std::get_if<Variant>(&value);
+    const SymbolEntry *entry = symbol_table->get(v->name);
     assert(entry);
-    return entry->attrs.type == IdentifierAttributes::Static;
+    return entry->type;
+}
+
+static bool isNullConstant(const Value &value)
+{
+    if (auto c = std::get_if<Constant>(&value)) {
+        return std::visit([](const auto &v) -> bool {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_integral_v<T>)
+                return v == 0;
+            return false;
+        }, c->value);
+    }
+    return false;
+}
+
+static void killCopiesUsing(std::set<Copy> &copies, const Value &v)
+{
+    for (auto it = copies.begin(); it != copies.end();) {
+        if (it->src == v || it->dst == v)
+            it = copies.erase(it);
+        else
+            ++it;
+    }
 }
 
 // Transfer function: takes all the Copy instructions that reach the begin-
@@ -63,6 +48,7 @@ static inline bool isStatic(const Value &v, SymbolTable *symbol_table)
 static void transfer(
     const CFGBlock *block,
     const std::set<Copy> &initial_reaching_copies,
+    const std::set<Value> &aliased_vars,
     SymbolTable *symbol_table)
 {
     std::set<Copy> current_reaching_copies = initial_reaching_copies;
@@ -72,19 +58,18 @@ static void transfer(
             // Check for reversed copy
             if (current_reaching_copies.contains(Copy{ copy->dst, copy->src }))
                 continue;
+            killCopiesUsing(current_reaching_copies, copy->dst);
+            Type src_type = getType(copy->src, symbol_table);
+            Type dst_type = getType(copy->dst, symbol_table);
+            if (src_type == dst_type
+                || src_type.isSigned() == dst_type.isSigned()) {
+                current_reaching_copies.insert(*copy);
+            } else if (isNullConstant(copy->src) && dst_type.isPointer())
+                current_reaching_copies.insert(*copy);
+        } else if (const FunctionCall *func_call = std::get_if<FunctionCall>(&instruction)) {
             for (auto reaching_copy = current_reaching_copies.begin();
                 reaching_copy != current_reaching_copies.end();) {
-                if (reaching_copy->src == copy->dst || reaching_copy->dst == copy->dst)
-                    reaching_copy = current_reaching_copies.erase(reaching_copy);
-                else
-                    ++reaching_copy;
-            }
-            current_reaching_copies.insert(*copy);
-        }
-        if (const FunctionCall *func_call = std::get_if<FunctionCall>(&instruction)) {
-            for (auto reaching_copy = current_reaching_copies.begin();
-                reaching_copy != current_reaching_copies.end();) {
-                if (isStatic(reaching_copy->src, symbol_table) || isStatic(reaching_copy->dst, symbol_table)) {
+                if (aliased_vars.contains(reaching_copy->src) || aliased_vars.contains(reaching_copy->dst)) {
                     reaching_copy = current_reaching_copies.erase(reaching_copy);
                     continue;
                 }
@@ -94,25 +79,40 @@ static void transfer(
                 }
                 ++reaching_copy;
             }
-        }
-        if (const Unary *unary = std::get_if<Unary>(&instruction)) {
+        } else if (std::holds_alternative<Store>(instruction)) {
             for (auto reaching_copy = current_reaching_copies.begin();
                 reaching_copy != current_reaching_copies.end();) {
-                if (reaching_copy->src == unary->dst || reaching_copy->dst == unary->dst)
+                if (aliased_vars.contains(reaching_copy->src) || aliased_vars.contains(reaching_copy->dst)) {
                     reaching_copy = current_reaching_copies.erase(reaching_copy);
-                else
-                    ++reaching_copy;
+                    continue;
+                }
+                ++reaching_copy;
             }
-        }
-        if (const Binary *binary = std::get_if<Binary>(&instruction)) {
-            for (auto reaching_copy = current_reaching_copies.begin();
-                reaching_copy != current_reaching_copies.end();) {
-                if (reaching_copy->src == binary->dst || reaching_copy->dst == binary->dst)
-                    reaching_copy = current_reaching_copies.erase(reaching_copy);
-                else
-                    ++reaching_copy;
-            }
-        }
+        } else if (const Unary *unary = std::get_if<Unary>(&instruction))
+            killCopiesUsing(current_reaching_copies, unary->dst);
+        else if (const Binary *binary = std::get_if<Binary>(&instruction))
+            killCopiesUsing(current_reaching_copies, binary->dst);
+        else if (const SignExtend *se = std::get_if<SignExtend>(&instruction))
+            killCopiesUsing(current_reaching_copies, se->dst);
+        else if (const Truncate *tr = std::get_if<Truncate>(&instruction))
+            killCopiesUsing(current_reaching_copies, tr->dst);
+        else if (const ZeroExtend *ze = std::get_if<ZeroExtend>(&instruction))
+            killCopiesUsing(current_reaching_copies, ze->dst);
+        else if (const DoubleToInt *dti = std::get_if<DoubleToInt>(&instruction))
+            killCopiesUsing(current_reaching_copies, dti->dst);
+        else if (const DoubleToUInt *dtu = std::get_if<DoubleToUInt>(&instruction))
+            killCopiesUsing(current_reaching_copies, dtu->dst);
+        else if (const IntToDouble *itd = std::get_if<IntToDouble>(&instruction))
+            killCopiesUsing(current_reaching_copies, itd->dst);
+        else if (const UIntToDouble *utd = std::get_if<UIntToDouble>(&instruction))
+            killCopiesUsing(current_reaching_copies, utd->dst);
+        else if (const AddPtr *add = std::get_if<AddPtr>(&instruction))
+            killCopiesUsing(current_reaching_copies, add->dst);
+        else if (const CopyToOffset *cto = std::get_if<CopyToOffset>(&instruction))
+            killCopiesUsing(current_reaching_copies, Value{ Variant{ cto->dst_identifier } });
+        else if (const CopyFromOffset *cfo = std::get_if<CopyFromOffset>(&instruction))
+            killCopiesUsing(current_reaching_copies, cfo->dst);
+
     }
     s_blockAnnotations[block] = std::move(current_reaching_copies);
 }
@@ -143,7 +143,10 @@ static std::set<Copy> meet(
 
 // Iterative algorithm: implements a forward data flow analysis using
 // the transfer function and meet operator defined above.
-static void findReachingCopies(const std::list<CFGBlock> &blocks, SymbolTable *symbol_table)
+static void findReachingCopies(
+    const std::list<CFGBlock> &blocks,
+    const std::set<Value> &aliased_vars,
+    SymbolTable *symbol_table)
 {
     size_t exit_id = blocks.back().id;
 
@@ -169,7 +172,7 @@ static void findReachingCopies(const std::list<CFGBlock> &blocks, SymbolTable *s
         worklist.pop_front();
         std::set<Copy> old_annotations = s_blockAnnotations[block];
         std::set<Copy> incoming_copies = meet(block, all_copies);
-        transfer(block, incoming_copies, symbol_table);
+        transfer(block, incoming_copies, aliased_vars, symbol_table);
         if (old_annotations != s_blockAnnotations[block]) {
             for (auto succ : block->successors) {
                 if (succ->id == 0)
@@ -202,9 +205,9 @@ static Value newOperand(
 // Returns true if the instruction can be removed
 static bool rewriteInstruction(
     Instruction &instr,
-    std::set<Copy> &reaching_copies,
     bool &changed)
 {
+    std::set<Copy> &reaching_copies = s_instructionAnnotations[&instr];
     if (Copy *copy = std::get_if<Copy>(&instr)) {
         for (const Copy &rcopy : reaching_copies) {
             if (rcopy == *copy || (rcopy.src == copy->dst && rcopy.dst == copy->src))
@@ -225,17 +228,45 @@ static bool rewriteInstruction(
         jz->condition = newOperand(jz->condition, reaching_copies, changed);
     else if (JumpIfNotZero *jnz = std::get_if<JumpIfNotZero>(&instr))
         jnz->condition = newOperand(jnz->condition, reaching_copies, changed);
+    else if (SignExtend *se = std::get_if<SignExtend>(&instr))
+        se->src = newOperand(se->src, reaching_copies, changed);
+    else if (Truncate *tr = std::get_if<Truncate>(&instr))
+        tr->src = newOperand(tr->src, reaching_copies, changed);
+    else if (ZeroExtend *ze = std::get_if<ZeroExtend>(&instr))
+        ze->src = newOperand(ze->src, reaching_copies, changed);
+    else if (DoubleToInt *dti = std::get_if<DoubleToInt>(&instr))
+        dti->src = newOperand(dti->src, reaching_copies, changed);
+    else if (DoubleToUInt *dtu = std::get_if<DoubleToUInt>(&instr))
+        dtu->src = newOperand(dtu->src, reaching_copies, changed);
+    else if (IntToDouble *itd = std::get_if<IntToDouble>(&instr))
+        itd->src = newOperand(itd->src, reaching_copies, changed);
+    else if (UIntToDouble *utd = std::get_if<UIntToDouble>(&instr))
+        utd->src = newOperand(utd->src, reaching_copies, changed);
+    else if (AddPtr *add = std::get_if<AddPtr>(&instr)) {
+        add->ptr = newOperand(add->ptr, reaching_copies, changed);
+        add->index = newOperand(add->index, reaching_copies, changed);
+    } else if (CopyToOffset *cto = std::get_if<CopyToOffset>(&instr))
+        cto->src = newOperand(cto->src, reaching_copies, changed);
+    else if (CopyFromOffset *cfo = std::get_if<CopyFromOffset>(&instr)) {
+        Value old_src = Value{ Variant{ cfo->src_identifier } };
+        Value new_src = newOperand(old_src, reaching_copies, changed);
+        cfo->src_identifier = std::get_if<Variant>(&new_src)->name;
+    }
     return false;
 }
 
-void copyPropagation(std::list<CFGBlock> &blocks, Context *context, bool &changed)
+void copyPropagation(
+    std::list<CFGBlock> &blocks,
+    const std::set<Value> &aliased_vars,
+    Context *context,
+    bool &changed)
 {
     s_instructionAnnotations.clear();
     s_blockAnnotations.clear();
-    findReachingCopies(blocks, context->symbolTable.get());
+    findReachingCopies(blocks, aliased_vars, context->symbolTable.get());
     for (auto &block : blocks) {
         for (auto it = block.instructions.begin(); it != block.instructions.end();) {
-            if (rewriteInstruction(*it, s_instructionAnnotations[&*it], changed)) {
+            if (rewriteInstruction(*it, changed)) {
                 changed = true;
                 it = block.instructions.erase(it);
             } else

@@ -109,13 +109,13 @@ private:
 
     std::pair<ExpResult, Type> VisitLHS(const parser::Expression &expr);
     void EmitZeroInit(const Type &type, const std::string &base, size_t &offset);
-    void EmitRuntimeInitForNonScalar(
+    void EmitRuntimeInitNested(
         const parser::Initializer *init,
         const std::string &base,
         const Type &type,
         size_t &offset
     );
-    void EmitRuntimeInitForScalar(
+    void EmitRuntimeInitTopLevel(
         const parser::Initializer *init,
         const std::string &base,
         const Type &type

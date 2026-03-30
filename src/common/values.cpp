@@ -105,6 +105,8 @@ ConstantValue ConvertValue(const ConstantValue &v, const Type &to_type)
             assert(false);
             return x;
         } else {
+            if (to_type.isPointer())
+                return static_cast<unsigned long>(x);
             const BasicType *basic_type = to_type.getAs<BasicType>();
             if (!basic_type)
                 return v;
@@ -176,11 +178,16 @@ bool operator==(const ConstantValue &a, const ConstantValue &b)
             std::is_same_v<T, long> ||
             std::is_same_v<T, uint32_t> ||
             std::is_same_v<T, uint64_t> ||
-            std::is_same_v<T, double> ||
             std::is_same_v<T, char> ||
             std::is_same_v<T, unsigned char>
         ) {
             return x == y;
+        } else if constexpr (std::is_same_v<T, double>) {
+            using U = std::decay_t<decltype(y)>;
+            if constexpr (std::is_same_v<U, double>)
+                return std::bit_cast<uint64_t>(x) == std::bit_cast<uint64_t>(y);
+            else
+                return false;
         } else {
             assert(false);
             return false;
@@ -199,11 +206,16 @@ bool operator<(const ConstantValue &a, const ConstantValue &b)
             std::is_same_v<T, long> ||
             std::is_same_v<T, uint32_t> ||
             std::is_same_v<T, uint64_t> ||
-            std::is_same_v<T, double> ||
             std::is_same_v<T, char> ||
             std::is_same_v<T, unsigned char>
         ) {
             return x < y;
+        } else if constexpr (std::is_same_v<T, double>) {
+            using U = std::decay_t<decltype(y)>;
+            if constexpr (std::is_same_v<U, double>)
+                return std::bit_cast<uint64_t>(x) < std::bit_cast<uint64_t>(y);
+            else
+                return false;
         } else {
             assert(false);
             return false;

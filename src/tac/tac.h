@@ -41,6 +41,7 @@ void unreachableCodeElimination(
 // copy_propagation.cpp
 void copyPropagation(
     std::list<CFGBlock> &blocks,
+    const std::set<Value> &aliased_vars,
     Context *context,
     bool &changed
 );
