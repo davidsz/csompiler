@@ -781,11 +781,26 @@ Operand ASMBuilder::operator()(const tac::SignExtend &s)
 
 Operand ASMBuilder::operator()(const tac::Truncate &t)
 {
-    m_instructions.push_back(Mov{
-        std::visit(*this, t.src),
-        std::visit(*this, t.dst),
-        GetWordType(t.dst)
-    });
+    Operand src = std::visit(*this, t.src);
+    WordType dst_type = GetWordType(t.dst);
+
+    // GCC throws a warning when it has to automatically truncate an immediate value
+    if (Imm *imm = std::get_if<Imm>(&src)) {
+        switch (dst_type) {
+        case Byte:
+            imm->value = static_cast<int8_t>(imm->value);
+            break;
+        case Longword:
+            imm->value = static_cast<int32_t>(imm->value);
+            break;
+        case Quadword:
+        case Doubleword:
+        default:
+            break;
+        }
+    }
+
+    m_instructions.push_back(Mov{ src, std::visit(*this, t.dst), dst_type });
     return std::monostate();
 }
 

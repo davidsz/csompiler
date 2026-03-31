@@ -53,12 +53,14 @@ static std::optional<ConstantValue> evaluate(
                         return std::nullopt;
                     return ConstantValue(T(l % r));
                 }
+                // Don't use the common type for shift operations,
+                // the rhs doesn't affect the result type.
                 case BinaryOperator::LeftShift: {
                     if (r < 0)
                         return std::nullopt;
-                    return ConstantValue(T(l << r));
+                    return ConstantValue(T(lhs << r));
                 }
-                case BinaryOperator::RightShift: return ConstantValue(T(l >> r));
+                case BinaryOperator::RightShift: return ConstantValue(T(lhs >> r));
                 case BinaryOperator::BitwiseAnd: return ConstantValue(T(l & r));
                 case BinaryOperator::BitwiseXor: return ConstantValue(T(l ^ r));
                 case BinaryOperator::BitwiseOr:  return ConstantValue(T(l | r));
