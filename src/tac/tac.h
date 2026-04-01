@@ -49,6 +49,7 @@ void copyPropagation(
 // dead_store_elimination.cpp
 void deadStoreElimination(
     std::list<CFGBlock> &blocks,
+    const std::set<Value> &aliased_vars,
     bool &changed
 );
 
