@@ -112,7 +112,6 @@ static void transfer(
             killCopiesUsing(current_reaching_copies, Value{ Variant{ cto->dst_identifier } });
         else if (const CopyFromOffset *cfo = std::get_if<CopyFromOffset>(&instruction))
             killCopiesUsing(current_reaching_copies, cfo->dst);
-
     }
     s_blockAnnotations[block] = std::move(current_reaching_copies);
 }
