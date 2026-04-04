@@ -263,7 +263,10 @@ void TACPrinter::print(const std::list<TopLevel> &topLevel) {
                 std::cout << " Function(" << item.name << ") {" << std::endl;
                 tab();
                 for (auto &block : item.blocks) {
-                    std::cout << "-" << block.id <<  "--------------------" << std::endl;
+                    std::cout << "-" << block.id <<  "-----------------prev: ";
+                    for (auto &pred : block.predecessors)
+                        std::cout << pred->id << " ";
+                    std::cout << std::endl;
                     tab();
                     for (auto &instruction : block.instructions)
                         std::visit(*this, instruction);

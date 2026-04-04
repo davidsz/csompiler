@@ -2,6 +2,7 @@
 #include "common/context.h"
 #include "tac_builder.h"
 #include "tac_helper.h"
+#include "tac_printer.h"
 
 namespace tac {
 
@@ -97,11 +98,13 @@ void apply_optimizations(
         std::visit([&](auto &obj) {
             using T = std::decay_t<decltype(obj)>;
             if constexpr (std::is_same_v<T, FunctionDefinition>) {
-                // std::cout << "--- Function " << obj.name << " ---\n";
+                // std::cout << "--- Function \"" << obj.name << "\" ---\n";
+                // TACPrinter printer;
                 // We don't care about the phase ordering problem of optimizations,
                 // we simply run them until they can't change the program anymore.
                 bool changed = false;
                 do {
+                    // std::cout << "--- iteration begin ---\n";
                     changed = false;
                     std::set<Value> aliased_vars = collectAliasedVariants(
                         obj.blocks,
@@ -115,6 +118,8 @@ void apply_optimizations(
                         copyPropagation(obj.blocks, aliased_vars, context, changed);
                     if (arg.dead_store_elimination)
                         deadStoreElimination(obj.blocks, aliased_vars, changed);
+                    // std::cout << "--- iteration end ---\n";
+                    // printer.print(list);
                 } while (changed);
             }
         }, top_level_obj);

@@ -34,6 +34,7 @@ static std::list<CFGBlock>::iterator removeBlock(
 void unreachableCodeElimination(std::list<CFGBlock> &blocks, bool &changed)
 {
     std::set<CFGBlock *> visited_blocks;
+    visited_blocks.insert(&blocks.back());
     visitBlocks(&blocks.front(), visited_blocks);
     for (auto it = blocks.begin(); it != blocks.end();) {
         // Removing unreachable blocks
