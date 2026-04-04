@@ -6,17 +6,25 @@
 
 namespace tac {
 
-static std::set<Value> collectAliasedVariants(
+static std::set<Value> collectAliasedVariants(std::list<CFGBlock> &blocks)
+{
+    std::set<Value> ret;
+    for (auto &block : blocks) {
+        for (const auto &instr : block.instructions) {
+            if (const GetAddress *ga = std::get_if<GetAddress>(&instr))
+                ret.insert(ga->src);
+        }
+    }
+    return ret;
+}
+
+static std::set<Value> collectStaticVariants(
     std::list<CFGBlock> &blocks,
     SymbolTable *symbol_table)
 {
     std::set<Value> ret;
     for (auto &block : blocks) {
         for (const auto &instr : block.instructions) {
-            // Address was taken by GetAddress
-            if (const GetAddress *ga = std::get_if<GetAddress>(&instr))
-                ret.insert(ga->src);
-            // Include all static variables
             ForEachValue(instr, [&](const Value &v) {
                 if (const Variant *var = std::get_if<Variant>(&v)) {
                     const SymbolEntry *entry = symbol_table->get(var->name);
@@ -106,7 +114,8 @@ void apply_optimizations(
                 do {
                     // std::cout << "--- iteration begin ---\n";
                     changed = false;
-                    std::set<Value> aliased_vars = collectAliasedVariants(
+                    std::set<Value> aliased_vars = collectAliasedVariants(obj.blocks);
+                    std::set<Value> static_vars = collectStaticVariants(
                         obj.blocks,
                         context->symbolTable.get());
                     if (arg.constant_folding)
@@ -115,9 +124,9 @@ void apply_optimizations(
                     if (arg.unreachable_code_elimination)
                         unreachableCodeElimination(obj.blocks, changed);
                     if (arg.copy_propagation)
-                        copyPropagation(obj.blocks, aliased_vars, context, changed);
+                        copyPropagation(obj.blocks, aliased_vars, static_vars, context, changed);
                     if (arg.dead_store_elimination)
-                        deadStoreElimination(obj.blocks, aliased_vars, changed);
+                        deadStoreElimination(obj.blocks, aliased_vars, static_vars, changed);
                     // std::cout << "--- iteration end ---\n";
                     // printer.print(list);
                 } while (changed);

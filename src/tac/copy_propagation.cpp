@@ -49,6 +49,7 @@ static void transfer(
     const CFGBlock *block,
     const std::set<Copy> &initial_reaching_copies,
     const std::set<Value> &aliased_vars,
+    const std::set<Value> &static_vars,
     SymbolTable *symbol_table)
 {
     std::set<Copy> current_reaching_copies = initial_reaching_copies;
@@ -73,6 +74,10 @@ static void transfer(
                     reaching_copy = current_reaching_copies.erase(reaching_copy);
                     continue;
                 }
+                if (static_vars.contains(reaching_copy->src) || static_vars.contains(reaching_copy->dst)) {
+                    reaching_copy = current_reaching_copies.erase(reaching_copy);
+                    continue;
+                }
                 if (func_call->dst && (reaching_copy->src == func_call->dst || reaching_copy->dst == func_call->dst)) {
                     reaching_copy = current_reaching_copies.erase(reaching_copy);
                     continue;
@@ -83,6 +88,10 @@ static void transfer(
             for (auto reaching_copy = current_reaching_copies.begin();
                 reaching_copy != current_reaching_copies.end();) {
                 if (aliased_vars.contains(reaching_copy->src) || aliased_vars.contains(reaching_copy->dst)) {
+                    reaching_copy = current_reaching_copies.erase(reaching_copy);
+                    continue;
+                }
+                if (static_vars.contains(reaching_copy->src) || static_vars.contains(reaching_copy->dst)) {
                     reaching_copy = current_reaching_copies.erase(reaching_copy);
                     continue;
                 }
@@ -145,6 +154,7 @@ static std::set<Copy> meet(
 static void findReachingCopies(
     const std::list<CFGBlock> &blocks,
     const std::set<Value> &aliased_vars,
+    const std::set<Value> &static_vars,
     SymbolTable *symbol_table)
 {
     size_t exit_id = blocks.back().id;
@@ -171,7 +181,7 @@ static void findReachingCopies(
         worklist.pop_front();
         std::set<Copy> old_annotations = s_blockAnnotations[block];
         std::set<Copy> incoming_copies = meet(block, all_copies);
-        transfer(block, incoming_copies, aliased_vars, symbol_table);
+        transfer(block, incoming_copies, aliased_vars, static_vars, symbol_table);
         if (old_annotations != s_blockAnnotations[block]) {
             for (auto succ : block->successors) {
                 if (succ->id == 0)
@@ -257,12 +267,13 @@ static bool rewriteInstruction(
 void copyPropagation(
     std::list<CFGBlock> &blocks,
     const std::set<Value> &aliased_vars,
+    const std::set<Value> &static_vars,
     Context *context,
     bool &changed)
 {
     s_instructionAnnotations.clear();
     s_blockAnnotations.clear();
-    findReachingCopies(blocks, aliased_vars, context->symbolTable.get());
+    findReachingCopies(blocks, aliased_vars, static_vars, context->symbolTable.get());
     for (auto &block : blocks) {
         for (auto it = block.instructions.begin(); it != block.instructions.end();) {
             if (rewriteInstruction(*it, changed)) {

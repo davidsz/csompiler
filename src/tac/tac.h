@@ -42,6 +42,7 @@ void unreachableCodeElimination(
 void copyPropagation(
     std::list<CFGBlock> &blocks,
     const std::set<Value> &aliased_vars,
+    const std::set<Value> &static_vars,
     Context *context,
     bool &changed
 );
@@ -50,6 +51,7 @@ void copyPropagation(
 void deadStoreElimination(
     std::list<CFGBlock> &blocks,
     const std::set<Value> &aliased_vars,
+    const std::set<Value> &static_vars,
     bool &changed
 );
 

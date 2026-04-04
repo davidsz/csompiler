@@ -27,7 +27,8 @@ static inline void removeVariant(const Value &val, std::set<Variant> &variants)
 static void transfer(
     const CFGBlock *block,
     const std::set<Variant> &end_live_variables,
-    const std::set<Value> &aliased_vars)
+    const std::set<Value> &aliased_vars,
+    const std::set<Value> &static_vars)
 {
     std::set<Variant> current_live_variables = end_live_variables;
     for (auto it = block->instructions.rbegin(); it != block->instructions.rend(); ++it) {
@@ -48,24 +49,29 @@ static void transfer(
             insertVariant(copy->src, current_live_variables);
         } else if (const GetAddress *ga = std::get_if<GetAddress>(&instruction)) {
             removeVariant(ga->dst, current_live_variables);
-            insertVariant(ga->src, current_live_variables);
         } else if (const Load *load = std::get_if<Load>(&instruction)) {
             removeVariant(load->dst, current_live_variables);
             insertVariant(load->src_ptr, current_live_variables);
+            for (auto &v : static_vars)
+                insertVariant(v, current_live_variables);
+            for (auto &v : aliased_vars)
+                insertVariant(v, current_live_variables);
         } else if (const Store *store = std::get_if<Store>(&instruction)) {
-            // removeVariant(store->dst_ptr, current_live_variables);
             insertVariant(store->src, current_live_variables);
-        } else if (/*const Jump *jump =*/ std::get_if<Jump>(&instruction)) {
+            insertVariant(store->dst_ptr, current_live_variables);
+        } else if (std::holds_alternative<Jump>(instruction)) {
         } else if (const JumpIfZero *jiz = std::get_if<JumpIfZero>(&instruction)) {
             insertVariant(jiz->condition, current_live_variables);
         } else if (const JumpIfNotZero *jinz = std::get_if<JumpIfNotZero>(&instruction)) {
             insertVariant(jinz->condition, current_live_variables);
-        } else if (/*const Label *label =*/ std::get_if<Label>(&instruction)) {
+        } else if (std::holds_alternative<Label>(instruction)) {
         } else if (const FunctionCall *func_call = std::get_if<FunctionCall>(&instruction)) {
             if (func_call->dst)
                 removeVariant(*func_call->dst, current_live_variables);
             for (const auto &arg : func_call->args)
                 insertVariant(arg, current_live_variables);
+            for (auto &v : static_vars)
+                insertVariant(v, current_live_variables);
             for (auto &v : aliased_vars)
                 insertVariant(v, current_live_variables);
         } else if (const SignExtend *se = std::get_if<SignExtend>(&instruction)) {
@@ -94,7 +100,6 @@ static void transfer(
             insertVariant(add->ptr, current_live_variables);
             insertVariant(add->index, current_live_variables);
         } else if (const CopyToOffset *cto = std::get_if<CopyToOffset>(&instruction)) {
-            removeVariant(Value{ Variant{ cto->dst_identifier } }, current_live_variables);
             insertVariant(cto->src, current_live_variables);
         } else if (const CopyFromOffset *cfo = std::get_if<CopyFromOffset>(&instruction)) {
             removeVariant(cfo->dst, current_live_variables);
@@ -108,14 +113,14 @@ static void transfer(
 // from one block to another.
 static std::set<Variant> meet(
     const CFGBlock *block,
-    const std::set<Value> &aliased_vars)
+    const std::set<Value> &static_vars)
 {
     std::set<Variant> live_variables;
     for (auto &succ : block->successors) {
         if (succ->id == 0)
             assert(false);
         else if (succ->id == s_exitId) {
-            for (auto &v : aliased_vars) {
+            for (auto &v : static_vars) {
                 if (const Variant *var = std::get_if<Variant>(&v))
                     live_variables.insert(*var);
             }
@@ -130,7 +135,8 @@ static std::set<Variant> meet(
 // Iterative algorithm: implements a backward (liveness) analysis
 static void findLiveVariables(
     const std::list<CFGBlock> &blocks,
-    const std::set<Value> &aliased_vars)
+    const std::set<Value> &aliased_vars,
+    const std::set<Value> &static_vars)
 {
     // TODO: Can be optimized by postordering
     std::list<const CFGBlock *> worklist;
@@ -145,8 +151,8 @@ static void findLiveVariables(
         const CFGBlock *block = worklist.front();
         worklist.pop_front();
         std::set<Variant> old_annotations = s_blockAnnotations[block];
-        std::set<Variant> end_live = meet(block, aliased_vars);
-        transfer(block, end_live, aliased_vars);
+        std::set<Variant> end_live = meet(block, static_vars);
+        transfer(block, end_live, aliased_vars, static_vars);
         if (old_annotations != s_blockAnnotations[block]) {
             for (auto pred : block->predecessors) {
                 if (pred->id == 0 || pred->id == s_exitId)
@@ -172,7 +178,10 @@ static bool isDeadStore(const Instruction &instr)
         using T = std::decay_t<decltype(i)>;
         if constexpr (std::is_same_v<T, FunctionCall> || std::is_same_v<T, Store>)
             return false;
-        else if constexpr (requires { i.dst; }) {
+        else if constexpr (std::is_same_v<T, CopyToOffset>) {
+            dst = Variant{ i.dst_identifier };
+            return true;
+        } else if constexpr (requires { i.dst; }) {
             if (const Variant *var = std::get_if<Variant>(&i.dst)) {
                 dst = *var;
                 return true;
@@ -189,13 +198,14 @@ static bool isDeadStore(const Instruction &instr)
 
 void deadStoreElimination(
     std::list<CFGBlock> &blocks,
-    const std::set<Value> &aliased_vars,
+    const std::set<Value> &aliased_variables,
+    const std::set<Value> &static_variables,
     bool &changed)
 {
     s_instructionAnnotations.clear();
     s_blockAnnotations.clear();
     s_exitId = blocks.back().id;
-    findLiveVariables(blocks, aliased_vars);
+    findLiveVariables(blocks, aliased_variables, static_variables);
     for (auto block = blocks.begin(); block != blocks.end(); ++block) {
         for (auto i = block->instructions.begin(); i != block->instructions.end();) {
             if (isDeadStore(*i)) {
