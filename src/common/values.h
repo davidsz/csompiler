@@ -39,6 +39,7 @@ std::string toString(const ConstantValue &v);
 std::string toLabel(const ConstantValue &v);
 Type getType(const ConstantValue &v);
 bool isPositiveZero(const ConstantValue &v);
+bool isZero(const ConstantValue &value);
 size_t byteSizeOf(const ConstantValue &v);
 
 template <typename T>

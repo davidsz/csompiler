@@ -253,34 +253,45 @@ void TACPrinter::operator()(const tac::StaticConstant &s)
     pad(); std::cout << "}" << std::endl;
 }
 
-void TACPrinter::print(const std::list<TopLevel> &topLevel) {
-    for (auto &top_level_item : topLevel) {
-        std::visit([&](auto &item) {
-            using T = std::decay_t<decltype(item)>;
-            if constexpr (std::is_same_v<T, FunctionDefinition>) {
-                pad();
-                std::cout << (item.global ? "global" : "local");
-                std::cout << " Function(" << item.name << ") {" << std::endl;
-                tab();
-                for (auto &block : item.blocks) {
-                    std::cout << "-" << block.id <<  "-----------------prev: ";
-                    for (auto &pred : block.predecessors)
-                        std::cout << pred->id << " ";
-                    std::cout << std::endl;
-                    tab();
-                    for (auto &instruction : block.instructions)
-                        std::visit(*this, instruction);
-                    shift_tab();
-                    std::cout << "--------------------next: ";
-                    for (auto &successor : block.successors)
-                        std::cout << successor->id << " ";
-                    std::cout << std::endl;
-                }
-                shift_tab();
-                pad(); std::cout << "}" << std::endl;
-            } else
-                std::visit(*this, top_level_item);
-        }, top_level_item);
+void TACPrinter::PrintFunction(const FunctionDefinition &f)
+{
+    pad();
+    std::cout << (f.global ? "global" : "local");
+    std::cout << " Function(" << f.name << ") {" << std::endl;
+    tab();
+    for (auto &block : f.blocks) {
+        if (m_printBlocks) {
+            std::cout << "-" << block.id <<  "-----------------prev: ";
+            for (auto &pred : block.predecessors)
+                std::cout << pred->id << " ";
+            std::cout << std::endl;
+            tab();
+        }
+        for (auto &instruction : block.instructions)
+            std::visit(*this, instruction);
+        if (m_printBlocks) {
+            shift_tab();
+            std::cout << "--------------------next: ";
+            for (auto &successor : block.successors)
+                std::cout << successor->id << " ";
+            std::cout << std::endl;
+        }
+    }
+    shift_tab();
+    pad(); std::cout << "}" << std::endl;
+}
+
+void TACPrinter::Print(const std::list<TopLevel> &topLevel)
+{
+    TACPrinter printer;
+    for (const auto &item : topLevel) {
+        std::visit([&](const auto &node) {
+            using T = std::decay_t<decltype(node)>;
+            if constexpr (std::is_same_v<T, FunctionDefinition>)
+                printer.PrintFunction(node);
+            else
+                std::visit(printer, item);
+        }, item);
     }
 }
 

@@ -5,10 +5,11 @@
 namespace tac {
 
 struct TACPrinter : public ITACVisitor<void> {
-    size_t indent = 0;
-    void pad() const { std::cout << std::string(indent, ' '); }
-    void tab() { indent += 2; }
-    void shift_tab() { indent -= 2; }
+    bool m_printBlocks = false;
+    size_t m_indent = 0;
+    void pad() const { std::cout << std::string(m_indent, ' '); }
+    void tab() { m_indent += 2; }
+    void shift_tab() { m_indent -= 2; }
 
     void operator()(const tac::Constant &c) override;
     void operator()(const tac::Variant &v) override;
@@ -41,7 +42,8 @@ struct TACPrinter : public ITACVisitor<void> {
         assert(false);
     }
 
-    void print(const std::list<TopLevel> &topLevel);
+    void PrintFunction(const FunctionDefinition &f);
+    static void Print(const std::list<TopLevel> &topLevel);
 };
 
 } // namespace tac

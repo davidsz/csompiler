@@ -160,7 +160,7 @@ static std::list<Instruction>::iterator postprocessMov(std::list<Instruction> &a
     auto &obj = std::get<Mov>(*it);
     // MOV instruction can't have memory addresses both in source and destination
     if ((isMemoryAddress(obj.src) && isMemoryAddress(obj.dst))
-        || obj.type == WordType::Quadword) {
+        || (obj.type == WordType::Quadword && std::holds_alternative<Imm>(obj.src) && isMemoryAddress(obj.dst))) {
         auto current = obj;
         it = asmList.erase(it);
         if (current.type == WordType::Doubleword) {

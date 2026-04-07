@@ -44,6 +44,8 @@ static std::optional<ConstantValue> evaluate(
             case BinaryOperator::GreaterOrEqual: return ConstantValue(int(l >= r));
             case BinaryOperator::Equal:          return ConstantValue(int(l == r));
             case BinaryOperator::NotEqual:       return ConstantValue(int(l != r));
+            case BinaryOperator::And:            return ConstantValue(int(l && r));
+            case BinaryOperator::Or:             return ConstantValue(int(l || r));
             }
 
             if constexpr (!std::is_floating_point_v<T>) {
@@ -64,8 +66,6 @@ static std::optional<ConstantValue> evaluate(
                 case BinaryOperator::BitwiseAnd: return ConstantValue(T(l & r));
                 case BinaryOperator::BitwiseXor: return ConstantValue(T(l ^ r));
                 case BinaryOperator::BitwiseOr:  return ConstantValue(T(l | r));
-                case BinaryOperator::And:        return ConstantValue(int(l && r));
-                case BinaryOperator::Or:         return ConstantValue(int(l || r));
                 }
             }
         }
@@ -136,7 +136,7 @@ static std::list<Instruction>::iterator foldJumpIfZero(
     const Constant *condition = std::get_if<Constant>(&obj.condition);
     if (!condition)
         return std::next(it);
-    if (isPositiveZero(condition->value))
+    if (isZero(condition->value))
         *it = Jump{ obj.target };
     else
         it = i.erase(it);

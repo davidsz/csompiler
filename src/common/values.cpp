@@ -49,26 +49,22 @@ std::string toLabel(const ConstantValue &v)
 Type getType(const ConstantValue &v)
 {
     Type ret;
-    if (std::holds_alternative<int>(v))
-        ret.t = BasicType::Int;
-    else if (std::holds_alternative<long>(v))
-        ret.t = BasicType::Long;
-    else if (std::holds_alternative<uint32_t>(v))
-        ret.t = BasicType::UInt;
-    else if (std::holds_alternative<uint64_t>(v))
-        ret.t = BasicType::ULong;
-    else if (std::holds_alternative<double>(v))
-        ret.t = BasicType::Double;
-    else if (std::holds_alternative<char>(v))
-        ret.t = BasicType::Char;
-    else if (std::holds_alternative<unsigned char>(v))
-        ret.t = BasicType::UChar;
-    else
-        assert(false);
+    ret.t = std::visit([](auto x) -> BasicType {
+        using T = std::decay_t<decltype(x)>;
+        if constexpr (std::is_same_v<T, int>) return BasicType::Int;
+        if constexpr (std::is_same_v<T, long>) return BasicType::Long;
+        if constexpr (std::is_same_v<T, uint32_t>) return BasicType::UInt;
+        if constexpr (std::is_same_v<T, uint64_t>) return BasicType::ULong;
+        if constexpr (std::is_same_v<T, double>) return BasicType::Double;
+        if constexpr (std::is_same_v<T, char>) return BasicType::Char;
+        if constexpr (std::is_same_v<T, unsigned char>) return BasicType::UChar;
+        else assert(false);
+    }, v);
     return ret;
 }
 
-bool isPositiveZero(const ConstantValue &v) {
+bool isPositiveZero(const ConstantValue &v)
+{
     return std::visit([](const auto &x) -> bool {
         using T = std::decay_t<decltype(x)>;
         if constexpr (std::is_floating_point_v<T>) {
@@ -80,6 +76,16 @@ bool isPositiveZero(const ConstantValue &v) {
         else
             return false;
     }, v);
+}
+
+bool isZero(const ConstantValue &value)
+{
+    return std::visit([](const auto &v) -> bool {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_arithmetic_v<T>)
+            return v == T(0);
+        return false;
+    }, value);
 }
 
 size_t byteSizeOf(const ConstantValue &c)

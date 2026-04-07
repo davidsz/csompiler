@@ -62,7 +62,15 @@ static void transfer(
             killCopiesUsing(current_reaching_copies, copy->dst);
             Type src_type = getType(copy->src, symbol_table);
             Type dst_type = getType(copy->dst, symbol_table);
-            if (src_type == dst_type
+            if (std::holds_alternative<Constant>(copy->src) /*&& src_type == dst_type*/) {
+/*
+                Copy converted = *copy;
+                Constant &c = std::get<Constant>(converted.src);
+                c.value = ConvertValue(c.value, dst_type);
+                current_reaching_copies.insert(converted);
+*/
+                current_reaching_copies.insert(*copy);
+            } else if (src_type == dst_type
                 || src_type.isSigned() == dst_type.isSigned()) {
                 current_reaching_copies.insert(*copy);
             } else if (isNullConstant(copy->src) && dst_type.isPointer())
@@ -124,7 +132,6 @@ static void transfer(
     }
     s_blockAnnotations[block] = std::move(current_reaching_copies);
 }
-
 
 // Meet operator: propagates information about reaching copies
 // from one block to another.
@@ -230,6 +237,10 @@ static bool rewriteInstruction(
         binary->src2 = newOperand(binary->src2, reaching_copies, changed);
     } else if (Return *ret = std::get_if<Return>(&instr))
         ret->val = newOperand(*ret->val, reaching_copies, changed);
+    else if (Load *load = std::get_if<Load>(&instr))
+        load->src_ptr = newOperand(load->src_ptr, reaching_copies, changed);
+    else if (Store *store = std::get_if<Store>(&instr))
+        store->src = newOperand(store->src, reaching_copies, changed);
     else if (FunctionCall *fc = std::get_if<FunctionCall>(&instr)) {
         for (auto &arg : fc->args)
             arg = newOperand(arg, reaching_copies, changed);
