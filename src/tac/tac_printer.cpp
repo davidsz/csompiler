@@ -1,7 +1,28 @@
 #include "tac_printer.h"
+#include "common/context.h"
 #include <iostream>
 
 namespace tac {
+
+TACPrinter::TACPrinter(Context *context)
+    : m_context(context)
+{
+}
+
+void TACPrinter::operator()(const tac::Constant &c)
+{
+    pad();
+    std::cout << "Constant(" << toString(c.value) << ") ";
+    std::cout << getType(c.value) << std::endl;
+}
+
+void TACPrinter::operator()(const tac::Variant &v)
+{
+    pad();
+    std::cout << "Variant(" << v.name << ") ";
+    const SymbolEntry *entry = m_context->symbolTable->get(v.name);
+    std::cout << entry->type << std::endl;
+}
 
 void TACPrinter::operator()(const tac::Return &r)
 {
@@ -31,16 +52,6 @@ void TACPrinter::operator()(const tac::Binary &b)
     std::visit(*this, b.dst);
     shift_tab();
     pad(); std::cout << ")" << std::endl;
-}
-
-void TACPrinter::operator()(const tac::Constant &c)
-{
-    pad(); std::cout << "Constant(" << toString(c.value) << ")" << std::endl;
-}
-
-void TACPrinter::operator()(const tac::Variant &v)
-{
-    pad(); std::cout << "Variant(" << v.name << ")" << std::endl;
 }
 
 void TACPrinter::operator()(const tac::Copy &c)
@@ -281,9 +292,9 @@ void TACPrinter::PrintFunction(const FunctionDefinition &f)
     pad(); std::cout << "}" << std::endl;
 }
 
-void TACPrinter::Print(const std::list<TopLevel> &topLevel)
+void TACPrinter::Print(const std::list<TopLevel> &topLevel, Context *context)
 {
-    TACPrinter printer;
+    TACPrinter printer(context);
     for (const auto &item : topLevel) {
         std::visit([&](const auto &node) {
             using T = std::decay_t<decltype(node)>;

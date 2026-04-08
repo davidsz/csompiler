@@ -2,14 +2,12 @@
 
 #include "tac_visitor.h"
 
+class Context;
+
 namespace tac {
 
 struct TACPrinter : public ITACVisitor<void> {
-    bool m_printBlocks = false;
-    size_t m_indent = 0;
-    void pad() const { std::cout << std::string(m_indent, ' '); }
-    void tab() { m_indent += 2; }
-    void shift_tab() { m_indent -= 2; }
+    TACPrinter(Context *context);
 
     void operator()(const tac::Constant &c) override;
     void operator()(const tac::Variant &v) override;
@@ -43,7 +41,15 @@ struct TACPrinter : public ITACVisitor<void> {
     }
 
     void PrintFunction(const FunctionDefinition &f);
-    static void Print(const std::list<TopLevel> &topLevel);
+    static void Print(const std::list<TopLevel> &topLevel, Context *context);
+
+    bool m_printBlocks = false;
+    size_t m_indent = 0;
+    void pad() const { std::cout << std::string(m_indent, ' '); }
+    void tab() { m_indent += 2; }
+    void shift_tab() { m_indent -= 2; }
+
+    Context *m_context;
 };
 
 } // namespace tac

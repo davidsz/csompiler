@@ -107,7 +107,7 @@ void apply_optimizations(
             using T = std::decay_t<decltype(obj)>;
             if constexpr (std::is_same_v<T, FunctionDefinition>) {
                 std::cout << "--- Function \"" << obj.name << "\" ---\n";
-                TACPrinter printer;
+                TACPrinter printer(context);
                 // We don't care about the phase ordering problem of optimizations,
                 // we simply run them until they can't change the program anymore.
                 bool changed = false;

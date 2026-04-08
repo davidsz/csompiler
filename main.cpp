@@ -156,7 +156,7 @@ int main(int argc, char **argv)
         context.get());
 #if 1
     std::cout << std::endl << "TAC:" << std::endl;
-    tac::TACPrinter::Print(tac_list);
+    tac::TACPrinter::Print(tac_list, context.get());
 #endif
 
 #if 0
@@ -182,7 +182,7 @@ int main(int argc, char **argv)
 
 #if 1
     std::cout << std::endl << "TAC after optimizations:" << std::endl;
-    tac::TACPrinter::Print(tac_list);
+    tac::TACPrinter::Print(tac_list, context.get());
 #endif
 
     if (has_flag("tacky"))
