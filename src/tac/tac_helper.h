@@ -67,7 +67,9 @@ static void ForEachValue(const Instruction &instr, Fn &&fn)
             fn(i.dst);
         } else if constexpr (std::is_same_v<T, CopyToOffset>) {
             fn(i.src);
+            fn(Variant{ i.dst_identifier });
         } else if constexpr (std::is_same_v<T, CopyFromOffset>) {
+            fn(Variant{ i.src_identifier });
             fn(i.dst);
         }
     }, instr);
