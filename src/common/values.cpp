@@ -1,6 +1,7 @@
 #include "values.h"
 #include "common/system.h"
 #include <cassert>
+#include <cmath>
 #include <cstring>
 #include <format>
 
