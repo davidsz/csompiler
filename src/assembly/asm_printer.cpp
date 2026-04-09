@@ -339,8 +339,10 @@ void ASMPrinter::operator()(const Function &f)
     m_codeStream << "    subq $" << f.stackSize << ", %rsp" << std::endl;
     m_codeStream << std::endl;
 
-    for (auto &i: f.instructions)
-        std::visit(*this, i);
+    for (auto &block : f.blocks) {
+        for (auto &i: block.instructions)
+            std::visit(*this, i);
+    }
 }
 
 void ASMPrinter::operator()(const StaticVariable &s)

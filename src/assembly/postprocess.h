@@ -8,8 +8,8 @@
 namespace assembly {
 
 void postprocessPseudoRegisters(
-    std::list<TopLevel> &asmList,
-    std::shared_ptr<ASMSymbolTable> asmSymbolTable);
-void postprocessInvalidInstructions(std::list<TopLevel> &asmList);
+    std::list<TopLevel> &asm_list,
+    std::shared_ptr<ASMSymbolTable> asm_symbol_table);
+void postprocessInvalidInstructions(std::list<TopLevel> &asm_list);
 
 }; // namespace assembly

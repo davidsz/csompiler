@@ -124,7 +124,7 @@ namespace assembly {
         std::string name; \
         bool global; \
         int stackSize; \
-        std::list<Instruction> instructions;) \
+        std::list<CFGBlock> blocks;) \
     X(StaticVariable, \
         std::string name; \
         bool global; \
@@ -141,8 +141,18 @@ enum Register {
 #undef ADD_REG_TO_ENUM
 };
 
+class CFGBlock;
+
 DEFINE_NODES_WITH_COMMON_VARIANT(Operand, ASM_OPERAND_LIST);
 DEFINE_NODES_WITH_COMMON_VARIANT(Instruction, ASM_INSTRUCTION_LIST);
 DEFINE_NODES_WITH_COMMON_VARIANT(TopLevel, ASM_TOP_LEVEL_LIST);
+
+class CFGBlock {
+public:
+    std::list<Instruction> instructions = {};
+    std::set<CFGBlock *> predecessors = {};
+    std::set<CFGBlock *> successors = {};
+    size_t id;
+};
 
 }; // assembly

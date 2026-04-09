@@ -9,7 +9,7 @@ class Context;
 namespace assembly {
 
 std::string from_tac(
-    std::list<tac::TopLevel>,
+    const std::list<tac::TopLevel> &tac_list,
     Context *context);
 
 }; // assembly

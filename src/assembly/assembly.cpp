@@ -8,23 +8,24 @@
 namespace assembly {
 
 std::string from_tac(
-    std::list<tac::TopLevel> tacList,
+    const std::list<tac::TopLevel> &tac_list,
     Context *context)
 {
     // Use one constant dictionary across all ASMBuilders
     std::shared_ptr<ConstantMap> constants = std::make_shared<ConstantMap>();
 
-    ASMBuilder tacToAsm(context, constants);
-    std::list<TopLevel> asmList = tacToAsm.ConvertTopLevel(tacList);
+    std::list<TopLevel> asm_list;
+    ASMBuilder tac_to_asm(context, constants);
+    tac_to_asm.ConvertTopLevel(tac_list, asm_list);
 
-    std::shared_ptr<ASMSymbolTable> asmSymbolTable =
+    std::shared_ptr<ASMSymbolTable> asm_symbol_table =
         std::make_shared<ASMSymbolTable>(context, constants);
 
-    postprocessPseudoRegisters(asmList, asmSymbolTable);
-    postprocessInvalidInstructions(asmList);
+    postprocessPseudoRegisters(asm_list, asm_symbol_table);
+    postprocessInvalidInstructions(asm_list);
 
-    ASMPrinter asmPrinter(context, asmSymbolTable);
-    return asmPrinter.ToText(asmList);
+    ASMPrinter asm_printer(context, asm_symbol_table);
+    return asm_printer.ToText(asm_list);
 }
 
 }; // assembly

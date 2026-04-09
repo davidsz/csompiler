@@ -48,8 +48,8 @@ public:
         return std::monostate();
     }
 
-    std::list<TopLevel> ConvertTopLevel(const std::list<tac::TopLevel> &);
-    std::list<Instruction> ConvertFunctionBody(const std::list<tac::CFGBlock> &);
+    void ConvertTopLevel(const std::list<tac::TopLevel> &, std::list<TopLevel> &);
+    void ConvertFunctionBody(const std::list<tac::CFGBlock> &, std::list<CFGBlock> &);
 
 private:
     Type GetType(const tac::Value &);
@@ -66,8 +66,36 @@ private:
     void CopyBytesFromReg(std::list<Instruction> &i, Register src, Operand dst, size_t size);
 
     bool m_commentsEnabled = true;
-    std::list<TopLevel> m_topLevel;
+    // Functions, static variables and constants of the translation unit
+    std::list<TopLevel> *m_topLevel;
+    // Building blocks for a Control Flow Graph
+    // The first block is built immediately at Function creation
+    size_t m_nextBlockId = 2;
+    std::list<CFGBlock> *m_blocks;
+    // Storing the instructions of the currently built CFGBlock
     std::list<Instruction> m_instructions;
+
+    // Add instruction to the currently built CFGBlock
+    template <typename T>
+    void AddInstruction(T &&instruction) {
+        using U = std::decay_t<T>;
+        if constexpr (std::is_same_v<U, Label>) {
+            if (!m_instructions.empty())
+                CommitBlock();
+            m_instructions.clear();
+            m_instructions.emplace_back(std::forward<T>(instruction));
+        } else if constexpr (std::same_as<U, Jmp>
+            || std::same_as<U, JmpCC>
+            || std::same_as<U, Ret>) {
+            m_instructions.emplace_back(std::forward<T>(instruction));
+            CommitBlock();
+            m_instructions.clear();
+        } else
+            m_instructions.emplace_back(std::forward<T>(instruction));
+    }
+
+    // Commit the current CFGBlock to start a new one
+    void CommitBlock();
 
     Context *m_context;
     TypeTable *m_typeTable;
