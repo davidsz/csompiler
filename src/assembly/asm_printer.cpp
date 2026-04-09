@@ -93,7 +93,11 @@ std::string ASMPrinter::BuildInitializer(const ConstantValue &init)
         case Byte:       initializer = "    .byte ";   break;
         case Longword:   initializer = "    .long ";   break;
         case Quadword:   initializer = "    .quad ";   break;
-        case Doubleword: initializer = "    .double "; break;
+        case Doubleword:
+            if (isNan(init))
+                return "    .quad 0x7ff8000000000000";
+            initializer = "    .double ";
+            break;
         default:         assert(false);
         }
     }

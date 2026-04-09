@@ -62,18 +62,10 @@ static void transfer(
             killCopiesUsing(current_reaching_copies, copy->dst);
             Type src_type = getType(copy->src, symbol_table);
             Type dst_type = getType(copy->dst, symbol_table);
-            if (std::holds_alternative<Constant>(copy->src) /*&& src_type == dst_type*/) {
-/*
-                Copy converted = *copy;
-                Constant &c = std::get<Constant>(converted.src);
-                c.value = ConvertValue(c.value, dst_type);
-                current_reaching_copies.insert(converted);
-*/
-                current_reaching_copies.insert(*copy);
-            } else if (src_type == dst_type
-                || src_type.isSigned() == dst_type.isSigned()) {
-                current_reaching_copies.insert(*copy);
-            } else if (isNullConstant(copy->src) && dst_type.isPointer())
+            if (std::holds_alternative<Constant>(copy->src)
+                || src_type == dst_type
+                || (src_type.isCharacter() && dst_type.isCharacter())
+                || (isNullConstant(copy->src) && dst_type.isPointer()))
                 current_reaching_copies.insert(*copy);
         } else if (const FunctionCall *func_call = std::get_if<FunctionCall>(&instruction)) {
             for (auto reaching_copy = current_reaching_copies.begin();
@@ -205,22 +197,39 @@ static void findReachingCopies(
 static Value newOperand(
     Value &operand,
     std::set<Copy> &reaching_copies,
+    SymbolTable *symbol_table,
     bool &changed)
 {
     if (std::holds_alternative<Constant>(operand))
         return operand;
+
     for (const Copy &rcopy : reaching_copies) {
         if (rcopy.dst == operand) {
-            changed = true;
-            return rcopy.src;
+            Type dst_type = getType(rcopy.dst, symbol_table);
+            Type src_type = getType(rcopy.src, symbol_table);
+            Value result = operand;
+
+            if (const Constant *c = std::get_if<Constant>(&rcopy.src))
+                result = Value{ Constant{ ConvertValue(c->value, dst_type) } };
+            else if (src_type == dst_type
+                || (src_type.isCharacter() && dst_type.isCharacter()))
+                result = rcopy.src;
+            else
+                return operand;
+
+            if (result != operand)
+                changed = true;
+            return result;
         }
     }
+
     return operand;
 }
 
 // Returns true if the instruction can be removed
 static bool rewriteInstruction(
     Instruction &instr,
+    SymbolTable *symbol_table,
     bool &changed)
 {
     std::set<Copy> &reaching_copies = s_instructionAnnotations[&instr];
@@ -229,47 +238,47 @@ static bool rewriteInstruction(
             if (rcopy == *copy || (rcopy.src == copy->dst && rcopy.dst == copy->src))
                 return true;
         }
-        copy->src = newOperand(copy->src, reaching_copies, changed);
+        copy->src = newOperand(copy->src, reaching_copies, symbol_table, changed);
     } else if (Unary *unary = std::get_if<Unary>(&instr))
-        unary->src = newOperand(unary->src, reaching_copies, changed);
+        unary->src = newOperand(unary->src, reaching_copies, symbol_table, changed);
     else if (Binary *binary = std::get_if<Binary>(&instr)) {
-        binary->src1 = newOperand(binary->src1, reaching_copies, changed);
-        binary->src2 = newOperand(binary->src2, reaching_copies, changed);
+        binary->src1 = newOperand(binary->src1, reaching_copies, symbol_table, changed);
+        binary->src2 = newOperand(binary->src2, reaching_copies, symbol_table, changed);
     } else if (Return *ret = std::get_if<Return>(&instr))
-        ret->val = newOperand(*ret->val, reaching_copies, changed);
+        ret->val = newOperand(*ret->val, reaching_copies, symbol_table, changed);
     else if (Load *load = std::get_if<Load>(&instr))
-        load->src_ptr = newOperand(load->src_ptr, reaching_copies, changed);
+        load->src_ptr = newOperand(load->src_ptr, reaching_copies, symbol_table, changed);
     else if (Store *store = std::get_if<Store>(&instr))
-        store->src = newOperand(store->src, reaching_copies, changed);
+        store->src = newOperand(store->src, reaching_copies, symbol_table, changed);
     else if (FunctionCall *fc = std::get_if<FunctionCall>(&instr)) {
         for (auto &arg : fc->args)
-            arg = newOperand(arg, reaching_copies, changed);
+            arg = newOperand(arg, reaching_copies, symbol_table, changed);
     } else if (JumpIfZero *jz = std::get_if<JumpIfZero>(&instr))
-        jz->condition = newOperand(jz->condition, reaching_copies, changed);
+        jz->condition = newOperand(jz->condition, reaching_copies, symbol_table, changed);
     else if (JumpIfNotZero *jnz = std::get_if<JumpIfNotZero>(&instr))
-        jnz->condition = newOperand(jnz->condition, reaching_copies, changed);
+        jnz->condition = newOperand(jnz->condition, reaching_copies, symbol_table, changed);
     else if (SignExtend *se = std::get_if<SignExtend>(&instr))
-        se->src = newOperand(se->src, reaching_copies, changed);
+        se->src = newOperand(se->src, reaching_copies, symbol_table, changed);
     else if (Truncate *tr = std::get_if<Truncate>(&instr))
-        tr->src = newOperand(tr->src, reaching_copies, changed);
+        tr->src = newOperand(tr->src, reaching_copies, symbol_table, changed);
     else if (ZeroExtend *ze = std::get_if<ZeroExtend>(&instr))
-        ze->src = newOperand(ze->src, reaching_copies, changed);
+        ze->src = newOperand(ze->src, reaching_copies, symbol_table, changed);
     else if (DoubleToInt *dti = std::get_if<DoubleToInt>(&instr))
-        dti->src = newOperand(dti->src, reaching_copies, changed);
+        dti->src = newOperand(dti->src, reaching_copies, symbol_table, changed);
     else if (DoubleToUInt *dtu = std::get_if<DoubleToUInt>(&instr))
-        dtu->src = newOperand(dtu->src, reaching_copies, changed);
+        dtu->src = newOperand(dtu->src, reaching_copies, symbol_table, changed);
     else if (IntToDouble *itd = std::get_if<IntToDouble>(&instr))
-        itd->src = newOperand(itd->src, reaching_copies, changed);
+        itd->src = newOperand(itd->src, reaching_copies, symbol_table, changed);
     else if (UIntToDouble *utd = std::get_if<UIntToDouble>(&instr))
-        utd->src = newOperand(utd->src, reaching_copies, changed);
+        utd->src = newOperand(utd->src, reaching_copies, symbol_table, changed);
     else if (AddPtr *add = std::get_if<AddPtr>(&instr)) {
-        add->ptr = newOperand(add->ptr, reaching_copies, changed);
-        add->index = newOperand(add->index, reaching_copies, changed);
+        add->ptr = newOperand(add->ptr, reaching_copies, symbol_table, changed);
+        add->index = newOperand(add->index, reaching_copies, symbol_table, changed);
     } else if (CopyToOffset *cto = std::get_if<CopyToOffset>(&instr))
-        cto->src = newOperand(cto->src, reaching_copies, changed);
+        cto->src = newOperand(cto->src, reaching_copies, symbol_table, changed);
     else if (CopyFromOffset *cfo = std::get_if<CopyFromOffset>(&instr)) {
         Value old_src = Value{ Variant{ cfo->src_identifier } };
-        Value new_src = newOperand(old_src, reaching_copies, changed);
+        Value new_src = newOperand(old_src, reaching_copies, symbol_table, changed);
         cfo->src_identifier = std::get_if<Variant>(&new_src)->name;
     }
     return false;
@@ -287,7 +296,7 @@ void copyPropagation(
     findReachingCopies(blocks, aliased_vars, static_vars, context->symbolTable.get());
     for (auto &block : blocks) {
         for (auto it = block.instructions.begin(); it != block.instructions.end();) {
-            if (rewriteInstruction(*it, changed)) {
+            if (rewriteInstruction(*it, context->symbolTable.get(), changed)) {
                 changed = true;
                 it = block.instructions.erase(it);
             } else

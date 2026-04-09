@@ -88,6 +88,16 @@ bool isZero(const ConstantValue &value)
     }, value);
 }
 
+bool isNan(const ConstantValue &value)
+{
+    return std::visit([](const auto &v) -> bool {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, double>)
+            return std::isnan(v);
+        return false;
+    }, value);
+}
+
 size_t byteSizeOf(const ConstantValue &c)
 {
     return std::visit([](auto &&v) -> size_t {
