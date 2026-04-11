@@ -319,6 +319,11 @@ void ASMPrinter::operator()(const Push &p)
     m_codeStream << std::endl;
 }
 
+void ASMPrinter::operator()(const Pop &p)
+{
+    m_codeStream << "    popq " << getEightByteName(p.reg) << std::endl;
+}
+
 void ASMPrinter::operator()(const Call &c)
 {
     m_codeStream << "    call " << formatLabel(c.identifier) << std::endl;

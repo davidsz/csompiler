@@ -37,6 +37,7 @@ struct ASMPrinter : public IASMVisitor<void> {
     void operator()(const SetCC &) override;
     void operator()(const Label &) override;
     void operator()(const Push &) override;
+    void operator()(const Pop &) override;
     void operator()(const Call &) override;
     void operator()(const Function &) override;
     void operator()(const StaticVariable &) override;

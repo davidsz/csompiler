@@ -127,6 +127,8 @@ namespace assembly {
         std::string identifier;) \
     X(Push, \
         Operand op;) \
+    X(Pop, \
+        Register reg;) \
     X(Call, \
         std::string identifier;)
 
