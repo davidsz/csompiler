@@ -11,6 +11,7 @@ namespace assembly {
 
 #define ASM_REGISTER_LIST(X) \
     X(AX, "rax", "eax", "al") \
+    X(BX, "rbx", "ebx", "bl") \
     X(CX, "rcx", "ecx", "cl") \
     X(DX, "rdx", "edx", "dl") \
     X(DI, "rdi", "edi", "dil") \
@@ -19,6 +20,10 @@ namespace assembly {
     X(R9, "r9", "r9d", "r9b") \
     X(R10, "r10", "r10d", "r10b") \
     X(R11, "r11", "r11d", "r11b") \
+    X(R12, "r12", "r12d", "r12b") \
+    X(R13, "r13", "r13d", "r13b") \
+    X(R14, "r14", "r14d", "r14b") \
+    X(R15, "r15", "r15d", "r15b") \
     X(SP, "rsp", "rsp", "rsp") \
     X(BP, "rbp", "rbp", "rbp") \
     X(XMM0, "xmm0", "xmm0", "xmm0") \
@@ -29,6 +34,12 @@ namespace assembly {
     X(XMM5, "xmm5", "xmm5", "xmm5") \
     X(XMM6, "xmm6", "xmm6", "xmm6") \
     X(XMM7, "xmm7", "xmm7", "xmm7") \
+    X(XMM8, "xmm8", "xmm8", "xmm8") \
+    X(XMM9, "xmm9", "xmm9", "xmm9") \
+    X(XMM10, "xmm10", "xmm10", "xmm10") \
+    X(XMM11, "xmm11", "xmm11", "xmm11") \
+    X(XMM12, "xmm12", "xmm12", "xmm12") \
+    X(XMM13, "xmm13", "xmm13", "xmm13") \
     X(XMM14, "xmm14", "xmm14", "xmm14") \
     X(XMM15, "xmm15", "xmm15", "xmm15") \
 

@@ -48,8 +48,13 @@ public:
         return std::monostate();
     }
 
-    void ConvertTopLevel(const std::list<tac::TopLevel> &, std::list<TopLevel> &);
-    void ConvertFunctionBody(const std::list<tac::CFGBlock> &, std::list<CFGBlock> &);
+    void ConvertTopLevel(
+        const std::list<tac::TopLevel> &top_level,
+        std::list<TopLevel> &top_level_out);
+    void ConvertFunctionBody(
+        const std::string &name,
+        const std::list<tac::CFGBlock> &tac_blocks,
+        std::list<CFGBlock> &block_list_out);
 
 private:
     Type GetType(const tac::Value &);
@@ -100,6 +105,8 @@ private:
     Context *m_context;
     TypeTable *m_typeTable;
     SymbolTable *m_symbolTable;
+    ASMSymbolTable *m_asmSymbolTable;
+    std::string m_currentFunctionName;
     // Keep track of static constants and their IDs to avoid duplications
     std::shared_ptr<ConstantMap> m_constants;
 };

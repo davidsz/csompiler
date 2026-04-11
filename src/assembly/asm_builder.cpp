@@ -1,4 +1,5 @@
 #include "asm_builder.h"
+#include "asm_helper.h"
 #include "common/context.h"
 #include "common/labeling.h"
 #include <format>
@@ -41,23 +42,6 @@ static std::string toConditionCode(BinaryOperator op, bool another)
 }
 DIAG_POP
 
-static const std::string *getString(const tac::Value &value)
-{
-    if (auto *var = std::get_if<tac::Variant>(&value))
-        return &var->name;
-    return nullptr;
-}
-
-static const std::string *getString(const Operand &op)
-{
-    if (const Pseudo *p = std::get_if<Pseudo>(&op))
-        return &p->name;
-    else if (const PseudoAggregate *agg = std::get_if<PseudoAggregate>(&op))
-        return &agg->name;
-    assert(false);
-    return nullptr;
-}
-
 static Operand addOffset(Operand op, size_t offset)
 {
     if (Memory *m = std::get_if<Memory>(&op))
@@ -66,13 +50,6 @@ static Operand addOffset(Operand op, size_t offset)
         return PseudoAggregate{ p->name, p->offset + offset };
     assert(false);
     return Operand{ };
-}
-
-static bool isZeroImmediate(const Operand &op)
-{
-    if (const Imm *imm = std::get_if<Imm>(&op))
-        return imm->value == 0;
-    return false;
 }
 
 static std::vector<WordType> getMemoryFragments(size_t size)
@@ -91,166 +68,13 @@ static std::vector<WordType> getMemoryFragments(size_t size)
     return ret;
 }
 
-static AssemblyType getAggregatePartType(size_t offset, size_t size)
-{
-    size_t byte_from_end = size - offset;
-    if (byte_from_end >= 8)
-        return AssemblyType{ Quadword };
-    if (byte_from_end == 4)
-        return AssemblyType{ Longword };
-    if (byte_from_end == 1)
-        return AssemblyType{ Byte };
-    // Irregular size struct/union; "not word-aligned tail fragment"
-    return AssemblyType{ ByteArray{ byte_from_end, 8 } };
-}
-
-struct ClassifiedParams {
-    std::vector<std::pair<Operand, AssemblyType>> int_regs;
-    std::vector<Operand> double_regs;
-    std::vector<std::pair<Operand, AssemblyType>> stack;
-};
-
-template<typename T, typename GetTypeFn, typename GetOperandFn>
-static ClassifiedParams classifyParameters(
-    const std::vector<T> &parameters,
-    bool return_in_memory,
-    TypeTable *type_table,
-    GetTypeFn getType,
-    GetOperandFn getOperand)
-{
-    size_t int_regs_available = return_in_memory ? 5 : 6;
-    ClassifiedParams result;
-    for (const auto &p : parameters) {
-        Operand operand = getOperand(p);
-        Type type = getType(p);
-        const AggregateType *aggr_type = type.getAs<AggregateType>();
-        if (!aggr_type) {
-            WordType word_type = type.wordType();
-            if (word_type == WordType::Doubleword) {
-                if (result.double_regs.size() < 8)
-                    result.double_regs.push_back(operand);
-                else
-                    result.stack.push_back({
-                        operand,
-                        AssemblyType{ word_type }
-                    });
-            } else {
-                if (result.int_regs.size() < int_regs_available)
-                    result.int_regs.push_back({
-                        operand,
-                        AssemblyType{ word_type }
-                    });
-                else
-                    result.stack.push_back({
-                        operand,
-                        AssemblyType{ word_type }
-                    });
-            }
-            continue;
-        }
-
-        // Parameter is an aggregate type
-        size_t aggregate_size = type.size(type_table);
-        TypeTable::AggregateEntry *entry = type_table->get(aggr_type->tag);
-        auto &classes = entry->classes(type_table);
-        bool use_stack = true;
-        if (classes.front() != MEMORY) {
-            std::vector<std::pair<Operand, AssemblyType>> tentative_ints;
-            std::vector<Operand> tentative_doubles;
-            size_t offset = 0;
-            for (auto &c : classes) {
-                Operand pseudo = PseudoAggregate{ *getString(operand), offset };
-                if (c == SSE)
-                    tentative_doubles.push_back(pseudo);
-                else {
-                    AssemblyType part_type = getAggregatePartType(offset, aggregate_size);
-                    tentative_ints.push_back({ pseudo, part_type });
-                }
-                offset += 8;
-            }
-
-            if ((tentative_ints.size() + result.int_regs.size() <= int_regs_available)
-                && (tentative_doubles.size() + result.double_regs.size() <= 8)) {
-                result.int_regs.insert(result.int_regs.end(),
-                    tentative_ints.begin(),
-                    tentative_ints.end());
-                result.double_regs.insert(result.double_regs.end(),
-                    tentative_doubles.begin(),
-                    tentative_doubles.end());
-                use_stack = false;
-            }
-        }
-
-        if (use_stack) {
-            size_t offset = 0;
-            for (auto &c : classes) {
-                Operand pseudo = PseudoAggregate{ *getString(operand), offset };
-                AssemblyType part_type;
-                if (c == SSE)
-                    part_type = AssemblyType{ WordType::Doubleword };
-                else
-                    part_type = getAggregatePartType(offset, aggregate_size);
-                result.stack.push_back({ pseudo, part_type });
-                offset += 8;
-            }
-        }
-    }
-    return result;
-}
-
-struct ClassifiedReturn {
-    std::vector<std::pair<Operand, AssemblyType>> int_values;
-    std::vector<Operand> double_values;
-    bool in_memory = false;
-};
-
-static ClassifiedReturn classifyReturnValue(
-    const Operand &operand,
-    const Type &type,
-    TypeTable *type_table)
-{
-    ClassifiedReturn ret;
-    if (type.isBasic(Double))
-        ret.double_values.push_back(operand);
-    else if (type.isScalar()) {
-        WordType word_type = type.wordType();
-        // Only to satify the test framework
-        if (word_type == Quadword && isZeroImmediate(operand))
-            word_type = Longword;
-        ret.int_values.push_back({ operand, AssemblyType{ word_type } });
-    } else {
-        const AggregateType *aggr_type = type.getAs<AggregateType>();
-        assert(aggr_type);
-        size_t aggregate_size = type.size(type_table);
-        TypeTable::AggregateEntry *entry = type_table->get(aggr_type->tag);
-        auto &classes = entry->classes(type_table);
-        if (classes.front() == MEMORY)
-            ret.in_memory = true;
-        else {
-            size_t offset = 0;
-            for (auto &c : classes) {
-                Operand op = PseudoAggregate{ *getString(operand), offset };
-                if (c == SSE)
-                    ret.double_values.push_back(op);
-                else if (c == INTEGER) {
-                    AssemblyType part_type = getAggregatePartType(offset, aggregate_size);
-                    ret.int_values.push_back({ op, part_type });
-                } else if (c == MEMORY)
-                    assert(false);
-                offset += 8;
-            }
-        }
-    }
-    return ret;
-}
-
 ASMBuilder::ASMBuilder(Context *context, std::shared_ptr<ConstantMap> constants)
     : m_context(context)
     , m_typeTable(context->typeTable.get())
     , m_symbolTable(context->symbolTable.get())
+    , m_asmSymbolTable(context->asmSymbolTable.get())
     , m_constants(constants)
 {
-    assert(m_context);
 }
 
 Type ASMBuilder::GetType(const tac::Value &value)
@@ -297,9 +121,16 @@ Operand ASMBuilder::operator()(const tac::Return &r)
         return std::monostate();
     }
 
+    FunEntry *fun_entry = m_asmSymbolTable->getAs<FunEntry>(m_currentFunctionName);
+    assert(fun_entry);
+
     Operand ret_value = std::visit(*this, *r.val);
     Type return_type = GetType(*r.val);
     ClassifiedReturn ret = classifyReturnValue(ret_value, return_type, m_typeTable);
+
+    std::vector<Register> ret_registers;
+    ret_registers.reserve(ret.int_values.size());
+
     if (ret.in_memory) {
         // Retrieve the address of the return value into RAX
         AddInstruction(Mov{ Memory{ BP, -8 }, Reg{ AX, 8 }, Quadword });
@@ -314,6 +145,7 @@ Operand ASMBuilder::operator()(const tac::Return &r)
         for (auto &int_val : ret.int_values) {
             auto &[operand, type] = int_val;
             Register reg = s_intReturnRegisters[reg_index++];
+            ret_registers.push_back(reg);
             if (const ByteArray *byte_array = type.getAs<ByteArray>())
                 CopyBytesToReg(m_instructions, operand, reg, byte_array->size);
             else {
@@ -327,9 +159,12 @@ Operand ASMBuilder::operator()(const tac::Return &r)
         reg_index = 0;
         for (auto &operand : ret.double_values) {
             Register reg = s_doubleReturnRegisters[reg_index++];
+            ret_registers.push_back(reg);
             AddInstruction(Mov{ operand, Reg{ reg, 8 }, Doubleword });
         }
     }
+
+    fun_entry->ret_registers = std::move(ret_registers);
 
     AddInstruction(Ret{ });
     return std::monostate();
@@ -1035,7 +870,9 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     });
 
     bool return_in_memory = false;
-    const FunctionType *func_type = m_symbolTable->getType(f.name).getAs<FunctionType>();
+    auto symbol_entry = m_symbolTable->get(f.name);
+    assert(symbol_entry);
+    const FunctionType *func_type = symbol_entry->type.getAs<FunctionType>();
     if (const AggregateType *aggr_type = func_type->ret->getAs<AggregateType>()) {
         auto aggr_entry = m_typeTable->get(aggr_type->tag);
         auto &classes = aggr_entry->classes(m_typeTable);
@@ -1054,6 +891,9 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
         }
     );
 
+    std::vector<Register> arg_registers;
+    arg_registers.reserve(args.int_regs.size() + args.double_regs.size());
+
     size_t reg_index = 0;
     if (return_in_memory) {
         first_block.instructions.push_back(Mov{ Reg{ DI, 8 }, Memory{ BP, -8 }, Quadword });
@@ -1067,6 +907,7 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     for (auto &int_reg : args.int_regs) {
         auto &[operand, type] = int_reg;
         Register reg = s_intArgRegisters[reg_index++];
+        arg_registers.push_back(reg);
         if (type.isByteArray())
             CopyBytesFromReg(first_block.instructions, reg, operand, type.size());
         else {
@@ -1080,8 +921,10 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     if (args.double_regs.size() > 0)
         Comment(first_block.instructions, "Getting double parameters from registers");
     for (size_t i = 0; i < args.double_regs.size(); i++) {
+        Register reg = s_doubleArgRegisters[i];
+        arg_registers.push_back(reg);
         first_block.instructions.push_back(Mov{
-            Reg{ s_doubleArgRegisters[i], 8 },
+            Reg{ reg, 8 },
             args.double_regs[i],
             Doubleword
         });
@@ -1109,9 +952,16 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     if (!args.int_regs.empty() || !args.double_regs.empty() || !args.stack.empty())
         Comment(first_block.instructions, "---");
 
+    // Save the symbol before processing the body; Return instructions need it
+    m_asmSymbolTable->Insert(f.name, FunEntry{
+        .defined = symbol_entry->attrs.defined,
+        .return_on_stack = return_in_memory,
+        .arg_registers = std::move(arg_registers)
+    });
+
     // Body
     ASMBuilder builder(m_context, m_constants);
-    builder.ConvertFunctionBody(f.blocks, func.blocks);
+    builder.ConvertFunctionBody(f.name, f.blocks, func.blocks);
 
     m_topLevel->push_back(std::move(func));
     return std::monostate();
@@ -1158,11 +1008,13 @@ void ASMBuilder::ConvertTopLevel(
 }
 
 void ASMBuilder::ConvertFunctionBody(
-    const std::list<tac::CFGBlock> &blocks,
+    const std::string &name,
+    const std::list<tac::CFGBlock> &tac_blocks,
     std::list<CFGBlock> &block_list_out)
 {
+    m_currentFunctionName = name;
     m_blocks = &block_list_out;
-    for (auto &block : blocks) {
+    for (auto &block : tac_blocks) {
         for (auto &i : block.instructions)
             std::visit(*this, i);
     }

@@ -4,40 +4,29 @@
 
 namespace assembly {
 
-ASMSymbolTable::ASMSymbolTable(
-    Context *context,
-    std::shared_ptr<ConstantMap> constants)
+void ASMSymbolTable::InsertSymbols(Context *context)
 {
     TypeTable *type_table = context->typeTable.get();
     SymbolTable *symbol_table = context->symbolTable.get();
 
     for (const auto &[name, entry] : symbol_table->m_table) {
         if (entry.type.getAs<BasicType>()) {
-            insert(name, ObjEntry{
+            Insert(name, ObjEntry{
                 .type = AssemblyType{ entry.type.wordType() },
                 .is_static = entry.attrs.type == IdentifierAttributes::Static,
                 .is_constant = false
             });
-        } else if (const FunctionType *func_type = entry.type.getAs<FunctionType>()) {
-            bool return_on_stack = false;
-            if (const AggregateType *aggr_type = func_type->ret->getAs<AggregateType>()) {
-                if (auto aggr_entry = type_table->get(aggr_type->tag)) {
-                    auto &classes = aggr_entry->classes(type_table);
-                    return_on_stack = (classes.front() == MEMORY);
-                }
-            }
-            insert(name, FunEntry{
-                .defined = entry.attrs.defined,
-                .return_on_stack = return_on_stack
-            });
+        } else if (entry.type.getAs<FunctionType>()) {
+            // Functions are already inserted in the ASMBuilder
+            continue;
         } else if (entry.type.getAs<PointerType>()) {
-            insert(name, ObjEntry{
+            Insert(name, ObjEntry{
                 .type = AssemblyType{ Quadword },
                 .is_static = entry.attrs.type == IdentifierAttributes::Static,
                 .is_constant = false
             });
         } else if (entry.type.getAs<ArrayType>()) {
-            insert(name, ObjEntry{
+            Insert(name, ObjEntry{
                 .type = AssemblyType{
                     ByteArray{ entry.type.size(type_table), entry.type.alignment(type_table) }
                 },
@@ -49,7 +38,7 @@ ASMSymbolTable::ASMSymbolTable(
             AssemblyType type = AssemblyType{ ByteArray{ 0, 0} }; // Dummy type
             if (auto aggr_entry = type_table->get(aggr_type->tag))
                 type = AssemblyType{ ByteArray{ aggr_entry->size, aggr_entry->alignment } };
-            insert(name, ObjEntry{
+            Insert(name, ObjEntry{
                 .type = type,
                 .is_static = entry.attrs.type == IdentifierAttributes::Static
                     || entry.attrs.type == IdentifierAttributes::Constant,
@@ -58,10 +47,13 @@ ASMSymbolTable::ASMSymbolTable(
         } else
             assert(false);
     }
+}
 
+void ASMSymbolTable::InsertConstants(std::shared_ptr<ConstantMap> constants)
+{
     for (auto const &[value, label] : *constants) {
         assert(std::holds_alternative<double>(value));
-        insert(label, ObjEntry{
+        Insert(label, ObjEntry{
             .type = AssemblyType{ Doubleword },
             .is_static = true,
             .is_constant = true
@@ -69,7 +61,7 @@ ASMSymbolTable::ASMSymbolTable(
     }
 }
 
-void ASMSymbolTable::insert(const std::string &name, const ASMSymbolEntry &entry)
+void ASMSymbolTable::Insert(const std::string &name, const ASMSymbolEntry &entry)
 {
     m_table[name] = entry;
 }

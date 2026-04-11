@@ -1,6 +1,7 @@
 #pragma once
 
 #include "asm_nodes.h"
+#include "asm_helper.h"
 #include "constant_map.h"
 #include "common/symbol_table.h"
 
@@ -17,15 +18,17 @@ struct ObjEntry {
 struct FunEntry {
     bool defined;
     bool return_on_stack;
+    std::vector<Register> arg_registers;
+    std::vector<Register> ret_registers;
 };
 
 using ASMSymbolEntry = std::variant<ObjEntry, FunEntry>;
 
 class ASMSymbolTable {
 public:
-    ASMSymbolTable(
-        Context *context,
-        std::shared_ptr<ConstantMap> constants);
+    void InsertSymbols(Context *context);
+    void InsertConstants(std::shared_ptr<ConstantMap> constants);
+    void Insert(const std::string &name, const ASMSymbolEntry &entry);
     template <typename T> T *getAs(const std::string &name)
     {
         if (m_table.contains(name))
@@ -34,8 +37,6 @@ public:
     }
 
 private:
-    void insert(const std::string &name, const ASMSymbolEntry &entry);
-
     std::unordered_map<std::string, ASMSymbolEntry> m_table;
 };
 

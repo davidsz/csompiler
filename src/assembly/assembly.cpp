@@ -1,7 +1,7 @@
 #include "assembly.h"
 #include "asm_builder.h"
 #include "asm_printer.h"
-#include "asm_symbol_table.h"
+#include "common/context.h"
 #include "constant_map.h"
 #include "postprocess.h"
 
@@ -18,13 +18,13 @@ std::string from_tac(
     ASMBuilder tac_to_asm(context, constants);
     tac_to_asm.ConvertTopLevel(tac_list, asm_list);
 
-    std::shared_ptr<ASMSymbolTable> asm_symbol_table =
-        std::make_shared<ASMSymbolTable>(context, constants);
+    context->asmSymbolTable->InsertSymbols(context);
+    context->asmSymbolTable->InsertConstants(constants);
 
-    postprocessPseudoRegisters(asm_list, asm_symbol_table);
+    postprocessPseudoRegisters(asm_list, context->asmSymbolTable);
     postprocessInvalidInstructions(asm_list);
 
-    ASMPrinter asm_printer(context, asm_symbol_table);
+    ASMPrinter asm_printer(context, context->asmSymbolTable);
     return asm_printer.ToText(asm_list);
 }
 
