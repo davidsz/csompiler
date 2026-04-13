@@ -341,7 +341,7 @@ void ASMPrinter::operator()(const Function &f)
     // Prologue
     m_codeStream << "    pushq %rbp" << std::endl;
     m_codeStream << "    movq %rsp, %rbp" << std::endl;
-    m_codeStream << "    subq $" << f.stackSize << ", %rsp" << std::endl;
+    m_codeStream << "    subq $" << f.stack_size << ", %rsp" << std::endl;
     m_codeStream << std::endl;
 
     for (auto &block : f.blocks) {
@@ -401,9 +401,9 @@ void ASMPrinter::operator()(std::monostate)
     assert(false);
 }
 
-std::string ASMPrinter::ToText(std::list<TopLevel> instructions)
+std::string ASMPrinter::ToText(const std::list<TopLevel> &top_level)
 {
-    for (auto &i: instructions)
+    for (auto &i: top_level)
         std::visit(*this, i);
 
 #ifdef __linux__

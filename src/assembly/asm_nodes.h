@@ -136,7 +136,7 @@ namespace assembly {
     X(Function, \
         std::string name; \
         bool global; \
-        int stackSize; \
+        int stack_size; \
         std::list<CFGBlock> blocks;) \
     X(StaticVariable, \
         std::string name; \

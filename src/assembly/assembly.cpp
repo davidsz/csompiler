@@ -3,7 +3,6 @@
 #include "asm_printer.h"
 #include "common/context.h"
 #include "constant_map.h"
-#include "postprocess.h"
 
 namespace assembly {
 
@@ -21,7 +20,14 @@ std::string from_tac(
     context->asmSymbolTable->InsertSymbols(context);
     context->asmSymbolTable->InsertConstants(constants);
 
+    // Register allocation
+    // TODO: Build interference graph
+    // TODO: Calculate spill costs
+    // TODO: Color graph
+    // TODO: Create register map and apply it in postprocessPseudoRegisters()
+
     postprocessPseudoRegisters(asm_list, context->asmSymbolTable);
+
     postprocessInvalidInstructions(asm_list);
 
     ASMPrinter asm_printer(context, context->asmSymbolTable);

@@ -44,7 +44,7 @@ struct ASMPrinter : public IASMVisitor<void> {
     void operator()(const StaticConstant &) override;
     void operator()(std::monostate) override;
 
-    std::string ToText(std::list<TopLevel>);
+    std::string ToText(const std::list<TopLevel> &top_level);
 
     std::string BuildInitializer(const ConstantValue &init);
 

@@ -1,7 +1,9 @@
-#include "postprocess.h"
+#include "asm_nodes.h"
+#include "asm_symbol_table.h"
 #include <cassert>
 #include <limits>
 #include <map>
+#include <list>
 
 namespace assembly {
 
@@ -110,9 +112,9 @@ void postprocessPseudoRegisters(
                 assert(entry);
                 if (entry->return_on_stack)
                     stack_start = -8;
-                obj.stackSize = postprocessPseudoRegisters(obj.blocks, stack_start, asm_symbol_table);
+                obj.stack_size = postprocessPseudoRegisters(obj.blocks, stack_start, asm_symbol_table);
                 // Round up to the next number which is divisible by 16
-                obj.stackSize = (obj.stackSize + 15) & ~15;
+                obj.stack_size = (obj.stack_size + 15) & ~15;
             }
         }, inst);
     }
