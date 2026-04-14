@@ -3,8 +3,16 @@
 #include "asm_printer.h"
 #include "common/context.h"
 #include "constant_map.h"
+#include "interference_graph.h"
 
 namespace assembly {
+
+// postprocess.cpp
+void postprocessPseudoRegisters(
+    std::list<TopLevel> &asm_list,
+    std::shared_ptr<ASMSymbolTable> asm_symbol_table);
+void postprocessInvalidInstructions(
+    std::list<TopLevel> &asm_list);
 
 std::string from_tac(
     const std::list<tac::TopLevel> &tac_list,

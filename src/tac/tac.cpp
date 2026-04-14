@@ -5,6 +5,36 @@
 
 namespace tac {
 
+// constant_folding.cpp
+void constantFolding(
+    std::list<CFGBlock> &instructions,
+    Context *context,
+    bool &changed
+);
+
+// unreachable_code_elimination.cpp
+void unreachableCodeElimination(
+    std::list<CFGBlock> &blocks,
+    bool &changed
+);
+
+// copy_propagation.cpp
+void copyPropagation(
+    std::list<CFGBlock> &blocks,
+    const std::set<Value> &aliased_vars,
+    const std::set<Value> &static_vars,
+    Context *context,
+    bool &changed
+);
+
+// dead_store_elimination.cpp
+void deadStoreElimination(
+    std::list<CFGBlock> &blocks,
+    const std::set<Value> &aliased_vars,
+    const std::set<Value> &static_vars,
+    bool &changed
+);
+
 static std::set<Value> collectAliasedVariants(std::list<CFGBlock> &blocks)
 {
     std::set<Value> ret;
@@ -37,7 +67,7 @@ static std::set<Value> collectStaticVariants(
     return ret;
 }
 
-static void connect(CFGBlock *from, CFGBlock *to)
+static inline void connect(CFGBlock *from, CFGBlock *to)
 {
     from->successors.insert(to);
     to->predecessors.insert(from);
