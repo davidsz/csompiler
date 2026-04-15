@@ -168,4 +168,11 @@ public:
     size_t id;
 };
 
+inline bool operator==(const Register &reg, const Operand &op)
+{
+    if (const Reg *r = std::get_if<Reg>(&op))
+        return reg == r->reg;
+    return false;
+}
+
 }; // assembly
