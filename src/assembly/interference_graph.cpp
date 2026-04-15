@@ -69,8 +69,12 @@ static std::map<GraphKey, GraphData> buildBaseGraph(const std::vector<Register> 
 {
     std::map<GraphKey, GraphData> base_graph;
 
-    for (const auto &reg : registers)
-        base_graph.emplace(reg, GraphData{ });
+    for (const auto &reg : registers) {
+        // These are physical registers, we already know their spill costs
+        base_graph.emplace(reg, GraphData{
+            .spill_cost = std::numeric_limits<double>::max()
+        });
+    }
 
     for (size_t i = 0; i < registers.size(); ++i) {
         for (size_t j = 0; j < registers.size(); ++j) {
@@ -90,12 +94,14 @@ static void addPseudoRegisters(
     std::list<CFGBlock> &blocks,
     std::map<GraphKey, GraphData> &graph)
 {
+    // TODO: Variables in loops can have much bigger spill costs
     for (auto &block : blocks) {
         for (auto &instruction : block.instructions) {
             ForEachOperand(instruction, [&graph](const Operand &operand) {
-                if (const Pseudo *pseudo = std::get_if<Pseudo>(&operand))
-                    graph.emplace(pseudo->name, GraphData{ });
-                // TODO: PseudoAggregate
+                if (const Pseudo *pseudo = std::get_if<Pseudo>(&operand)) {
+                    auto [it, inserted] = graph.try_emplace(pseudo->name, GraphData{ });
+                    it->second.spill_cost += 1.0;
+                }
             });
         }
     }

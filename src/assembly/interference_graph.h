@@ -10,7 +10,7 @@ using GraphKey = std::variant<Register, std::string>;
 
 struct GraphData {
     std::set<GraphKey> neighbors;
-    double spill_cos = 0;
+    double spill_cost = 0;
     size_t color = 0;
     bool pruned = false;
 };

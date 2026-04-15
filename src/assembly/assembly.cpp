@@ -28,11 +28,7 @@ std::string from_tac(
     context->asmSymbolTable->InsertSymbols(context);
     context->asmSymbolTable->InsertConstants(constants);
 
-    // Register allocation
-    // TODO: Build interference graph
-    // TODO: Calculate spill costs
-    // TODO: Color graph
-    // TODO: Create register map and apply it in postprocessPseudoRegisters()
+    // apply_optimizations(asm_list, context);
 
     postprocessPseudoRegisters(asm_list, context->asmSymbolTable);
 
@@ -40,6 +36,24 @@ std::string from_tac(
 
     ASMPrinter asm_printer(context, context->asmSymbolTable);
     return asm_printer.ToText(asm_list);
+}
+
+void apply_optimizations(std::list<TopLevel> &list, Context *context)
+{
+    // Intraprocedural optimization: we work on separate functions.
+    for (auto &top_level_obj : list) {
+        std::visit([&](auto &obj) {
+            using T = std::decay_t<decltype(obj)>;
+            if constexpr (std::is_same_v<T, Function>) {
+                // Build interference graph
+                std::map<GraphKey, GraphData> graph
+                    = buildInterferenceGraph(obj.blocks, context->asmSymbolTable);
+
+                // TODO: Color graph
+                // TODO: Create register map and apply it in postprocessPseudoRegisters()
+            }
+        }, top_level_obj);
+    }
 }
 
 }; // assembly
