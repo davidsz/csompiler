@@ -18,8 +18,8 @@ struct ObjEntry {
 struct FunEntry {
     bool defined;
     bool return_on_stack;
-    std::vector<Register> arg_registers;
-    std::vector<Register> ret_registers;
+    std::vector<Register> arg_registers = {};
+    std::vector<Register> ret_registers = {};
 };
 
 using ASMSymbolEntry = std::variant<ObjEntry, FunEntry>;

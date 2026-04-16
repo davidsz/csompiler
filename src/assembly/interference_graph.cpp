@@ -1,5 +1,7 @@
 #include "interference_graph.h"
+#include <algorithm>
 #include <cassert>
+#include <limits>
 #include <map>
 
 namespace assembly {
