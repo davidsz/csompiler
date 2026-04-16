@@ -49,7 +49,6 @@ void apply_optimizations(std::list<TopLevel> &list, Context *context)
                 std::map<GraphKey, GraphData> graph
                     = buildInterferenceGraph(obj.blocks, context->asmSymbolTable);
 
-                // TODO: Color graph
                 // TODO: Create register map and apply it in postprocessPseudoRegisters()
             }
         }, top_level_obj);

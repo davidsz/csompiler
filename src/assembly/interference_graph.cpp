@@ -3,6 +3,8 @@
 #include <cassert>
 #include <limits>
 #include <map>
+#include <numeric>
+#include <ranges>
 
 namespace assembly {
 
@@ -14,6 +16,10 @@ static size_t s_exitId = 0;
 // R10 and R11 are reserved for the instruction fixup phase
 static const std::vector<Register> s_integerRegisters = {
     AX, BX, CX, DX, DI, SI, R8, R9, R12, R13, R14, R15
+};
+
+static const std::set<Register> s_calleeSavedRegisters = {
+    BX, BP, R12, R13, R14, R15
 };
 
 template <typename Fn>
@@ -313,6 +319,83 @@ static void addInterferenceEdges(
     }
 }
 
+static inline long countUnprunedNeighbours(
+    std::map<GraphKey, GraphData> &graph,
+    const GraphData &node)
+{
+    auto &n = node.neighbors;
+    return std::count_if(n.begin(), n.end(), [&](const GraphKey &k) {
+        return !graph[k].pruned;
+    });
+}
+
+static inline bool isCalleeSavedRegister(const GraphKey &key)
+{
+    if (const Register *reg = std::get_if<Register>(&key))
+        return s_calleeSavedRegisters.contains(*reg);
+    return false;
+}
+
+static void colorGraph(std::map<GraphKey, GraphData> &graph, uint8_t k)
+{
+    auto remaining = graph
+        | std::views::filter([](const auto &p) {
+            return !p.second.pruned;
+        });
+    if (remaining.empty())
+        return;
+
+    // Choose the next node to be pruned
+    GraphKey chosen_key;
+    GraphData *chosen_node = nullptr;
+
+    for (auto &[key, data] : remaining) {
+        long degree = countUnprunedNeighbours(graph, data);
+        if (degree < k) {
+            chosen_key = key;
+            chosen_node = &data;
+            break;
+        }
+    }
+
+    if (!chosen_node) {
+        for (auto &[key, data] : remaining) {
+            double best_spill_metric = std::numeric_limits<double>::max();
+            long degree = countUnprunedNeighbours(graph, data);
+            double spill_metric = data.spill_cost / static_cast<double>(degree);
+            if (spill_metric < best_spill_metric) {
+                chosen_key = key;
+                chosen_node = &data;
+                best_spill_metric = spill_metric;
+            }
+        }
+    }
+
+    assert(chosen_node);
+    chosen_node->pruned = true;
+
+    // Color the rest of the graph
+    colorGraph(graph, k);
+
+    // Color this node
+    auto v = std::views::iota(1, k + 1);
+    std::set<size_t> colors(v.begin(), v.end());
+    for (auto &neighbor_id : chosen_node->neighbors) {
+        const GraphData &neighbor = graph.at(neighbor_id);
+        if (neighbor.color != 0)
+            colors.erase(neighbor.color);
+    }
+    if (colors.empty())
+        return;
+
+    // std::set is an ordered container, begin and rbegin work here
+    if (isCalleeSavedRegister(chosen_key))
+        chosen_node->color = *colors.rbegin(); // max
+    else
+        chosen_node->color = *colors.begin(); // min
+    chosen_node->pruned = false;
+}
+
 std::map<GraphKey, GraphData> buildInterferenceGraph(
     std::list<CFGBlock> &blocks,
     std::shared_ptr<ASMSymbolTable> asm_symbol_table)
@@ -332,6 +415,10 @@ std::map<GraphKey, GraphData> buildInterferenceGraph(
 
     // We add edges to the interference graph using the liveness information
     addInterferenceEdges(blocks, interference_graph, asm_symbol_table);
+
+    // Color the graph
+    colorGraph(interference_graph, 12);
+    // TODO: Use k = 14 for XMM registers
 
     return interference_graph;
 }
