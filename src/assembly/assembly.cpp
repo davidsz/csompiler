@@ -3,9 +3,14 @@
 #include "asm_printer.h"
 #include "common/context.h"
 #include "constant_map.h"
-#include "interference_graph.h"
 
 namespace assembly {
+
+// register_allocator.cpp
+std::map<std::string, Register> allocateRegisters(
+    std::list<CFGBlock> &blocks,
+    const std::string &function_name,
+    std::shared_ptr<ASMSymbolTable> asm_symbol_table);
 
 // postprocess.cpp
 void postprocessPseudoRegisters(
@@ -28,7 +33,19 @@ std::string from_tac(
     context->asmSymbolTable->InsertSymbols(context);
     context->asmSymbolTable->InsertConstants(constants);
 
-    // apply_optimizations(asm_list, context);
+    /*
+    // Intraprocedural optimization: we work on separate functions.
+    for (auto &top_level_obj : asm_list) {
+        std::visit([&](auto &obj) {
+            using T = std::decay_t<decltype(obj)>;
+            if constexpr (std::is_same_v<T, Function>) {
+                allocateRegisters(obj.blocks, obj.name, context->asmSymbolTable);
+                // TODO: Rewrite instructions
+                // TODO: Use the register map
+            }
+        }, top_level_obj);
+    }
+    */
 
     postprocessPseudoRegisters(asm_list, context->asmSymbolTable);
 
@@ -36,23 +53,6 @@ std::string from_tac(
 
     ASMPrinter asm_printer(context, context->asmSymbolTable);
     return asm_printer.ToText(asm_list);
-}
-
-void apply_optimizations(std::list<TopLevel> &list, Context *context)
-{
-    // Intraprocedural optimization: we work on separate functions.
-    for (auto &top_level_obj : list) {
-        std::visit([&](auto &obj) {
-            using T = std::decay_t<decltype(obj)>;
-            if constexpr (std::is_same_v<T, Function>) {
-                // Build interference graph
-                std::map<GraphKey, GraphData> graph
-                    = buildInterferenceGraph(obj.blocks, context->asmSymbolTable);
-
-                // TODO: Create register map and apply it in postprocessPseudoRegisters()
-            }
-        }, top_level_obj);
-    }
 }
 
 }; // assembly

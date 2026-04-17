@@ -20,6 +20,7 @@ struct FunEntry {
     bool return_on_stack;
     std::vector<Register> arg_registers = {};
     std::vector<Register> ret_registers = {};
+    std::set<Register> callee_saved_registers = {};
 };
 
 using ASMSymbolEntry = std::variant<ObjEntry, FunEntry>;

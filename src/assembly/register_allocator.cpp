@@ -1,4 +1,5 @@
-#include "interference_graph.h"
+#include "asm_nodes.h"
+#include "asm_symbol_table.h"
 #include <algorithm>
 #include <cassert>
 #include <limits>
@@ -7,6 +8,16 @@
 #include <ranges>
 
 namespace assembly {
+
+// Registers and PseudoRegisters
+using GraphKey = std::variant<Register, std::string>;
+
+struct GraphData {
+    std::set<GraphKey> neighbors = {};
+    double spill_cost = 0;
+    size_t color = 0;
+    bool pruned = false;
+};
 
 static std::map<const Instruction *, std::set<Register>> s_instructionAnnotations;
 static std::map<const CFGBlock *, std::set<Register>> s_blockAnnotations;
@@ -18,7 +29,7 @@ static const std::vector<Register> s_integerRegisters = {
     AX, BX, CX, DX, DI, SI, R8, R9, R12, R13, R14, R15
 };
 
-static const std::set<Register> s_calleeSavedRegisters = {
+static const std::set<Register> s_allCalleeSavedRegisters = {
     BX, BP, R12, R13, R14, R15
 };
 
@@ -332,7 +343,7 @@ static inline long countUnprunedNeighbours(
 static inline bool isCalleeSavedRegister(const GraphKey &key)
 {
     if (const Register *reg = std::get_if<Register>(&key))
-        return s_calleeSavedRegisters.contains(*reg);
+        return s_allCalleeSavedRegisters.contains(*reg);
     return false;
 }
 
@@ -396,7 +407,7 @@ static void colorGraph(std::map<GraphKey, GraphData> &graph, uint8_t k)
     chosen_node->pruned = false;
 }
 
-std::map<GraphKey, GraphData> buildInterferenceGraph(
+static std::map<GraphKey, GraphData> buildInterferenceGraph(
     std::list<CFGBlock> &blocks,
     std::shared_ptr<ASMSymbolTable> asm_symbol_table)
 {
@@ -421,6 +432,48 @@ std::map<GraphKey, GraphData> buildInterferenceGraph(
     // TODO: Use k = 14 for XMM registers
 
     return interference_graph;
+}
+
+static std::map<std::string, Register> createRegisterMap(
+    std::map<GraphKey, GraphData> &graph,
+    const std::string &function_name,
+    std::shared_ptr<ASMSymbolTable> asm_symbol_table)
+{
+    std::map<size_t, Register> color_map;
+    for (auto &[key, data] : graph) {
+        if (const Register *reg = std::get_if<Register>(&key))
+            color_map[data.color] = *reg;
+    }
+
+    std::map<std::string, Register> register_map;
+    std::set<Register> callee_saved_registers;
+    for (auto &[key, data] : graph) {
+        if (const std::string *name = std::get_if<std::string>(&key)) {
+            if (data.color == 0)
+                continue;
+            Register reg = color_map[data.color];
+            register_map[*name] = reg;
+            if (s_allCalleeSavedRegisters.contains(reg))
+                callee_saved_registers.insert(reg);
+        }
+    }
+
+    FunEntry *entry = asm_symbol_table->getAs<FunEntry>(function_name);
+    // TODO: Fix this assert
+    assert(entry);
+    entry->callee_saved_registers = std::move(callee_saved_registers);
+
+    return register_map;
+}
+
+std::map<std::string, Register> allocateRegisters(
+    std::list<CFGBlock> &blocks,
+    const std::string &function_name,
+    std::shared_ptr<ASMSymbolTable> asm_symbol_table)
+{
+    std::map<GraphKey, GraphData> graph
+        = buildInterferenceGraph(blocks, asm_symbol_table);
+    return createRegisterMap(graph, function_name, asm_symbol_table);
 }
 
 } // assembly
