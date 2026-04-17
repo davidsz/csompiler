@@ -33,7 +33,6 @@ std::string from_tac(
     context->asmSymbolTable->InsertSymbols(context);
     context->asmSymbolTable->InsertConstants(constants);
 
-    /*
     // Intraprocedural optimization: we work on separate functions.
     for (auto &top_level_obj : asm_list) {
         std::visit([&](auto &obj) {
@@ -45,7 +44,6 @@ std::string from_tac(
             }
         }, top_level_obj);
     }
-    */
 
     postprocessPseudoRegisters(asm_list, context->asmSymbolTable);
 

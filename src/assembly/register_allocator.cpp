@@ -458,8 +458,8 @@ static std::map<std::string, Register> createRegisterMap(
         }
     }
 
+    // TODO: If !entry->defined, maybe we can skip this whole function from a higher level
     FunEntry *entry = asm_symbol_table->getAs<FunEntry>(function_name);
-    // TODO: Fix this assert
     assert(entry);
     entry->callee_saved_registers = std::move(callee_saved_registers);
 

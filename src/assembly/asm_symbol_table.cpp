@@ -17,8 +17,14 @@ void ASMSymbolTable::InsertSymbols(Context *context)
                 .is_constant = false
             });
         } else if (entry.type.getAs<FunctionType>()) {
-            // Functions are already inserted in the ASMBuilder
-            continue;
+            // Defined functions are already added in the ASMBuilder
+            // We only add placeholders here for the undefined ones
+            if (!entry.attrs.defined) {
+                Insert(name, FunEntry{
+                    .defined = false,
+                    .return_on_stack = false
+                });
+            }
         } else if (entry.type.getAs<PointerType>()) {
             Insert(name, ObjEntry{
                 .type = AssemblyType{ Quadword },
