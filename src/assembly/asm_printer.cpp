@@ -1,4 +1,5 @@
 #include "asm_printer.h"
+#include "asm_printer_utils.h"
 #include "common/context.h"
 #include <algorithm>
 #include <format>
@@ -28,42 +29,6 @@ static std::string formatLabel(std::string_view name)
 #else
     return std::string(name);
 #endif
-}
-
-static std::string getEightByteName(Register reg)
-{
-    switch (reg) {
-#define CASE_TO_STRING(name, eightbytename, fourbytename, onebytename) \
-    case Register::name: return eightbytename;
-    ASM_REGISTER_LIST(CASE_TO_STRING)
-#undef CASE_TO_STRING
-    }
-    assert(false);
-    return "";
-}
-
-static std::string getFourByteName(Register reg)
-{
-    switch (reg) {
-#define CASE_TO_STRING(name, eightbytename, fourbytename, onebytename) \
-    case Register::name: return fourbytename;
-    ASM_REGISTER_LIST(CASE_TO_STRING)
-#undef CASE_TO_STRING
-    }
-    assert(false);
-    return "";
-}
-
-static std::string getOneByteName(Register reg)
-{
-    switch (reg) {
-#define CASE_TO_STRING(name, eightbytename, fourbytename, onebytename) \
-    case Register::name: return onebytename;
-    ASM_REGISTER_LIST(CASE_TO_STRING)
-#undef CASE_TO_STRING
-    }
-    assert(false);
-    return "";
 }
 
 std::string ASMPrinter::BuildInitializer(const ConstantValue &init)

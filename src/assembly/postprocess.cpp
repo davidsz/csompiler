@@ -7,6 +7,101 @@
 
 namespace assembly {
 
+static inline bool replacePseudo(
+    Operand &op,
+    const std::map<std::string, Register> &register_map,
+    std::shared_ptr<ASMSymbolTable> asm_symbol_table)
+{
+    return std::visit([&](auto &obj) {
+        using T = std::decay_t<decltype(obj)>;
+        if constexpr (std::is_same_v<T, Pseudo>) {
+            if (auto it = register_map.find(obj.name); it != register_map.end()) {
+                ObjEntry *entry = asm_symbol_table->getAs<ObjEntry>(obj.name);
+                assert(entry);
+                assert(!entry->is_static);
+                op.emplace<Reg>(it->second, entry->type.size());
+                return true;
+            }
+        }
+        return false;
+    }, op);
+}
+
+static inline std::list<Instruction>::iterator removeIfNeeded(
+    std::list<Instruction> &instructions,
+    std::list<Instruction>::iterator it,
+    const Operand &a,
+    const Operand &b,
+    bool changed)
+{
+    if (!changed)
+        return std::next(it);
+    const Reg *ra = std::get_if<Reg>(&a);
+    const Reg *rb = std::get_if<Reg>(&b);
+    if (ra && rb && ra->reg == rb->reg && ra->bytes == rb->bytes)
+        return instructions.erase(it);
+    return std::next(it);
+}
+
+void replacePseudoRegisters(
+    std::list<CFGBlock> &blocks,
+    const std::map<std::string, Register> &reg_map,
+    std::shared_ptr<ASMSymbolTable> asm_symbol_table)
+{
+    for (auto &block : blocks) {
+        for (auto it = block.instructions.begin(); it != block.instructions.end();) {
+            it = std::visit([&](auto &obj) {
+                bool changed = false;
+                using T = std::decay_t<decltype(obj)>;
+                if constexpr (std::is_same_v<T, Mov>) {
+                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
+                } else if constexpr (std::is_same_v<T, Movsx>) {
+                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
+                } else if constexpr (std::is_same_v<T, MovZeroExtend>) {
+                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
+                } else if constexpr (std::is_same_v<T, Lea>) {
+                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
+                } else if constexpr (std::is_same_v<T, Cvttsd2si>) {
+                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
+                } else if constexpr (std::is_same_v<T, Cvtsi2sd>) {
+                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
+                } else if constexpr (std::is_same_v<T, Unary>) {
+                    replacePseudo(obj.src, reg_map, asm_symbol_table);
+                } else if constexpr (std::is_same_v<T, Binary>) {
+                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
+                } else if constexpr (std::is_same_v<T, Idiv>) {
+                    replacePseudo(obj.src, reg_map, asm_symbol_table);
+                } else if constexpr (std::is_same_v<T, Div>) {
+                    replacePseudo(obj.src, reg_map, asm_symbol_table);
+                } else if constexpr (std::is_same_v<T, Cmp>) {
+                    changed |= replacePseudo(obj.lhs, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.rhs, reg_map, asm_symbol_table);
+                    return removeIfNeeded(block.instructions, it, obj.lhs, obj.rhs, changed);
+                } else if constexpr (std::is_same_v<T, SetCC>) {
+                    replacePseudo(obj.op, reg_map, asm_symbol_table);
+                } else if constexpr (std::is_same_v<T, Push>) {
+                    replacePseudo(obj.op, reg_map, asm_symbol_table);
+                }
+                return std::next(it);
+            }, *it);
+        }
+    }
+}
+
 // Replace each pseudo-register with proper stack offsets or static variables;
 // calculates the overall stack size needed to store all local variables.
 static int postprocessPseudoRegisters(
@@ -30,7 +125,7 @@ static int postprocessPseudoRegisters(
 
         ObjEntry *entry = asm_symbol_table->getAs<ObjEntry>(name);
         assert(entry);
-        if (entry && entry->is_static) {
+        if (entry->is_static) {
             // Replace static variables with Data operands
             op.emplace<Data>(name, extra_offset);
             return;
@@ -48,7 +143,6 @@ static int postprocessPseudoRegisters(
         }
         op.emplace<Memory>(BP, pseudo_offset[name] + static_cast<int>(extra_offset));
     };
-
 
     for (auto &block : blocks) {
         for (auto &inst : block.instructions) {
@@ -494,16 +588,14 @@ static void postprocessInvalidInstructions(std::list<Instruction> &asm_list)
 
 void postprocessInvalidInstructions(std::list<TopLevel> &asm_list)
 {
-    for (auto it = asm_list.begin(); it != asm_list.end();) {
-        it = std::visit([&](auto &obj) {
+    for (auto &top_level_obj : asm_list) {
+        std::visit([&](auto &obj) {
             using T = std::decay_t<decltype(obj)>;
             if constexpr (std::is_same_v<T, Function>) {
                 for (auto &block : obj.blocks)
                     postprocessInvalidInstructions(block.instructions);
-                return std::next(it);
-            } else
-                return std::next(it);
-        }, *it);
+            }
+        }, top_level_obj);
     }
 }
 

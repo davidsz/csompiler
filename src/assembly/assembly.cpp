@@ -1,6 +1,7 @@
 #include "assembly.h"
 #include "asm_builder.h"
 #include "asm_printer.h"
+#include "asm_printer_utils.h"
 #include "common/context.h"
 #include "constant_map.h"
 
@@ -13,6 +14,10 @@ std::map<std::string, Register> allocateRegisters(
     std::shared_ptr<ASMSymbolTable> asm_symbol_table);
 
 // postprocess.cpp
+void replacePseudoRegisters(
+    std::list<CFGBlock> &blocks,
+    const std::map<std::string, Register> &register_map,
+    std::shared_ptr<ASMSymbolTable> asm_symbol_table);
 void postprocessPseudoRegisters(
     std::list<TopLevel> &asm_list,
     std::shared_ptr<ASMSymbolTable> asm_symbol_table);
@@ -33,18 +38,29 @@ std::string from_tac(
     context->asmSymbolTable->InsertSymbols(context);
     context->asmSymbolTable->InsertConstants(constants);
 
-    // Intraprocedural optimization: we work on separate functions.
+    // Intraprocedural optimization: we work on separate functions
     for (auto &top_level_obj : asm_list) {
         std::visit([&](auto &obj) {
             using T = std::decay_t<decltype(obj)>;
             if constexpr (std::is_same_v<T, Function>) {
-                allocateRegisters(obj.blocks, obj.name, context->asmSymbolTable);
-                // TODO: Rewrite instructions
-                // TODO: Use the register map
+                std::map<std::string, Register> register_map =
+                    allocateRegisters(obj.blocks, obj.name, context->asmSymbolTable);
+
+#if 0
+                std::cout << "Register map for " << obj.name << ":" << std::endl;
+                for (auto &[name, reg] : register_map) {
+                    std::cout << name << " -> " << getEightByteName(reg) << std::endl;
+                }
+                std::cout << std::endl;
+#endif
+
+                // TODO: Debug
+                // replacePseudoRegisters(obj.blocks, register_map, context->asmSymbolTable);
             }
         }, top_level_obj);
     }
 
+    // TODO: Rename it or try to merge into replacePseudoRegisters()
     postprocessPseudoRegisters(asm_list, context->asmSymbolTable);
 
     postprocessInvalidInstructions(asm_list);
