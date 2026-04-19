@@ -154,7 +154,7 @@ int main(int argc, char **argv)
         parser_result.root,
         tac_list,
         context.get());
-#if 1
+#if 0
     std::cout << std::endl << "TAC:" << std::endl;
     tac::TACPrinter::Print(tac_list, context.get());
 #endif

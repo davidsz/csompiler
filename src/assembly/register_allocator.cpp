@@ -19,8 +19,8 @@ struct GraphData {
     bool pruned = false;
 };
 
-static std::map<const Instruction *, std::set<Register>> s_instructionAnnotations;
-static std::map<const CFGBlock *, std::set<Register>> s_blockAnnotations;
+static std::map<const Instruction *, std::set<GraphKey>> s_instructionAnnotations;
+static std::map<const CFGBlock *, std::set<GraphKey>> s_blockAnnotations;
 static size_t s_exitId = 0;
 
 // Don't include SP and BP (they manage the stack frame);
@@ -32,6 +32,15 @@ static const std::vector<Register> s_integerRegisters = {
 static const std::set<Register> s_allCalleeSavedRegisters = {
     BX, BP, R12, R13, R14, R15
 };
+
+static std::optional<GraphKey> operandToKey(const Operand &operand)
+{
+    if (const Reg *r = std::get_if<Reg>(&operand))
+        return r->reg;
+    if (const Pseudo *p = std::get_if<Pseudo>(&operand))
+        return p->name;
+    return std::nullopt;
+}
 
 template <typename Fn>
 static void ForEachOperand(const Instruction &instr, Fn &&fn)
@@ -111,13 +120,18 @@ static std::map<GraphKey, GraphData> buildBaseGraph(const std::vector<Register> 
 
 static void addPseudoRegisters(
     std::list<CFGBlock> &blocks,
-    std::map<GraphKey, GraphData> &graph)
+    std::map<GraphKey, GraphData> &graph,
+    ASMSymbolTable *asm_symbol_table)
 {
     // TODO: Variables in loops can have much bigger spill costs
     for (auto &block : blocks) {
         for (auto &instruction : block.instructions) {
-            ForEachOperand(instruction, [&graph](const Operand &operand) {
+            ForEachOperand(instruction, [&](const Operand &operand) {
                 if (const Pseudo *pseudo = std::get_if<Pseudo>(&operand)) {
+                    ObjEntry *entry = asm_symbol_table->getAs<ObjEntry>(pseudo->name);
+                    assert(entry);
+                    if (entry->is_static)
+                        return;
                     auto [it, inserted] = graph.try_emplace(pseudo->name, GraphData{ });
                     it->second.spill_cost += 1.0;
                 }
@@ -174,7 +188,7 @@ static void addControlFlowEdges(std::list<CFGBlock> &blocks)
 static
 std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
     const Instruction &instr,
-    std::shared_ptr<ASMSymbolTable> asm_symbol_table)
+    ASMSymbolTable *asm_symbol_table)
 {
     return std::visit([&](const auto &i) -> std::pair<std::vector<Operand>, std::vector<Operand>> {
         using T = std::decay_t<decltype(i)>;
@@ -224,10 +238,10 @@ std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
 // Transfer function
 static void transfer(
     const CFGBlock *block,
-    const std::set<Register> &end_live_registers,
-    std::shared_ptr<ASMSymbolTable> asm_symbol_table)
+    const std::set<GraphKey> &end_live_registers,
+    ASMSymbolTable *asm_symbol_table)
 {
-    std::set<Register> current_live_registers = end_live_registers;
+    std::set<GraphKey> current_live_registers = end_live_registers;
     for (auto it = block->instructions.rbegin(); it != block->instructions.rend(); ++it) {
         const Instruction &instruction = *it;
         s_instructionAnnotations[&instruction] = current_live_registers;
@@ -235,10 +249,14 @@ static void transfer(
         for (auto &v : updated) {
             if (const Reg *reg = std::get_if<Reg>(&v))
                 current_live_registers.erase(reg->reg);
+            else if (const Pseudo *pseudo = std::get_if<Pseudo>(&v))
+                current_live_registers.erase(pseudo->name);
         }
         for (auto &v : used) {
             if (const Reg *reg = std::get_if<Reg>(&v))
                 current_live_registers.insert(reg->reg);
+            else if (const Pseudo *pseudo = std::get_if<Pseudo>(&v))
+                current_live_registers.insert(pseudo->name);
         }
     }
     s_blockAnnotations[block] = std::move(current_live_registers);
@@ -246,17 +264,16 @@ static void transfer(
 
 // Meet operator: propagates information about live registers
 // from one block to another.
-static std::set<Register> meet(
-    const CFGBlock *block)
+static std::set<GraphKey> meet(const CFGBlock *block)
 {
-    std::set<Register> live_registers;
+    std::set<GraphKey> live_registers;
     for (auto &succ : block->successors) {
         if (succ->id == 0)
             assert(false);
         else if (succ->id == s_exitId) {
             live_registers.insert(AX);
         } else {
-            const std::set<Register> &succ_live_regs = s_blockAnnotations[succ];
+            const std::set<GraphKey> &succ_live_regs = s_blockAnnotations[succ];
             live_registers.insert(succ_live_regs.begin(), succ_live_regs.end());
         }
     }
@@ -266,7 +283,7 @@ static std::set<Register> meet(
 // Iterative algorithm: implements a backward (liveness) analysis
 static void findLiveRegisters(
     const std::list<CFGBlock> &blocks,
-    std::shared_ptr<ASMSymbolTable> asm_symbol_table)
+    ASMSymbolTable *asm_symbol_table)
 {
     // TODO: Can be optimized by postordering
     std::list<const CFGBlock *> worklist;
@@ -280,8 +297,8 @@ static void findLiveRegisters(
     while (!worklist.empty()) {
         const CFGBlock *block = worklist.front();
         worklist.pop_front();
-        std::set<Register> old_annotations = s_blockAnnotations[block];
-        std::set<Register> end_live = meet(block);
+        std::set<GraphKey> old_annotations = s_blockAnnotations[block];
+        std::set<GraphKey> end_live = meet(block);
         transfer(block, end_live, asm_symbol_table);
         if (old_annotations != s_blockAnnotations[block]) {
             for (auto pred : block->predecessors) {
@@ -297,19 +314,20 @@ static void findLiveRegisters(
 static void addInterferenceEdges(
     std::list<CFGBlock> &blocks,
     std::map<GraphKey, GraphData> &interference_graph,
-    std::shared_ptr<ASMSymbolTable> asm_symbol_table)
+    ASMSymbolTable *asm_symbol_table)
 {
     for (auto &block : blocks) {
         if (block.id == 0 || block.id == s_exitId)
             continue;
         for (auto &instr : block.instructions) {
             auto [used, updated] = findUsedAndUpdated(instr, asm_symbol_table);
-            const std::set<Register> &live_registers = s_instructionAnnotations[&instr];
-            for (const Register &live_reg : live_registers) {
-                if (const Mov *mov = std::get_if<Mov>(&instr)) {
-                    if (live_reg == mov->src)
-                        continue;
-                }
+            std::optional<GraphKey> mov_src;
+            if (const Mov *mov = std::get_if<Mov>(&instr))
+                mov_src = operandToKey(mov->src);
+            const std::set<GraphKey> &live_keys = s_instructionAnnotations[&instr];
+            for (const GraphKey &live_key : live_keys) {
+                if (mov_src && *mov_src == live_key)
+                    continue;
                 for (auto &u : updated) {
                     std::optional<GraphKey> updated_key;
                     if (const Reg *updated_reg = std::get_if<Reg>(&u))
@@ -318,11 +336,11 @@ static void addInterferenceEdges(
                         updated_key = updated_pseudo->name;
                     if (!updated_key)
                         continue;
-                    if (interference_graph.contains(live_reg)
+                    if (interference_graph.contains(live_key)
                         && interference_graph.contains(*updated_key)
-                        && live_reg != u) {
-                        interference_graph[live_reg].neighbors.insert(*updated_key);
-                        interference_graph[*updated_key].neighbors.insert(live_reg);
+                        && live_key != *updated_key) {
+                        interference_graph[live_key].neighbors.insert(*updated_key);
+                        interference_graph[*updated_key].neighbors.insert(live_key);
                     }
                 }
             }
@@ -370,8 +388,8 @@ static void colorGraph(std::map<GraphKey, GraphData> &graph, uint8_t k)
     }
 
     if (!chosen_node) {
+        double best_spill_metric = std::numeric_limits<double>::max();
         for (auto &[key, data] : remaining) {
-            double best_spill_metric = std::numeric_limits<double>::max();
             long degree = countUnprunedNeighbours(graph, data);
             double spill_metric = data.spill_cost / static_cast<double>(degree);
             if (spill_metric < best_spill_metric) {
@@ -409,12 +427,12 @@ static void colorGraph(std::map<GraphKey, GraphData> &graph, uint8_t k)
 
 static std::map<GraphKey, GraphData> buildInterferenceGraph(
     std::list<CFGBlock> &blocks,
-    std::shared_ptr<ASMSymbolTable> asm_symbol_table)
+    ASMSymbolTable *asm_symbol_table)
 {
     // A fully connected base graph of the physical registers
     std::map<GraphKey, GraphData> interference_graph = buildBaseGraph(s_integerRegisters);
     // Extend it with pseudo-registers
-    addPseudoRegisters(blocks, interference_graph);
+    addPseudoRegisters(blocks, interference_graph, asm_symbol_table);
     // Finish the control flow graph before performing liveness analysis
     addControlFlowEdges(blocks);
 
@@ -437,7 +455,7 @@ static std::map<GraphKey, GraphData> buildInterferenceGraph(
 static std::map<std::string, Register> createRegisterMap(
     std::map<GraphKey, GraphData> &graph,
     const std::string &function_name,
-    std::shared_ptr<ASMSymbolTable> asm_symbol_table)
+    ASMSymbolTable *asm_symbol_table)
 {
     std::map<size_t, Register> color_map;
     for (auto &[key, data] : graph) {
@@ -469,7 +487,7 @@ static std::map<std::string, Register> createRegisterMap(
 std::map<std::string, Register> allocateRegisters(
     std::list<CFGBlock> &blocks,
     const std::string &function_name,
-    std::shared_ptr<ASMSymbolTable> asm_symbol_table)
+    ASMSymbolTable *asm_symbol_table)
 {
     std::map<GraphKey, GraphData> graph
         = buildInterferenceGraph(blocks, asm_symbol_table);
