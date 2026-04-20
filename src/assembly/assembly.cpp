@@ -67,7 +67,7 @@ std::string from_tac(
 
     postprocessInvalidInstructions(asm_list);
 
-    ASMPrinter asm_printer(context, context->asmSymbolTable);
+    ASMPrinter asm_printer(context);
     return asm_printer.ToText(asm_list);
 }
 

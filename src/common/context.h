@@ -12,4 +12,9 @@ public:
         std::make_shared<SymbolTable>(typeTable.get());
     std::shared_ptr<assembly::ASMSymbolTable> asmSymbolTable =
         std::make_shared<assembly::ASMSymbolTable>();
+
+    bool constant_folding = false;
+    bool copy_propagation = false;
+    bool unreachable_code_elimination = false;
+    bool dead_store_elimination = false;
 };

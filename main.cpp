@@ -154,7 +154,7 @@ int main(int argc, char **argv)
         parser_result.root,
         tac_list,
         context.get());
-#if 0
+#if 1
     std::cout << std::endl << "TAC:" << std::endl;
     tac::TACPrinter::Print(tac_list, context.get());
 #endif
@@ -170,15 +170,18 @@ int main(int argc, char **argv)
 #endif
 
     // TAC optimizations
-    tac::TACOptimizationArgs tac_args = {
-        .constant_folding = has_flag("fold-constants"),
-        .copy_propagation = has_flag("propagate-copies"),
-        .unreachable_code_elimination = has_flag("eliminate-unreachable-code"),
-        .dead_store_elimination = has_flag("eliminate-dead-stores")
-    };
-    if (has_flag("optimize"))
-        tac_args = { true, true, true, true };
-    tac::apply_optimizations(tac_list, tac_args, context.get());
+    if (has_flag("optimize")) {
+        context->constant_folding = true;
+        context->copy_propagation = true;
+        context->unreachable_code_elimination = true;
+        context->dead_store_elimination = true;
+    } else {
+        context->constant_folding = has_flag("fold-constants");
+        context->copy_propagation = has_flag("propagate-copies");
+        context->unreachable_code_elimination = has_flag("eliminate-unreachable-code");
+        context->dead_store_elimination = has_flag("eliminate-dead-stores");
+    }
+    tac::apply_optimizations(tac_list, context.get());
 
 #if 1
     std::cout << std::endl << "TAC after optimizations:" << std::endl;

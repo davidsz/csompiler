@@ -69,11 +69,8 @@ std::string ASMPrinter::BuildInitializer(const ConstantValue &init)
     return std::format("{} {}", initializer, toString(init));
 }
 
-ASMPrinter::ASMPrinter(
-    Context *context,
-    std::shared_ptr<ASMSymbolTable> symbolTable)
-    : m_symbolTable(symbolTable)
-    , m_context(context)
+ASMPrinter::ASMPrinter(Context *context)
+    : m_context(context)
 {
 }
 
@@ -369,6 +366,17 @@ void ASMPrinter::operator()(std::monostate)
 
 std::string ASMPrinter::ToText(const std::list<TopLevel> &top_level)
 {
+    // Build flag information
+    if (m_context->constant_folding)
+        m_codeStream << "# Constant folding enabled" << std::endl;
+    if (m_context->copy_propagation)
+        m_codeStream << "# Copy propagation enabled" << std::endl;
+    if (m_context->unreachable_code_elimination)
+        m_codeStream << "# Unreachable code elimination enabled" << std::endl;
+    if (m_context->dead_store_elimination)
+        m_codeStream << "# Dead store elimination enabled" << std::endl;
+    m_codeStream << std::endl;
+
     for (auto &i: top_level)
         std::visit(*this, i);
 

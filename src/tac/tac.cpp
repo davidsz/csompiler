@@ -127,7 +127,6 @@ void from_ast(
 
 void apply_optimizations(
     std::list<TopLevel> &list,
-    const TACOptimizationArgs &arg,
     Context *context)
 {
     // Intraprocedural optimization: we work on separate functions.
@@ -144,14 +143,14 @@ void apply_optimizations(
                     std::set<Value> static_vars = collectStaticVariants(
                         obj.blocks,
                         context->symbolTable.get());
-                    if (arg.constant_folding)
+                    if (context->constant_folding)
                         constantFolding(obj.blocks, context, changed);
                     rebuildControlFlowEdges(obj.blocks);
-                    if (arg.unreachable_code_elimination)
+                    if (context->unreachable_code_elimination)
                         unreachableCodeElimination(obj.blocks, changed);
-                    if (arg.copy_propagation)
+                    if (context->copy_propagation)
                         copyPropagation(obj.blocks, aliased_vars, static_vars, context, changed);
-                    if (arg.dead_store_elimination)
+                    if (context->dead_store_elimination)
                         deadStoreElimination(obj.blocks, aliased_vars, static_vars, changed);
                 } while (changed);
             }
