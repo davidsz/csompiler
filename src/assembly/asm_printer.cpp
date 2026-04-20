@@ -286,7 +286,7 @@ void ASMPrinter::operator()(const Push &p)
 
 void ASMPrinter::operator()(const Pop &p)
 {
-    m_codeStream << "    popq " << getEightByteName(p.reg) << std::endl;
+    m_codeStream << "    popq %" << getEightByteName(p.reg) << std::endl;
 }
 
 void ASMPrinter::operator()(const Call &c)
@@ -306,7 +306,8 @@ void ASMPrinter::operator()(const Function &f)
     // Prologue
     m_codeStream << "    pushq %rbp" << std::endl;
     m_codeStream << "    movq %rsp, %rbp" << std::endl;
-    m_codeStream << "    subq $" << f.stack_size << ", %rsp" << std::endl;
+    if (f.stack_size)
+        m_codeStream << "    subq $" << f.stack_size << ", %rsp" << std::endl;
     m_codeStream << std::endl;
 
     for (auto &block : f.blocks) {

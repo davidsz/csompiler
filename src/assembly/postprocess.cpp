@@ -1,4 +1,5 @@
 #include "asm_nodes.h"
+#include "asm_printer_utils.h"
 #include "asm_symbol_table.h"
 #include <cassert>
 #include <limits>
@@ -10,7 +11,7 @@ namespace assembly {
 static inline bool replacePseudo(
     Operand &op,
     const std::map<std::string, Register> &register_map,
-    std::shared_ptr<ASMSymbolTable> asm_symbol_table)
+    ASMSymbolTable *asm_symbol_table)
 {
     return std::visit([&](auto &obj) {
         using T = std::decay_t<decltype(obj)>;
@@ -19,6 +20,9 @@ static inline bool replacePseudo(
                 ObjEntry *entry = asm_symbol_table->getAs<ObjEntry>(obj.name);
                 assert(entry);
                 assert(!entry->is_static);
+                std::cout << "--- replace " << obj.name << " with ";
+                std::cout << getEightByteName(it->second);
+                std::cout << " (" << entry->type.size() << " bytes)" << std::endl;
                 op.emplace<Reg>(it->second, entry->type.size());
                 return true;
             }
@@ -45,9 +49,22 @@ static inline std::list<Instruction>::iterator removeIfNeeded(
 
 void replacePseudoRegisters(
     std::list<CFGBlock> &blocks,
+    const std::string &function_name,
     const std::map<std::string, Register> &reg_map,
-    std::shared_ptr<ASMSymbolTable> asm_symbol_table)
+    ASMSymbolTable *asm_symbol_table)
 {
+    std::cout << "Replace pseudo in " << function_name << std::endl;
+
+    FunEntry *entry = asm_symbol_table->getAs<FunEntry>(function_name);
+    assert(entry);
+    std::set<Register> &callee_saved_registers = entry->callee_saved_registers;
+    if (!callee_saved_registers.empty()) {
+        CFGBlock &first_block = blocks.front();
+        for (const Register &reg : callee_saved_registers)
+            first_block.instructions.emplace_front(Push{ Reg{ reg, 8 } });
+        first_block.instructions.emplace_front(Comment{ "Pushing callee-saved registers" });
+    }
+
     for (auto &block : blocks) {
         for (auto it = block.instructions.begin(); it != block.instructions.end();) {
             it = std::visit([&](auto &obj) {
@@ -95,6 +112,9 @@ void replacePseudoRegisters(
                     replacePseudo(obj.op, reg_map, asm_symbol_table);
                 } else if constexpr (std::is_same_v<T, Push>) {
                     replacePseudo(obj.op, reg_map, asm_symbol_table);
+                } else if constexpr (std::is_same_v<T, Ret>) {
+                    for (const Register &reg : callee_saved_registers)
+                        block.instructions.emplace(it, Pop{ reg });
                 }
                 return std::next(it);
             }, *it);
@@ -206,9 +226,18 @@ void postprocessPseudoRegisters(
                 assert(entry);
                 if (entry->return_on_stack)
                     stack_start = -8;
-                obj.stack_size = postprocessPseudoRegisters(obj.blocks, stack_start, asm_symbol_table);
-                // Round up to the next number which is divisible by 16
-                obj.stack_size = (obj.stack_size + 15) & ~15;
+
+                // Locals variables
+                int locals_size = postprocessPseudoRegisters(obj.blocks, stack_start, asm_symbol_table);
+                // Callee-saved registers pushed to the stack
+                int callee_saved_bytes = 8 * static_cast<int>(entry->callee_saved_registers.size());
+
+                std::cout << "Function " << obj.name << " local size: " << locals_size << std::endl;
+                std::cout << "Function " << obj.name << " callee_saved size: " << callee_saved_bytes << std::endl;
+
+                int total_stack_bytes = locals_size + callee_saved_bytes;
+                int adjusted_stack_bytes = (total_stack_bytes + 15) & ~15;
+                obj.stack_size = adjusted_stack_bytes - callee_saved_bytes;
             }
         }, inst);
     }

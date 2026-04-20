@@ -16,8 +16,9 @@ std::map<std::string, Register> allocateRegisters(
 // postprocess.cpp
 void replacePseudoRegisters(
     std::list<CFGBlock> &blocks,
+    const std::string &function_name,
     const std::map<std::string, Register> &register_map,
-    std::shared_ptr<ASMSymbolTable> asm_symbol_table);
+    ASMSymbolTable *asm_symbol_table);
 void postprocessPseudoRegisters(
     std::list<TopLevel> &asm_list,
     std::shared_ptr<ASMSymbolTable> asm_symbol_table);
@@ -43,6 +44,7 @@ std::string from_tac(
         std::visit([&](auto &obj) {
             using T = std::decay_t<decltype(obj)>;
             if constexpr (std::is_same_v<T, Function>) {
+
                 std::map<std::string, Register> register_map =
                     allocateRegisters(obj.blocks, obj.name, context->asmSymbolTable.get());
 
@@ -54,7 +56,8 @@ std::string from_tac(
 #endif
 
                 // TODO: Debug
-                replacePseudoRegisters(obj.blocks, register_map, context->asmSymbolTable);
+                replacePseudoRegisters(obj.blocks, obj.name, register_map, context->asmSymbolTable.get());
+
             }
         }, top_level_obj);
     }
