@@ -1,5 +1,6 @@
 #include "asm_nodes.h"
 #include "asm_symbol_table.h"
+#include "asm_printer_utils.h"
 #include <algorithm>
 #include <cassert>
 #include <limits>
@@ -196,10 +197,15 @@ std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
         } else if constexpr (std::is_same_v<T, Mov>) {
             return { { i.src }, { i.dst } };
         } else if constexpr (std::is_same_v<T, Movsx>) {
+            return { { i.src }, { i.dst } };
         } else if constexpr (std::is_same_v<T, MovZeroExtend>) {
+            return { { i.src }, { i.dst } };
         } else if constexpr (std::is_same_v<T, Lea>) {
+            return { { i.src }, { i.dst } };
         } else if constexpr (std::is_same_v<T, Cvttsd2si>) {
+            return { { i.src }, { i.dst } };
         } else if constexpr (std::is_same_v<T, Cvtsi2sd>) {
+            return { { i.src }, { i.dst } };
         } else if constexpr (std::is_same_v<T, Ret>) {
         } else if constexpr (std::is_same_v<T, Unary>) {
             return { { i.src }, { i.src } };
@@ -264,14 +270,21 @@ static void transfer(
 
 // Meet operator: propagates information about live registers
 // from one block to another.
-static std::set<GraphKey> meet(const CFGBlock *block)
+static std::set<GraphKey> meet(
+    const CFGBlock *block,
+    const std::string &function_name,
+    ASMSymbolTable *asm_symbol_table)
 {
     std::set<GraphKey> live_registers;
     for (auto &succ : block->successors) {
         if (succ->id == 0)
             assert(false);
         else if (succ->id == s_exitId) {
-            live_registers.insert(AX);
+            FunEntry *entry = asm_symbol_table->getAs<FunEntry>(function_name);
+            assert(entry);
+            for (Register reg : entry->ret_registers)
+                live_registers.insert(reg);
+            // live_registers.insert(AX);
         } else {
             const std::set<GraphKey> &succ_live_regs = s_blockAnnotations[succ];
             live_registers.insert(succ_live_regs.begin(), succ_live_regs.end());
@@ -283,6 +296,7 @@ static std::set<GraphKey> meet(const CFGBlock *block)
 // Iterative algorithm: implements a backward (liveness) analysis
 static void findLiveRegisters(
     const std::list<CFGBlock> &blocks,
+    const std::string &function_name,
     ASMSymbolTable *asm_symbol_table)
 {
     // TODO: Can be optimized by postordering
@@ -298,7 +312,7 @@ static void findLiveRegisters(
         const CFGBlock *block = worklist.front();
         worklist.pop_front();
         std::set<GraphKey> old_annotations = s_blockAnnotations[block];
-        std::set<GraphKey> end_live = meet(block);
+        std::set<GraphKey> end_live = meet(block, function_name, asm_symbol_table);
         transfer(block, end_live, asm_symbol_table);
         if (old_annotations != s_blockAnnotations[block]) {
             for (auto pred : block->predecessors) {
@@ -336,11 +350,31 @@ static void addInterferenceEdges(
                         updated_key = updated_pseudo->name;
                     if (!updated_key)
                         continue;
-                    if (interference_graph.contains(live_key)
-                        && interference_graph.contains(*updated_key)
-                        && live_key != *updated_key) {
-                        interference_graph[live_key].neighbors.insert(*updated_key);
-                        interference_graph[*updated_key].neighbors.insert(live_key);
+                    if (interference_graph.contains(live_key) && interference_graph.contains(*updated_key)) {
+                        if (live_key != *updated_key) {
+
+
+                            std::visit([&](auto&& k1, auto&& k2) {
+                                auto printKey = [](const auto& k) -> std::string {
+                                    using T = std::decay_t<decltype(k)>;
+                                    if constexpr (std::is_same_v<T, std::string>) {
+                                        return k;
+                                    } else if constexpr (std::is_same_v<T, Register>) {
+                                        return getEightByteName(k);
+                                    }
+                                };
+
+                                std::cout << "Interference: "
+                                          << printKey(k1) << " <-> " << printKey(k2)
+                                          << std::endl;
+                            }, live_key, *updated_key);
+
+
+                            interference_graph[live_key].neighbors.insert(*updated_key);
+                            interference_graph[*updated_key].neighbors.insert(live_key);
+                        }
+                    } else {
+                        std::cout << "Something is live in the instruction, but it's not in the graph." << std::endl;
                     }
                 }
             }
@@ -427,6 +461,7 @@ static void colorGraph(std::map<GraphKey, GraphData> &graph, uint8_t k)
 
 static std::map<GraphKey, GraphData> buildInterferenceGraph(
     std::list<CFGBlock> &blocks,
+    const std::string &function_name,
     ASMSymbolTable *asm_symbol_table)
 {
     // A fully connected base graph of the physical registers
@@ -440,7 +475,7 @@ static std::map<GraphKey, GraphData> buildInterferenceGraph(
     s_instructionAnnotations.clear();
     s_blockAnnotations.clear();
     s_exitId = blocks.back().id;
-    findLiveRegisters(blocks, asm_symbol_table);
+    findLiveRegisters(blocks, function_name, asm_symbol_table);
 
     // We add edges to the interference graph using the liveness information
     addInterferenceEdges(blocks, interference_graph, asm_symbol_table);
@@ -490,7 +525,7 @@ std::map<std::string, Register> allocateRegisters(
     ASMSymbolTable *asm_symbol_table)
 {
     std::map<GraphKey, GraphData> graph
-        = buildInterferenceGraph(blocks, asm_symbol_table);
+        = buildInterferenceGraph(blocks, function_name, asm_symbol_table);
     return createRegisterMap(graph, function_name, asm_symbol_table);
 }
 

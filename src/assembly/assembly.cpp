@@ -39,6 +39,7 @@ std::string from_tac(
     context->asmSymbolTable->InsertSymbols(context);
     context->asmSymbolTable->InsertConstants(constants);
 
+#if 1
     // Intraprocedural optimization: we work on separate functions
     for (auto &top_level_obj : asm_list) {
         std::visit([&](auto &obj) {
@@ -48,12 +49,10 @@ std::string from_tac(
                 std::map<std::string, Register> register_map =
                     allocateRegisters(obj.blocks, obj.name, context->asmSymbolTable.get());
 
-#if 1
                 std::cout << std::endl << "Register map for " << obj.name << ":" << std::endl;
                 for (auto &[name, reg] : register_map)
                     std::cout << name << " -> " << getEightByteName(reg) << std::endl;
                 std::cout << std::endl;
-#endif
 
                 // TODO: Debug
                 replacePseudoRegisters(obj.blocks, obj.name, register_map, context->asmSymbolTable.get());
@@ -61,6 +60,7 @@ std::string from_tac(
             }
         }, top_level_obj);
     }
+#endif
 
     // TODO: Rename it or try to merge into replacePseudoRegisters()
     postprocessPseudoRegisters(asm_list, context->asmSymbolTable);
