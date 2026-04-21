@@ -101,6 +101,8 @@ private:
 
     // Commit the current CFGBlock to start a new one
     void CommitBlock();
+    // Finalie the CFG blocks
+    void FinalizeControlFlowBlocks();
 
     Context *m_context;
     TypeTable *m_typeTable;

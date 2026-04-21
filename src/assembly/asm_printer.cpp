@@ -308,6 +308,7 @@ void ASMPrinter::operator()(const Function &f)
     m_codeStream << std::endl;
 
     for (auto &block : f.blocks) {
+        m_codeStream << "# --- block " << block.id << " ---" << std::endl;
         for (auto &i: block.instructions)
             std::visit(*this, i);
     }

@@ -1018,6 +1018,7 @@ void ASMBuilder::ConvertFunctionBody(
         for (auto &i : block.instructions)
             std::visit(*this, i);
     }
+    FinalizeControlFlowBlocks();
 }
 
 std::string ASMBuilder::AddConstant(const ConstantValue &c, const std::string &name)
@@ -1076,6 +1077,23 @@ void ASMBuilder::CommitBlock()
     m_blocks->emplace_back(CFGBlock{
         .instructions = std::move(m_instructions),
         .id = m_nextBlockId++
+    });
+}
+
+void ASMBuilder::FinalizeControlFlowBlocks()
+{
+    // Small functions don't even have one complete block; so we create one
+    if (m_blocks->empty() || !m_instructions.empty())
+        CommitBlock();
+
+    // Add entry block
+    m_blocks->emplace_front(CFGBlock{
+        .id = 0
+    });
+
+    // Add exit block
+    m_blocks->emplace_back(CFGBlock{
+        .id = m_blocks->size()
     });
 }
 
