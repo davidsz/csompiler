@@ -10,6 +10,13 @@
 
 namespace assembly {
 
+// postprocess.cpp
+void replacePseudoRegisters(
+    std::list<CFGBlock> &blocks,
+    const std::map<std::string, Register> &register_map,
+    FunEntry *function_entry,
+    ASMSymbolTable *asm_symbol_table);
+
 // Registers and PseudoRegisters
 using GraphKey = std::variant<Register, std::string>;
 
@@ -23,12 +30,6 @@ struct GraphData {
 static std::map<const Instruction *, std::set<GraphKey>> s_instructionAnnotations;
 static std::map<const CFGBlock *, std::set<GraphKey>> s_blockAnnotations;
 static size_t s_exitId = 0;
-
-// Don't include SP and BP (they manage the stack frame);
-// R10 and R11 are reserved for the instruction fixup phase
-static const std::vector<Register> s_integerRegisters = {
-    AX, BX, CX, DX, DI, SI, R8, R9, R12, R13, R14, R15
-};
 
 static const std::set<Register> s_allCalleeSavedRegisters = {
     BX, BP, R12, R13, R14, R15
@@ -122,6 +123,7 @@ static std::map<GraphKey, GraphData> buildBaseGraph(const std::vector<Register> 
 static void addPseudoRegisters(
     std::list<CFGBlock> &blocks,
     std::map<GraphKey, GraphData> &graph,
+    bool processing_floating_points,
     ASMSymbolTable *asm_symbol_table)
 {
     // TODO: Variables in loops can have much bigger spill costs
@@ -132,6 +134,8 @@ static void addPseudoRegisters(
                     ObjEntry *entry = asm_symbol_table->getAs<ObjEntry>(pseudo->name);
                     assert(entry);
                     if (entry->is_static)
+                        return;
+                    if (processing_floating_points != entry->type.isWord(Doubleword))
                         return;
                     auto [it, inserted] = graph.try_emplace(pseudo->name, GraphData{ });
                     it->second.spill_cost += 1.0;
@@ -272,19 +276,15 @@ static void transfer(
 // from one block to another.
 static std::set<GraphKey> meet(
     const CFGBlock *block,
-    const std::string &function_name,
-    ASMSymbolTable *asm_symbol_table)
+    FunEntry *function_entry)
 {
     std::set<GraphKey> live_registers;
     for (auto &succ : block->successors) {
         if (succ->id == 0)
             assert(false);
         else if (succ->id == s_exitId) {
-            FunEntry *entry = asm_symbol_table->getAs<FunEntry>(function_name);
-            assert(entry);
-            for (Register reg : entry->ret_registers)
+            for (Register reg : function_entry->ret_registers)
                 live_registers.insert(reg);
-            // live_registers.insert(AX);
         } else {
             const std::set<GraphKey> &succ_live_regs = s_blockAnnotations[succ];
             live_registers.insert(succ_live_regs.begin(), succ_live_regs.end());
@@ -296,7 +296,7 @@ static std::set<GraphKey> meet(
 // Iterative algorithm: implements a backward (liveness) analysis
 static void findLiveRegisters(
     const std::list<CFGBlock> &blocks,
-    const std::string &function_name,
+    FunEntry *function_entry,
     ASMSymbolTable *asm_symbol_table)
 {
     // TODO: Can be optimized by postordering
@@ -312,7 +312,7 @@ static void findLiveRegisters(
         const CFGBlock *block = worklist.front();
         worklist.pop_front();
         std::set<GraphKey> old_annotations = s_blockAnnotations[block];
-        std::set<GraphKey> end_live = meet(block, function_name, asm_symbol_table);
+        std::set<GraphKey> end_live = meet(block, function_entry);
         transfer(block, end_live, asm_symbol_table);
         if (old_annotations != s_blockAnnotations[block]) {
             for (auto pred : block->predecessors) {
@@ -461,13 +461,16 @@ static void colorGraph(std::map<GraphKey, GraphData> &graph, uint8_t k)
 
 static std::map<GraphKey, GraphData> buildInterferenceGraph(
     std::list<CFGBlock> &blocks,
-    const std::string &function_name,
-    ASMSymbolTable *asm_symbol_table)
+    FunEntry *function_entry,
+    ASMSymbolTable *asm_symbol_table,
+    const std::vector<Register> &registers)
 {
+    bool processing_floating_points = registers[0] >= XMM0;
+
     // A fully connected base graph of the physical registers
-    std::map<GraphKey, GraphData> interference_graph = buildBaseGraph(s_integerRegisters);
+    std::map<GraphKey, GraphData> interference_graph = buildBaseGraph(registers);
     // Extend it with pseudo-registers
-    addPseudoRegisters(blocks, interference_graph, asm_symbol_table);
+    addPseudoRegisters(blocks, interference_graph, processing_floating_points, asm_symbol_table);
     // Finish the control flow graph before performing liveness analysis
     addControlFlowEdges(blocks);
 
@@ -475,22 +478,20 @@ static std::map<GraphKey, GraphData> buildInterferenceGraph(
     s_instructionAnnotations.clear();
     s_blockAnnotations.clear();
     s_exitId = blocks.back().id;
-    findLiveRegisters(blocks, function_name, asm_symbol_table);
+    findLiveRegisters(blocks, function_entry, asm_symbol_table);
 
     // We add edges to the interference graph using the liveness information
     addInterferenceEdges(blocks, interference_graph, asm_symbol_table);
 
     // Color the graph
-    colorGraph(interference_graph, 12);
-    // TODO: Use k = 14 for XMM registers
+    colorGraph(interference_graph, static_cast<uint8_t>(registers.size()));
 
     return interference_graph;
 }
 
 static std::map<std::string, Register> createRegisterMap(
     std::map<GraphKey, GraphData> &graph,
-    const std::string &function_name,
-    ASMSymbolTable *asm_symbol_table)
+    FunEntry *function_entry)
 {
     std::map<size_t, Register> color_map;
     for (auto &[key, data] : graph) {
@@ -499,7 +500,6 @@ static std::map<std::string, Register> createRegisterMap(
     }
 
     std::map<std::string, Register> register_map;
-    std::set<Register> callee_saved_registers;
     for (auto &[key, data] : graph) {
         if (const std::string *name = std::get_if<std::string>(&key)) {
             if (data.color == 0)
@@ -507,26 +507,30 @@ static std::map<std::string, Register> createRegisterMap(
             Register reg = color_map[data.color];
             register_map[*name] = reg;
             if (s_allCalleeSavedRegisters.contains(reg))
-                callee_saved_registers.insert(reg);
+                function_entry->callee_saved_registers.insert(reg);
         }
     }
-
-    // TODO: If !entry->defined, maybe we can skip this whole function from a higher level
-    FunEntry *entry = asm_symbol_table->getAs<FunEntry>(function_name);
-    assert(entry);
-    entry->callee_saved_registers = std::move(callee_saved_registers);
 
     return register_map;
 }
 
-std::map<std::string, Register> allocateRegisters(
+void allocateRegisters(
     std::list<CFGBlock> &blocks,
-    const std::string &function_name,
-    ASMSymbolTable *asm_symbol_table)
+    FunEntry *function_entry,
+    ASMSymbolTable *asm_symbol_table,
+    const std::vector<Register> &registers)
 {
     std::map<GraphKey, GraphData> graph
-        = buildInterferenceGraph(blocks, function_name, asm_symbol_table);
-    return createRegisterMap(graph, function_name, asm_symbol_table);
+        = buildInterferenceGraph(blocks, function_entry, asm_symbol_table, registers);
+    std::map<std::string, Register> register_map
+        = createRegisterMap(graph, function_entry);
+
+    std::cout << std::endl << "Register map for function:" << std::endl;
+    for (auto &[name, reg] : register_map)
+        std::cout << name << " -> " << getEightByteName(reg) << std::endl;
+    std::cout << std::endl;
+
+    replacePseudoRegisters(blocks, register_map, function_entry, asm_symbol_table);
 }
 
 } // assembly

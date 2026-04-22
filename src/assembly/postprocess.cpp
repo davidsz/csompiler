@@ -51,15 +51,13 @@ static inline std::list<Instruction>::iterator removeIfNeeded(
 
 void replacePseudoRegisters(
     std::list<CFGBlock> &blocks,
-    const std::string &function_name,
     const std::map<std::string, Register> &reg_map,
+    FunEntry *function_entry,
     ASMSymbolTable *asm_symbol_table)
 {
-    std::cout << "Replace pseudo in " << function_name << std::endl;
+    std::cout << "Replace pseudoregisters in a function" << std::endl;
 
-    FunEntry *entry = asm_symbol_table->getAs<FunEntry>(function_name);
-    assert(entry);
-    std::set<Register> &callee_saved_registers = entry->callee_saved_registers;
+    std::set<Register> &callee_saved_registers = function_entry->callee_saved_registers;
     if (!callee_saved_registers.empty()) {
         CFGBlock &first_block = blocks.front();
         for (const Register &reg : callee_saved_registers)

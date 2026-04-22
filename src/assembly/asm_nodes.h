@@ -9,6 +9,7 @@
 
 namespace assembly {
 
+// The order matters here
 #define ASM_REGISTER_LIST(X) \
     X(AX, "rax", "eax", "al") \
     X(BX, "rbx", "ebx", "bl") \
