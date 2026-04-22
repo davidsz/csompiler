@@ -91,17 +91,14 @@ void replacePseudoRegisters(
                     std::cout << "--- Lea " << std::endl;
                     changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
                     changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
-                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
                 } else if constexpr (std::is_same_v<T, Cvttsd2si>) {
                     std::cout << "--- Cvttsd2si " << std::endl;
                     changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
                     changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
-                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
                 } else if constexpr (std::is_same_v<T, Cvtsi2sd>) {
                     std::cout << "--- Cvtsi2sd " << std::endl;
                     changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
                     changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
-                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
                 } else if constexpr (std::is_same_v<T, Unary>) {
                     std::cout << "--- Unary " << std::endl;
                     replacePseudo(obj.src, reg_map, asm_symbol_table);
@@ -109,7 +106,6 @@ void replacePseudoRegisters(
                     std::cout << "--- Binary " << std::endl;
                     changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
                     changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
-                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
                 } else if constexpr (std::is_same_v<T, Idiv>) {
                     std::cout << "--- Idiv " << std::endl;
                     replacePseudo(obj.src, reg_map, asm_symbol_table);
@@ -120,7 +116,6 @@ void replacePseudoRegisters(
                     std::cout << "--- Cmp " << std::endl;
                     changed |= replacePseudo(obj.lhs, reg_map, asm_symbol_table);
                     changed |= replacePseudo(obj.rhs, reg_map, asm_symbol_table);
-                    return removeIfNeeded(block.instructions, it, obj.lhs, obj.rhs, changed);
                 } else if constexpr (std::is_same_v<T, SetCC>) {
                     std::cout << "--- SetCC " << std::endl;
                     replacePseudo(obj.op, reg_map, asm_symbol_table);
