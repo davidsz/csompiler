@@ -11,6 +11,7 @@ COMMON_FLAGS := \
 	-Wuninitialized -Werror \
 	-g -std=c++23 -MMD -MP \
 	-Isrc \
+#   -fsanitize=address
 #	-DDLOG
 
 CLANG_FLAGS := \
