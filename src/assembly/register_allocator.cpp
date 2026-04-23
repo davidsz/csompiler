@@ -17,6 +17,17 @@ void replacePseudoRegisters(
     FunEntry *function_entry,
     ASMSymbolTable *asm_symbol_table);
 
+// Don't include SP and BP (they manage the stack frame);
+// R10 and R11 are reserved for the instruction fixup phase
+static const std::vector<Register> s_integerRegisters = {
+    AX, BX, CX, DX, DI, SI, R8, R9, R12, R13, R14, R15
+};
+
+// XMM14 and XMM15 are reserved for the instruction fixup phase
+static const std::vector<Register> s_floatingPointRegisters = {
+    XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7, XMM8, XMM9, XMM10, XMM11, XMM12, XMM13
+};
+
 // Registers and PseudoRegisters
 using GraphKey = std::variant<Register, std::string>;
 
@@ -40,6 +51,8 @@ static std::optional<GraphKey> operandToKey(const Operand &operand)
     if (const Reg *r = std::get_if<Reg>(&operand))
         return r->reg;
     if (const Pseudo *p = std::get_if<Pseudo>(&operand))
+        return p->name;
+    if (const PseudoAggregate *p = std::get_if<PseudoAggregate>(&operand))
         return p->name;
     return std::nullopt;
 }
@@ -190,12 +203,42 @@ static void addControlFlowEdges(std::list<CFGBlock> &blocks)
     }
 }
 
+static void collectReadRegs(const Operand &op, std::vector<Operand> &out)
+{
+    std::visit([&](const auto &obj) {
+        using T = std::decay_t<decltype(obj)>;
+        if constexpr (std::is_same_v<T, Reg> || std::is_same_v<T, Pseudo>) {
+            out.push_back(op);
+        } else if constexpr (std::is_same_v<T, Memory>) {
+            // mov (%rax), %ebx -> %rax have been read for addressing
+            out.push_back(Reg{ obj.reg, 8 }); // Base register is always 8 bytes
+        } else if constexpr (std::is_same_v<T, Indexed>) {
+            // mov (%rax, %rcx, 4), %ebx -> rax and rcx have been read
+            out.push_back(Reg{ obj.base, 8 });
+            out.push_back(Reg{ obj.index, 8 });
+        }
+    }, op);
+}
+
+static void collectUpdatedRegs(const Operand &op, std::vector<Operand> &read_out, std::vector<Operand> &write_out)
+{
+    std::visit([&](const auto& obj) {
+        using T = std::decay_t<decltype(obj)>;
+        if constexpr (std::is_same_v<T, Reg> || std::is_same_v<T, Pseudo>) {
+            write_out.push_back(op);
+        } else if constexpr (std::is_same_v<T, Memory> || std::is_same_v<T, Indexed>) {
+            // We don't change the register, we only read it
+            collectReadRegs(op, read_out);
+        }
+    }, op);
+}
+
 static
 std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
     const Instruction &instr,
     ASMSymbolTable *asm_symbol_table)
 {
-    return std::visit([&](const auto &i) -> std::pair<std::vector<Operand>, std::vector<Operand>> {
+    auto [raw_used, raw_updated] = std::visit([&](const auto &i) -> std::pair<std::vector<Operand>, std::vector<Operand>> {
         using T = std::decay_t<decltype(i)>;
         if constexpr (std::is_same_v<T, Comment>) {
         } else if constexpr (std::is_same_v<T, Mov>) {
@@ -218,6 +261,7 @@ std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
         } else if constexpr (std::is_same_v<T, Idiv>) {
             return { { i.src, Reg{ AX }, Reg{ DX } }, { Reg{ AX }, Reg{ DX } } };
         } else if constexpr (std::is_same_v<T, Div>) {
+            return { { i.src, Reg{ AX }, Reg{ DX } }, { Reg{ AX }, Reg{ DX } } };
         } else if constexpr (std::is_same_v<T, Cdq>) {
             return { { Reg{ AX } }, { Reg{ DX } } };
         } else if constexpr (std::is_same_v<T, Cmp>) {
@@ -238,11 +282,24 @@ std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
                 used.push_back(Reg{ reg });
             return {
                 std::move(used),
-                { Reg{ DI }, Reg{ SI }, Reg{ DX }, Reg{ CX }, Reg{ R8 }, Reg{ R9 }, Reg{ AX } }
+                {
+                    Reg{ DI }, Reg{ SI }, Reg{ DX }, Reg{ CX }, Reg{ R8 }, Reg{ R9 }, Reg{ AX },
+                    Reg{ XMM0 }, Reg{ XMM1 }, Reg{ XMM2 }, Reg{ XMM3 }, Reg{ XMM4 }, Reg{ XMM5 },
+                    Reg{ XMM6 }, Reg{ XMM7 }, Reg{ XMM8 }, Reg{ XMM9 }, Reg{ XMM10 }, Reg{ XMM11 },
+                    Reg{ XMM12 }, Reg{ XMM13 }, Reg{ XMM14 }, Reg{ XMM15 }
+                }
             };
         }
         return {};
     }, instr);
+
+    std::vector<Operand> final_used;
+    for (const auto& op : raw_used)
+        collectReadRegs(op, final_used);
+    std::vector<Operand> final_updated;
+    for (const auto& op : raw_updated)
+        collectUpdatedRegs(op, final_used, final_updated);
+    return { std::move(final_used), std::move(final_updated) };
 }
 
 // Transfer function
@@ -257,16 +314,12 @@ static void transfer(
         s_instructionAnnotations[&instruction] = current_live_registers;
         auto [used, updated] = findUsedAndUpdated(instruction, asm_symbol_table);
         for (auto &v : updated) {
-            if (const Reg *reg = std::get_if<Reg>(&v))
-                current_live_registers.erase(reg->reg);
-            else if (const Pseudo *pseudo = std::get_if<Pseudo>(&v))
-                current_live_registers.erase(pseudo->name);
+            if (auto key = operandToKey(v))
+                current_live_registers.erase(*key);
         }
         for (auto &v : used) {
-            if (const Reg *reg = std::get_if<Reg>(&v))
-                current_live_registers.insert(reg->reg);
-            else if (const Pseudo *pseudo = std::get_if<Pseudo>(&v))
-                current_live_registers.insert(pseudo->name);
+            if (auto key = operandToKey(v))
+                current_live_registers.insert(*key);
         }
     }
     s_blockAnnotations[block] = std::move(current_live_registers);
@@ -343,11 +396,7 @@ static void addInterferenceEdges(
                 if (mov_src && *mov_src == live_key)
                     continue;
                 for (auto &u : updated) {
-                    std::optional<GraphKey> updated_key;
-                    if (const Reg *updated_reg = std::get_if<Reg>(&u))
-                        updated_key = updated_reg->reg;
-                    if (const Pseudo *updated_pseudo = std::get_if<Pseudo>(&u))
-                        updated_key = updated_pseudo->name;
+                    std::optional<GraphKey> updated_key = operandToKey(u);
                     if (!updated_key)
                         continue;
                     if (interference_graph.contains(live_key) && interference_graph.contains(*updated_key)) {
@@ -489,8 +538,9 @@ static std::map<GraphKey, GraphData> buildInterferenceGraph(
     return interference_graph;
 }
 
-static std::map<std::string, Register> createRegisterMap(
+void addToRegisterMap(
     std::map<GraphKey, GraphData> &graph,
+    std::map<std::string, Register> &register_map,
     FunEntry *function_entry)
 {
     std::map<size_t, Register> color_map;
@@ -499,7 +549,6 @@ static std::map<std::string, Register> createRegisterMap(
             color_map[data.color] = *reg;
     }
 
-    std::map<std::string, Register> register_map;
     for (auto &[key, data] : graph) {
         if (const std::string *name = std::get_if<std::string>(&key)) {
             if (data.color == 0)
@@ -510,20 +559,23 @@ static std::map<std::string, Register> createRegisterMap(
                 function_entry->callee_saved_registers.insert(reg);
         }
     }
-
-    return register_map;
 }
 
 void allocateRegisters(
     std::list<CFGBlock> &blocks,
     FunEntry *function_entry,
-    ASMSymbolTable *asm_symbol_table,
-    const std::vector<Register> &registers)
+    ASMSymbolTable *asm_symbol_table)
 {
-    std::map<GraphKey, GraphData> graph
-        = buildInterferenceGraph(blocks, function_entry, asm_symbol_table, registers);
-    std::map<std::string, Register> register_map
-        = createRegisterMap(graph, function_entry);
+    // Mapping pseudo registers to physical registers
+    std::map<std::string, Register> register_map;
+
+    std::map<GraphKey, GraphData> int_graph
+        = buildInterferenceGraph(blocks, function_entry, asm_symbol_table, s_integerRegisters);
+    addToRegisterMap(int_graph, register_map, function_entry);
+
+    std::map<GraphKey, GraphData> xmm_graph
+        = buildInterferenceGraph(blocks, function_entry, asm_symbol_table, s_floatingPointRegisters);
+    addToRegisterMap(xmm_graph, register_map, function_entry);
 
     std::cout << std::endl << "Register map for function:" << std::endl;
     for (auto &[name, reg] : register_map)

@@ -11,8 +11,7 @@ namespace assembly {
 void allocateRegisters(
     std::list<CFGBlock> &blocks,
     FunEntry *function_entry,
-    ASMSymbolTable *asm_symbol_table,
-    const std::vector<Register> &registers);
+    ASMSymbolTable *asm_symbol_table);
 
 // postprocess.cpp
 void postprocessPseudoRegisters(
@@ -20,17 +19,6 @@ void postprocessPseudoRegisters(
     std::shared_ptr<ASMSymbolTable> asm_symbol_table);
 void postprocessInvalidInstructions(
     std::list<TopLevel> &asm_list);
-
-// Don't include SP and BP (they manage the stack frame);
-// R10 and R11 are reserved for the instruction fixup phase
-static const std::vector<Register> s_integerRegisters = {
-    AX, BX, CX, DX, DI, SI, R8, R9, R12, R13, R14, R15
-};
-
-// XMM14 and XMM15 are reserved for the instruction fixup phase
-static const std::vector<Register> s_floatingPointRegisters = {
-    XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7, XMM8, XMM9, XMM10, XMM11, XMM12, XMM13
-};
 
 std::string from_tac(
     const std::list<tac::TopLevel> &tac_list,
@@ -57,15 +45,9 @@ std::string from_tac(
                 assert(entry);
                 if (!entry->defined)
                     return;
-
                 // Determined during register allocation, used in the postprocess step
                 entry->callee_saved_registers.clear();
-
-                std::cout << "Allocating integer registers for " << obj.name << std::endl;
-                allocateRegisters(obj.blocks, entry, asm_symbol_table, s_integerRegisters);
-                std::cout << "Allocating floating point registers for " << obj.name << std::endl;
-                // TODO: Debug
-                // allocateRegisters(obj.blocks, entry, asm_symbol_table, s_floatingPointRegisters);
+                allocateRegisters(obj.blocks, entry, asm_symbol_table);
             }
         }, top_level_obj);
     }
