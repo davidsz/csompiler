@@ -11,19 +11,13 @@ namespace assembly {
 static inline bool replacePseudo(
     Operand &op,
     const std::map<std::string, Register> &register_map,
-    ASMSymbolTable *asm_symbol_table)
+    WordType type)
 {
     return std::visit([&](auto &obj) {
         using T = std::decay_t<decltype(obj)>;
         if constexpr (std::is_same_v<T, Pseudo>) {
             if (auto it = register_map.find(obj.name); it != register_map.end()) {
-                ObjEntry *entry = asm_symbol_table->getAs<ObjEntry>(obj.name);
-                assert(entry);
-                assert(!entry->is_static);
-                std::cout << "----- replace " << obj.name << " with ";
-                std::cout << getEightByteName(it->second);
-                std::cout << " (" << entry->type.size() << " bytes)" << std::endl;
-                op.emplace<Reg>(it->second, entry->type.size());
+                op.emplace<Reg>(it->second, GetBytesOfWordType(type));
                 return true;
             }
         }
@@ -52,12 +46,10 @@ static inline std::list<Instruction>::iterator removeIfNeeded(
 void replacePseudoRegisters(
     std::list<CFGBlock> &blocks,
     const std::map<std::string, Register> &reg_map,
-    FunEntry *function_entry,
-    ASMSymbolTable *asm_symbol_table)
+    const std::set<Register> &callee_saved_registers)
 {
     std::cout << "Replace pseudoregisters in a function" << std::endl;
 
-    std::set<Register> &callee_saved_registers = function_entry->callee_saved_registers;
     if (!callee_saved_registers.empty()) {
         CFGBlock &first_block = blocks.front();
         for (const Register &reg : callee_saved_registers)
@@ -72,54 +64,57 @@ void replacePseudoRegisters(
                 using T = std::decay_t<decltype(obj)>;
                 if constexpr (std::is_same_v<T, Mov>) {
                     std::cout << "--- Mov " << std::endl;
-                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
-                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.src, reg_map, obj.type);
+                    changed |= replacePseudo(obj.dst, reg_map, obj.type);
                     return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
                 } else if constexpr (std::is_same_v<T, Movsx>) {
                     std::cout << "--- Movsx " << std::endl;
-                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
-                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.src, reg_map, obj.src_type);
+                    changed |= replacePseudo(obj.dst, reg_map, obj.dst_type);
                     return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
                 } else if constexpr (std::is_same_v<T, MovZeroExtend>) {
                     std::cout << "--- MovZeroExtend " << std::endl;
-                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
-                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.src, reg_map, obj.src_type);
+                    changed |= replacePseudo(obj.dst, reg_map, obj.dst_type);
                     return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
                 } else if constexpr (std::is_same_v<T, Lea>) {
                     std::cout << "--- Lea " << std::endl;
-                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
-                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    // The loaded address is always 8-bytes
+                    changed |= replacePseudo(obj.src, reg_map, Quadword);
+                    changed |= replacePseudo(obj.dst, reg_map, Quadword);
                 } else if constexpr (std::is_same_v<T, Cvttsd2si>) {
                     std::cout << "--- Cvttsd2si " << std::endl;
-                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
-                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.src, reg_map, obj.type);
+                    changed |= replacePseudo(obj.dst, reg_map, obj.type);
                 } else if constexpr (std::is_same_v<T, Cvtsi2sd>) {
                     std::cout << "--- Cvtsi2sd " << std::endl;
-                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
-                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.src, reg_map, obj.type);
+                    changed |= replacePseudo(obj.dst, reg_map, obj.type);
                 } else if constexpr (std::is_same_v<T, Unary>) {
                     std::cout << "--- Unary " << std::endl;
-                    replacePseudo(obj.src, reg_map, asm_symbol_table);
+                    replacePseudo(obj.src, reg_map, obj.type);
                 } else if constexpr (std::is_same_v<T, Binary>) {
                     std::cout << "--- Binary " << std::endl;
-                    changed |= replacePseudo(obj.src, reg_map, asm_symbol_table);
-                    changed |= replacePseudo(obj.dst, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.src, reg_map, obj.type);
+                    changed |= replacePseudo(obj.dst, reg_map, obj.type);
                 } else if constexpr (std::is_same_v<T, Idiv>) {
                     std::cout << "--- Idiv " << std::endl;
-                    replacePseudo(obj.src, reg_map, asm_symbol_table);
+                    replacePseudo(obj.src, reg_map, obj.type);
                 } else if constexpr (std::is_same_v<T, Div>) {
                     std::cout << "--- Div " << std::endl;
-                    replacePseudo(obj.src, reg_map, asm_symbol_table);
+                    replacePseudo(obj.src, reg_map, obj.type);
                 } else if constexpr (std::is_same_v<T, Cmp>) {
                     std::cout << "--- Cmp " << std::endl;
-                    changed |= replacePseudo(obj.lhs, reg_map, asm_symbol_table);
-                    changed |= replacePseudo(obj.rhs, reg_map, asm_symbol_table);
+                    changed |= replacePseudo(obj.lhs, reg_map, obj.type);
+                    changed |= replacePseudo(obj.rhs, reg_map, obj.type);
                 } else if constexpr (std::is_same_v<T, SetCC>) {
                     std::cout << "--- SetCC " << std::endl;
-                    replacePseudo(obj.op, reg_map, asm_symbol_table);
+                    // SetCC always uses the 1-byte version of the registers
+                    replacePseudo(obj.op, reg_map, Byte);
                 } else if constexpr (std::is_same_v<T, Push>) {
                     std::cout << "--- Push " << std::endl;
-                    replacePseudo(obj.op, reg_map, asm_symbol_table);
+                    // The operand is always an 8-bytes register
+                    replacePseudo(obj.op, reg_map, Quadword);
                 } else if constexpr (std::is_same_v<T, Ret>) {
                     for (const Register &reg : callee_saved_registers)
                         block.instructions.emplace(it, Pop{ reg });

@@ -14,8 +14,7 @@ namespace assembly {
 void replacePseudoRegisters(
     std::list<CFGBlock> &blocks,
     const std::map<std::string, Register> &register_map,
-    FunEntry *function_entry,
-    ASMSymbolTable *asm_symbol_table);
+    const std::set<Register> &callee_saved_registers);
 
 // Don't include SP and BP (they manage the stack frame);
 // R10 and R11 are reserved for the instruction fixup phase
@@ -133,10 +132,11 @@ static std::map<GraphKey, GraphData> buildBaseGraph(const std::vector<Register> 
     return base_graph;
 }
 
-static void addPseudoRegisters(
+static inline void addPseudoRegisters(
     std::list<CFGBlock> &blocks,
     std::map<GraphKey, GraphData> &graph,
     bool processing_floating_points,
+    const std::set<std::string> &aliased_vars,
     ASMSymbolTable *asm_symbol_table)
 {
     // TODO: Variables in loops can have much bigger spill costs
@@ -144,6 +144,8 @@ static void addPseudoRegisters(
         for (auto &instruction : block.instructions) {
             ForEachOperand(instruction, [&](const Operand &operand) {
                 if (const Pseudo *pseudo = std::get_if<Pseudo>(&operand)) {
+                    if (aliased_vars.contains(pseudo->name))
+                        return;
                     ObjEntry *entry = asm_symbol_table->getAs<ObjEntry>(pseudo->name);
                     assert(entry);
                     if (entry->is_static)
@@ -402,7 +404,7 @@ static void addInterferenceEdges(
                     if (interference_graph.contains(live_key) && interference_graph.contains(*updated_key)) {
                         if (live_key != *updated_key) {
 
-
+/*
                             std::visit([&](auto&& k1, auto&& k2) {
                                 auto printKey = [](const auto& k) -> std::string {
                                     using T = std::decay_t<decltype(k)>;
@@ -417,13 +419,13 @@ static void addInterferenceEdges(
                                           << printKey(k1) << " <-> " << printKey(k2)
                                           << std::endl;
                             }, live_key, *updated_key);
-
+*/
 
                             interference_graph[live_key].neighbors.insert(*updated_key);
                             interference_graph[*updated_key].neighbors.insert(live_key);
                         }
                     } else {
-                        std::cout << "Something is live in the instruction, but it's not in the graph." << std::endl;
+                        // std::cout << "Something is live in the instruction, but it's not in the graph." << std::endl;
                     }
                 }
             }
@@ -519,7 +521,12 @@ static std::map<GraphKey, GraphData> buildInterferenceGraph(
     // A fully connected base graph of the physical registers
     std::map<GraphKey, GraphData> interference_graph = buildBaseGraph(registers);
     // Extend it with pseudo-registers
-    addPseudoRegisters(blocks, interference_graph, processing_floating_points, asm_symbol_table);
+    addPseudoRegisters(
+        blocks,
+        interference_graph,
+        processing_floating_points,
+        function_entry->aliased_vars,
+        asm_symbol_table);
     // Finish the control flow graph before performing liveness analysis
     addControlFlowEdges(blocks);
 
@@ -569,6 +576,11 @@ void allocateRegisters(
     // Mapping pseudo registers to physical registers
     std::map<std::string, Register> register_map;
 
+    std::cout << std::endl << "Aliased vars for function:" << std::endl;
+    for (auto &var_name : function_entry->aliased_vars)
+        std::cout << var_name << std::endl;
+    std::cout << std::endl;
+
     std::map<GraphKey, GraphData> int_graph
         = buildInterferenceGraph(blocks, function_entry, asm_symbol_table, s_integerRegisters);
     addToRegisterMap(int_graph, register_map, function_entry);
@@ -582,7 +594,7 @@ void allocateRegisters(
         std::cout << name << " -> " << getEightByteName(reg) << std::endl;
     std::cout << std::endl;
 
-    replacePseudoRegisters(blocks, register_map, function_entry, asm_symbol_table);
+    replacePseudoRegisters(blocks, register_map, function_entry->callee_saved_registers);
 }
 
 } // assembly

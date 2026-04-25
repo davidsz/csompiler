@@ -135,10 +135,10 @@ namespace assembly {
 
 #define ASM_TOP_LEVEL_LIST(X) \
     X(Function, \
+        std::list<CFGBlock> blocks; \
         std::string name; \
         bool global; \
-        int stack_size; \
-        std::list<CFGBlock> blocks;) \
+        int stack_size;) \
     X(StaticVariable, \
         std::string name; \
         bool global; \

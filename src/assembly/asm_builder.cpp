@@ -334,6 +334,8 @@ Operand ASMBuilder::operator()(const tac::GetAddress &g)
         std::visit(*this, g.src),
         std::visit(*this, g.dst)
     });
+    if (const std::string *src_name = getString(g.src))
+        m_aliasedVars.insert(*src_name);
     return std::monostate();
 }
 
@@ -953,15 +955,17 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
         Comment(first_block.instructions, "---");
 
     // Save the symbol before processing the body; Return instructions need it
-    m_asmSymbolTable->Insert(f.name, FunEntry{
+    ASMSymbolEntry &entry = m_asmSymbolTable->Insert(f.name, FunEntry{
         .defined = symbol_entry->attrs.defined,
         .return_on_stack = return_in_memory,
         .arg_registers = std::move(arg_registers)
     });
+    FunEntry *fun_entry = std::get_if<FunEntry>(&entry);
 
-    // Body
+    // Process the body and collect aliased variables
     ASMBuilder builder(m_context, m_constants);
     builder.ConvertFunctionBody(f.name, f.blocks, func.blocks);
+    fun_entry->aliased_vars = builder.AliasedVariables();
 
     m_topLevel->push_back(std::move(func));
     return std::monostate();
@@ -1012,6 +1016,7 @@ void ASMBuilder::ConvertFunctionBody(
     const std::list<tac::CFGBlock> &tac_blocks,
     std::list<CFGBlock> &block_list_out)
 {
+    m_aliasedVars.clear();
     m_currentFunctionName = name;
     m_blocks = &block_list_out;
     for (auto &block : tac_blocks) {
@@ -1030,6 +1035,11 @@ std::string ASMBuilder::AddConstant(const ConstantValue &c, const std::string &n
         m_constants->insert({ c, name });
         return name;
     }
+}
+
+std::set<std::string> ASMBuilder::AliasedVariables()
+{
+    return m_aliasedVars;
 }
 
 void ASMBuilder::CopyBytes(std::list<Instruction> &i, Operand src, Operand dst, size_t size)

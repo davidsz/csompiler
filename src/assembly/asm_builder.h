@@ -63,6 +63,7 @@ private:
     TypeTable::AggregateEntry *GetAggregateEntry(const std::string *name);
     void Comment(std::list<Instruction> &i, const std::string &text);
     std::string AddConstant(const ConstantValue &c, const std::string &name);
+    std::set<std::string> AliasedVariables();
 
     // Copy between Memory and PseudoAggregate operands in a specified size
     void CopyBytes(std::list<Instruction> &i, Operand src, Operand dst, size_t size);
@@ -79,6 +80,8 @@ private:
     std::list<CFGBlock> *m_blocks;
     // Storing the instructions of the currently built CFGBlock
     std::list<Instruction> m_instructions;
+    // Aliased vars of the function are needed later by the register allocator
+    std::set<std::string> m_aliasedVars;
 
     // Add instruction to the currently built CFGBlock
     template <typename T>

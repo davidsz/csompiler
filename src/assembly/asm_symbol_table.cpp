@@ -67,9 +67,4 @@ void ASMSymbolTable::InsertConstants(std::shared_ptr<ConstantMap> constants)
     }
 }
 
-void ASMSymbolTable::Insert(const std::string &name, const ASMSymbolEntry &entry)
-{
-    m_table[name] = entry;
-}
-
 }; // assembly
