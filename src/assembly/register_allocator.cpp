@@ -259,6 +259,8 @@ std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
         } else if constexpr (std::is_same_v<T, Unary>) {
             return { { i.src }, { i.src } };
         } else if constexpr (std::is_same_v<T, Binary>) {
+            if (i.op == ShiftL_AB || i.op == ShiftRU_AB || i.op == ShiftRS_AB)
+                return { { i.src, i.dst, Reg{ CX } }, { i.dst, Reg{ CX } } };
             return { { i.src, i.dst }, { i.dst } };
         } else if constexpr (std::is_same_v<T, Idiv>) {
             return { { i.src, Reg{ AX }, Reg{ DX } }, { Reg{ AX }, Reg{ DX } } };

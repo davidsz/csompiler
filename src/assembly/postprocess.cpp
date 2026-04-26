@@ -540,7 +540,9 @@ static std::list<Instruction>::iterator postprocessBinary(std::list<Instruction>
         }
     } else if (obj.op == ShiftL_AB || obj.op == ShiftRU_AB || obj.op == ShiftRS_AB) {
         // SHL, SHR and SAR can only have constant or CL register on their left (count)
-        if (isMemoryAddress(obj.src)) {
+        // The register allocator already made CL  free for this instruction,
+        // but probably assigned another register, because it's earsier to handle it here.
+        if (!std::holds_alternative<Imm>(obj.src)) {
             auto current = obj;
             uint8_t bytes = GetBytesOfWordType(current.type);
             it = asm_list.erase(it);
