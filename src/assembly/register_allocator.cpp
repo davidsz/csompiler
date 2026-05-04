@@ -8,7 +8,7 @@
 #include <numeric>
 #include <ranges>
 
-#define REGISTER_COALESCATION 0
+#define REGISTER_COALESCATION 1
 
 namespace assembly {
 
@@ -161,6 +161,7 @@ static bool briggsTest(
     std::set<GraphKey> combined_neighbors = x_node.neighbors;
     combined_neighbors.insert(y_node.neighbors.begin(), y_node.neighbors.end());
     for (auto &n : combined_neighbors) {
+        // We already ensured that n is in the graph
         GraphData &neighbor_node = graph[n];
         size_t degree = neighbor_node.neighbors.size();
         if (neighbor_node.neighbors.contains(x) && neighbor_node.neighbors.contains(y))
@@ -182,8 +183,8 @@ static bool georgeTest(
     for (auto &n : pseudo_node.neighbors) {
         if (hard_node.neighbors.contains(n))
             continue;
-        GraphData &neighbor_node = graph[n];
-        if (neighbor_node.neighbors.size() < k)
+        // We already ensured that n is in the graph
+        if (graph[n].neighbors.size() < k)
             continue;
         return false;
     }
@@ -228,41 +229,78 @@ static std::map<GraphKey, GraphKey> coalesce(
     std::map<GraphKey, GraphData> &interference_graph,
     uint8_t k)
 {
-    std::map<GraphKey, GraphKey> coalesced_registers;
-    for (auto &block : blocks) {
-        for (auto &instruction : block.instructions) {
-            const Mov *mov = std::get_if<Mov>(&instruction);
-            if (!mov)
-                continue;
-            std::optional<GraphKey> mov_src = operandToKey(mov->src);
-            if (!mov_src)
-                continue;
-            GraphKey src = find(*mov_src, coalesced_registers);
-            std::optional<GraphKey> mov_dst = operandToKey(mov->dst);
-            if (!mov_dst)
-                continue;
-            GraphKey dst = find(*mov_dst, coalesced_registers);
-            if (src != dst
-                && interference_graph.contains(src)
-                && interference_graph.contains(dst)
-                && !interference_graph[src].neighbors.contains(dst)
-                && conservativeCoalescable(src, dst, interference_graph, k)
-            ) {
+    std::map<GraphKey, GraphKey> all_coalesced;
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+
+        std::cout << "=== Coalescing iteration ===" << std::endl;
+        std::cout << "Graph nodes: ";
+        for (auto &[key, data] : interference_graph)
+            std::cout << printKey(key) << "(" << data.neighbors.size() << ") ";
+        std::cout << std::endl;
+
+        for (auto &block : blocks) {
+            for (auto &instruction : block.instructions) {
+                const Mov *mov = std::get_if<Mov>(&instruction);
+                if (!mov)
+                    continue;
+                std::optional<GraphKey> mov_src = operandToKey(mov->src);
+                if (!mov_src)
+                    continue;
+                std::optional<GraphKey> mov_dst = operandToKey(mov->dst);
+                if (!mov_dst)
+                    continue;
+
+                GraphKey src = find(*mov_src, all_coalesced);
+                GraphKey dst = find(*mov_dst, all_coalesced);
+
+                if (std::holds_alternative<std::string>(src) || std::holds_alternative<std::string>(dst)) {
+                    bool interferes = false;
+                    auto it = interference_graph.find(src);
+                    if (it != interference_graph.end())
+                        interferes = it->second.neighbors.contains(dst);
+                    std::cout << "Mov: " << printKey(src) << " -> " << printKey(dst)
+                              << " | interfere: " << interferes
+                              << " | src_in_graph: " << interference_graph.contains(src)
+                              << " | dst_in_graph: " << interference_graph.contains(dst)
+                              << std::endl;
+                }
+
+                if (src == dst)
+                    continue;
+
+                if (!interference_graph.contains(src) || !interference_graph.contains(dst))
+                    continue;
+
+                // If they interfere, they can't be coalesced
+                if (interference_graph[src].neighbors.contains(dst))
+                    continue;
+
+                if (!conservativeCoalescable(src, dst, interference_graph, k))
+                    continue;
+
+                // We keep the physical register and merge the pseudo
+                // If both are pseudo, we keep dst.
                 GraphKey to_keep;
                 GraphKey to_merge;
-                if (std::holds_alternative<Reg>(mov->src)) {
+                if (std::holds_alternative<Register>(src)) {
                     to_keep = src;
                     to_merge = dst;
                 } else {
                     to_keep = dst;
                     to_merge = src;
                 }
-                coalesced_registers[to_merge] = to_keep;
+
+                all_coalesced[to_merge] = to_keep;
                 updateGraph(interference_graph, to_merge, to_keep);
+                changed = true;
             }
         }
     }
-    return coalesced_registers;
+
+    return all_coalesced;
 }
 
 static void rewriteCoalesced(
@@ -272,38 +310,25 @@ static void rewriteCoalesced(
     for (auto &block : blocks) {
         for (auto it = block.instructions.begin(); it != block.instructions.end(); ) {
             if (Mov *mov = std::get_if<Mov>(&*it)) {
-                auto src = operandToKey(mov->src);
-                auto dst = operandToKey(mov->dst);
-                if (!src || !dst) {
-                    ++it;
-                    continue;
-                }
-
-                src = find(*src, coalesced_registers);
-                dst = find(*dst, coalesced_registers);
-
-                std::cout << "Rewriting Mov: "
-                            << printKey(*operandToKey(mov->src)) << " -> " << printKey(*src)
-                            << " | "
-                            << printKey(*operandToKey(mov->dst)) << " -> " << printKey(*dst)
-                            << std::endl;
-
-                if (src == dst) {
+                auto src_key = operandToKey(mov->src);
+                if (src_key)
+                    mov->src = keyToOperand(find(*src_key, coalesced_registers));
+                auto dst_key = operandToKey(mov->dst);
+                if (dst_key)
+                    mov->dst = keyToOperand(find(*dst_key, coalesced_registers));
+                // TODO: Comparison for Operands?
+                auto new_src = operandToKey(mov->src);
+                auto new_dst = operandToKey(mov->dst);
+                if (new_src && new_dst && *new_src == *new_dst) {
                     it = block.instructions.erase(it);
                     continue;
                 }
-
-                mov->src = keyToOperand(*src);
-                mov->dst = keyToOperand(*dst);
             } else {
                 ForEachOperand(*it, [&](Operand &operand) {
-                    auto key = operandToKey(operand);
-                    if (!key) return;
-                    auto new_key = find(*key, coalesced_registers);
-                    operand = keyToOperand(new_key);
+                    if (auto key = operandToKey(operand))
+                        operand = keyToOperand(find(*key, coalesced_registers));
                 });
             }
-
             ++it;
         }
     }
@@ -724,36 +749,32 @@ static std::map<GraphKey, GraphData> buildInterferenceGraph(
 {
     uint8_t k = static_cast<uint8_t>(registers.size());
     bool processing_floating_points = registers[0] >= XMM0;
+
     std::map<GraphKey, GraphData> interference_graph;
-    while (true) {
-        // A fully connected base graph of the physical registers
-        interference_graph = buildBaseGraph(registers);
-        // Extend it with pseudo-registers
-        addPseudoRegisters(
-            blocks,
-            interference_graph,
-            processing_floating_points,
-            function_entry->aliased_vars,
-            asm_symbol_table);
-        // Finish the control flow graph before performing liveness analysis
-        addControlFlowEdges(blocks);
-        // Liveness analysis
-        s_instructionAnnotations.clear();
-        s_blockAnnotations.clear();
-        s_exitId = blocks.back().id;
-        findLiveRegisters(blocks, function_entry, asm_symbol_table);
-        // We add edges to the interference graph using the liveness information
-        addInterferenceEdges(blocks, interference_graph, asm_symbol_table);
+    // A fully connected base graph of the physical registers
+    interference_graph = buildBaseGraph(registers);
+    // Extend it with pseudo-registers
+    addPseudoRegisters(
+        blocks,
+        interference_graph,
+        processing_floating_points,
+        function_entry->aliased_vars,
+        asm_symbol_table);
+    // Finish the control flow graph before performing liveness analysis
+    addControlFlowEdges(blocks);
+    // Liveness analysis
+    s_instructionAnnotations.clear();
+    s_blockAnnotations.clear();
+    s_exitId = blocks.back().id;
+    findLiveRegisters(blocks, function_entry, asm_symbol_table);
+    // We add edges to the interference graph using the liveness information
+    addInterferenceEdges(blocks, interference_graph, asm_symbol_table);
 
 #if REGISTER_COALESCATION
-        auto coalesced_regs = coalesce(blocks, interference_graph, k);
-        if (coalesced_regs.empty())
-            break;
-        rewriteCoalesced(blocks, coalesced_regs);
-#else
-        break;
+    auto coalesced = coalesce(blocks, interference_graph, k);
+    if (!coalesced.empty())
+        rewriteCoalesced(blocks, coalesced);
 #endif
-    }
 
     // Color the graph
     colorGraph(interference_graph, k);

@@ -469,6 +469,9 @@ static std::list<Instruction>::iterator postprocessPush(std::list<Instruction> &
         it = asm_list.erase(it);
         it = asm_list.emplace(it, Binary{ Sub_AB, Imm{ 8 }, Reg{ SP, 8 }, Quadword });
         it = asm_list.emplace(std::next(it), Mov{ current.op, Memory{ SP, 0 }, Doubleword });
+    } else if (Reg *reg = std::get_if<Reg>(&obj.op)) {
+        // We only use PUSHQ
+        reg->bytes = 8;
     }
     return std::next(it);
 }
