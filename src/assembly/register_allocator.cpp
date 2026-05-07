@@ -165,8 +165,6 @@ static std::optional<GraphKey> operandToKey(const Operand &operand)
         return r->reg;
     if (const Pseudo *p = std::get_if<Pseudo>(&operand))
         return p->name;
-    if (const PseudoAggregate *p = std::get_if<PseudoAggregate>(&operand))
-        return p->name;
     return std::nullopt;
 }
 
