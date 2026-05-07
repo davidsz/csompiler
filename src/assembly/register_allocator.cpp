@@ -9,7 +9,7 @@
 #include <numeric>
 #include <ranges>
 
-#define REGISTER_COALESCATION 0
+#define REGISTER_COALESCATION 1
 
 namespace assembly {
 
