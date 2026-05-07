@@ -312,6 +312,7 @@ void ASMPrinter::operator()(const Function &f)
         for (auto &i: block.instructions)
             std::visit(*this, i);
     }
+    m_codeStream << "#--- end of blocks ---" << std::endl << std::endl;
 }
 
 void ASMPrinter::operator()(const StaticVariable &s)

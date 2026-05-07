@@ -488,8 +488,7 @@ static void collectUpdatedRegs(const Operand &op, std::vector<Operand> &read_out
     }, op);
 }
 
-static
-std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
+static std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
     const Instruction &instr,
     ASMSymbolTable *asm_symbol_table)
 {

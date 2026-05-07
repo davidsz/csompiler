@@ -1034,10 +1034,14 @@ void ASMBuilder::ConvertTopLevel(
         std::visit(*this, inst);
 
     for (auto const &[value, label] : *m_constants) {
+        Type type = getType(value);
+        size_t align = type.alignment(m_typeTable);
+        if (!type.isInteger())
+            align = std::max<size_t>(align, 16);
         m_topLevel->push_back(StaticConstant{
             .name = label,
             .init = value,
-            .alignment = 8
+            .alignment = align
         });
     }
 }
