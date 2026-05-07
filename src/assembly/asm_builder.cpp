@@ -501,6 +501,36 @@ Operand ASMBuilder::operator()(const tac::FunctionCall &f)
         }
     );
 
+    // Externally defined function, but we still need the collection of its registers
+    if (!m_asmSymbolTable->Contains(f.identifier)) {
+        std::vector<Register> arg_registers;
+
+        size_t int_reg_idx = ret.in_memory ? 1 : 0;
+        for (size_t i = 0; i < args.int_regs.size(); ++i) {
+            if (int_reg_idx < s_intArgRegisters.size())
+                arg_registers.push_back(s_intArgRegisters[int_reg_idx++]);
+        }
+        for (size_t i = 0; i < args.double_regs.size(); ++i) {
+            if (i < s_doubleArgRegisters.size())
+                arg_registers.push_back(s_doubleArgRegisters[i]);
+        }
+
+        std::vector<Register> ret_registers;
+        if (f.dst && !ret.in_memory) {
+            for (size_t i = 0; i < ret.int_values.size(); ++i)
+                ret_registers.push_back(s_intReturnRegisters[i]);
+            for (size_t i = 0; i < ret.double_values.size(); ++i)
+                ret_registers.push_back(s_doubleReturnRegisters[i]);
+        }
+
+        m_asmSymbolTable->Insert(f.identifier, FunEntry{
+            .defined = false,
+            .return_on_stack = ret.in_memory,
+            .arg_registers = std::move(arg_registers),
+            .ret_registers = std::move(ret_registers)
+        });
+    }
+
     // Adjust stack alignment to 16 bytes and allocate stack
     size_t stack_padding = (args.stack.size() % 2 == 0) ? 0 : 8;
     if (stack_padding != 0) {
@@ -954,9 +984,10 @@ Operand ASMBuilder::operator()(const tac::FunctionDefinition &f)
     if (!args.int_regs.empty() || !args.double_regs.empty() || !args.stack.empty())
         Comment(first_block.instructions, "---");
 
-    // Save the symbol before processing the body; Return instructions need it
+    // Save the symbol before processing the body, Return instructions need it;
+    // entry.ret_registers will be calculated at the Return instruction
     ASMSymbolEntry &entry = m_asmSymbolTable->Insert(f.name, FunEntry{
-        .defined = symbol_entry->attrs.defined,
+        .defined = true,
         .return_on_stack = return_in_memory,
         .arg_registers = std::move(arg_registers)
     });

@@ -1,6 +1,7 @@
 #include "asm_nodes.h"
 #include "asm_symbol_table.h"
 #include "asm_printer_utils.h"
+#include "register_allocator_util.h"
 #include <algorithm>
 #include <cassert>
 #include <limits>
@@ -8,15 +9,57 @@
 #include <numeric>
 #include <ranges>
 
-#define REGISTER_COALESCATION 1
+#define REGISTER_COALESCATION 0
 
 namespace assembly {
 
-// postprocess.cpp
+static inline bool replacePseudo(
+    Operand &op,
+    const std::map<std::string, Register> &register_map,
+    WordType type)
+{
+    return std::visit([&](auto &obj) {
+        using T = std::decay_t<decltype(obj)>;
+        if constexpr (std::is_same_v<T, Pseudo>) {
+            if (auto it = register_map.find(obj.name); it != register_map.end()) {
+                op.emplace<Reg>(it->second, GetBytesOfWordType(type));
+                return true;
+            }
+        }
+        return false;
+    }, op);
+}
+
 void replacePseudoRegisters(
     std::list<CFGBlock> &blocks,
-    const std::map<std::string, Register> &register_map,
-    const std::set<Register> &callee_saved_registers);
+    const std::map<std::string, Register> &reg_map,
+    const std::set<Register> &callee_saved_registers)
+{
+    // TODO: Find a better place for adding Pushes/Pops
+    if (!callee_saved_registers.empty()) {
+        CFGBlock &first_block = blocks.front();
+        for (const Register &reg : callee_saved_registers)
+            first_block.instructions.emplace_front(Push{ Reg{ reg, 8 } });
+        first_block.instructions.emplace_front(Comment{ "Pushing callee-saved registers" });
+    }
+
+    replaceOperandsInFunction(blocks, [&reg_map](Operand &op, WordType type) -> bool {
+        return replacePseudo(op, reg_map, type);
+    });
+
+    for (auto &block : blocks) {
+        for (auto it = block.instructions.begin(); it != block.instructions.end(); ++it) {
+            std::visit([&](auto &obj) {
+                using T = std::decay_t<decltype(obj)>;
+                if constexpr (std::is_same_v<T, Ret>) {
+                    for (const Register &reg : callee_saved_registers)
+                        block.instructions.emplace(it, Pop{ reg });
+                }
+                return std::next(it);
+            }, *it);
+        }
+    }
+}
 
 // Don't include SP and BP (they manage the stack frame);
 // R10 and R11 are reserved for the instruction fixup phase
@@ -48,6 +91,7 @@ static const std::set<Register> s_allCalleeSavedRegisters = {
 };
 
 #if REGISTER_COALESCATION
+/*
 auto printKey = [](const GraphKey &k) -> std::string {
     return std::visit([](const auto &v) -> std::string {
         using T = std::decay_t<decltype(v)>;
@@ -61,6 +105,7 @@ auto printKey = [](const GraphKey &k) -> std::string {
         }
     }, k);
 };
+*/
 #endif
 
 template <typename Fn>
@@ -127,26 +172,16 @@ static std::optional<GraphKey> operandToKey(const Operand &operand)
 
 #if REGISTER_COALESCATION
 
-static Operand keyToOperand(const GraphKey &key)
+static Operand keyToOperand(const GraphKey &key, WordType type = Longword)
 {
-    return std::visit([](const auto &v) -> Operand {
+    return std::visit([type](const auto &v) -> Operand {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, Register>) {
-            return Reg{ v };
+            return Reg{ v, GetBytesOfWordType(type) };
         } else if constexpr (std::is_same_v<T, std::string>) {
             return Pseudo{ v };
         }
     }, key);
-}
-
-static GraphKey find(
-    const GraphKey &key,
-    const std::map<GraphKey, GraphKey> &coalesced_registers)
-{
-    auto it = coalesced_registers.find(key);
-    if (it != coalesced_registers.end())
-        return find(it->second, coalesced_registers);
-    return key;
 }
 
 static bool briggsTest(
@@ -224,117 +259,84 @@ static inline void updateGraph(
     interference_graph.erase(to_merge);
 }
 
+static GraphKey findCoalesced(
+    const GraphKey &key,
+    const std::map<GraphKey, GraphKey> &parent)
+{
+    auto it = parent.find(key);
+    if (it == parent.end())
+        return key;
+    return findCoalesced(it->second, parent);
+}
+
+static inline void unionCoalesced(
+    const GraphKey &a,
+    const GraphKey &b,
+    std::map<GraphKey, GraphKey> &parent)
+{
+    parent[a] = b;
+}
+
 static std::map<GraphKey, GraphKey> coalesce(
     const std::list<CFGBlock> &blocks,
     std::map<GraphKey, GraphData> &interference_graph,
     uint8_t k)
 {
-    std::map<GraphKey, GraphKey> all_coalesced;
+    std::map<GraphKey, GraphKey> coalesced_registers;
 
-    bool changed = true;
-    while (changed) {
-        changed = false;
+    for (auto &block : blocks) {
+        for (auto &instruction : block.instructions) {
+            const Mov *mov = std::get_if<Mov>(&instruction);
+            if (!mov)
+                continue;
 
-        std::cout << "=== Coalescing iteration ===" << std::endl;
-        std::cout << "Graph nodes: ";
-        for (auto &[key, data] : interference_graph)
-            std::cout << printKey(key) << "(" << data.neighbors.size() << ") ";
-        std::cout << std::endl;
+            std::optional<GraphKey> mov_src = operandToKey(mov->src);
+            if (!mov_src)
+                continue;
+            std::optional<GraphKey> mov_dst = operandToKey(mov->dst);
+            if (!mov_dst)
+                continue;
 
-        for (auto &block : blocks) {
-            for (auto &instruction : block.instructions) {
-                const Mov *mov = std::get_if<Mov>(&instruction);
-                if (!mov)
-                    continue;
-                std::optional<GraphKey> mov_src = operandToKey(mov->src);
-                if (!mov_src)
-                    continue;
-                std::optional<GraphKey> mov_dst = operandToKey(mov->dst);
-                if (!mov_dst)
-                    continue;
+            GraphKey src = findCoalesced(*mov_src, coalesced_registers);
+            GraphKey dst = findCoalesced(*mov_dst, coalesced_registers);
+            if (src == dst)
+                continue;
+            if (!interference_graph.contains(src) || !interference_graph.contains(dst))
+                continue;
+            if (interference_graph[src].neighbors.contains(dst))
+                continue;
+            if (!conservativeCoalescable(src, dst, interference_graph, k))
+                continue;
 
-                GraphKey src = find(*mov_src, all_coalesced);
-                GraphKey dst = find(*mov_dst, all_coalesced);
-
-                if (std::holds_alternative<std::string>(src) || std::holds_alternative<std::string>(dst)) {
-                    bool interferes = false;
-                    auto it = interference_graph.find(src);
-                    if (it != interference_graph.end())
-                        interferes = it->second.neighbors.contains(dst);
-                    std::cout << "Mov: " << printKey(src) << " -> " << printKey(dst)
-                              << " | interfere: " << interferes
-                              << " | src_in_graph: " << interference_graph.contains(src)
-                              << " | dst_in_graph: " << interference_graph.contains(dst)
-                              << std::endl;
-                }
-
-                if (src == dst)
-                    continue;
-
-                if (!interference_graph.contains(src) || !interference_graph.contains(dst))
-                    continue;
-
-                // If they interfere, they can't be coalesced
-                if (interference_graph[src].neighbors.contains(dst))
-                    continue;
-
-                if (!conservativeCoalescable(src, dst, interference_graph, k))
-                    continue;
-
-                // We keep the physical register and merge the pseudo
-                // If both are pseudo, we keep dst.
-                GraphKey to_keep;
-                GraphKey to_merge;
-                if (std::holds_alternative<Register>(src)) {
-                    to_keep = src;
-                    to_merge = dst;
-                } else {
-                    to_keep = dst;
-                    to_merge = src;
-                }
-
-                all_coalesced[to_merge] = to_keep;
-                updateGraph(interference_graph, to_merge, to_keep);
-                changed = true;
+            // We keep the physical register and try to remove the pseudo one.
+            // If both are pseudo: we keep the dst.
+            if (std::holds_alternative<Register>(src)) {
+                unionCoalesced(dst, src, coalesced_registers);
+                updateGraph(interference_graph, dst, src);
+            } else {
+                unionCoalesced(src, dst, coalesced_registers);
+                updateGraph(interference_graph, src, dst);
             }
         }
     }
 
-    return all_coalesced;
+    return coalesced_registers;
 }
 
 static void rewriteCoalesced(
     std::list<CFGBlock> &blocks,
     const std::map<GraphKey, GraphKey> &coalesced_registers)
 {
-    for (auto &block : blocks) {
-        for (auto it = block.instructions.begin(); it != block.instructions.end(); ) {
-            if (Mov *mov = std::get_if<Mov>(&*it)) {
-                auto src_key = operandToKey(mov->src);
-                if (src_key)
-                    mov->src = keyToOperand(find(*src_key, coalesced_registers));
-                auto dst_key = operandToKey(mov->dst);
-                if (dst_key)
-                    mov->dst = keyToOperand(find(*dst_key, coalesced_registers));
-                // TODO: Comparison for Operands?
-                auto new_src = operandToKey(mov->src);
-                auto new_dst = operandToKey(mov->dst);
-                if (new_src && new_dst && *new_src == *new_dst) {
-                    it = block.instructions.erase(it);
-                    continue;
-                }
-            } else {
-                ForEachOperand(*it, [&](Operand &operand) {
-                    if (auto key = operandToKey(operand))
-                        operand = keyToOperand(find(*key, coalesced_registers));
-                });
-            }
-            ++it;
-        }
-    }
+    replaceOperandsInFunction(blocks, [&coalesced_registers](Operand &op, WordType type) -> bool {
+        auto key = operandToKey(op);
+        if (!key)
+            return false;
+        op = keyToOperand(findCoalesced(*key, coalesced_registers), type);
+        return true;
+    });
 }
 
-#endif
+#endif // REGISTER_COALESCATION
 
 static std::map<GraphKey, GraphData> buildBaseGraph(const std::vector<Register> &registers)
 {
@@ -368,7 +370,6 @@ static inline void addPseudoRegisters(
     const std::set<std::string> &aliased_vars,
     ASMSymbolTable *asm_symbol_table)
 {
-    // TODO: Variables in loops can have much bigger spill costs
     for (auto &block : blocks) {
         for (auto &instruction : block.instructions) {
             ForEachOperand(instruction, [&](const Operand &operand) {
@@ -381,8 +382,31 @@ static inline void addPseudoRegisters(
                         return;
                     if (processing_floating_points != entry->type.isWord(Doubleword))
                         return;
-                    auto [it, inserted] = graph.try_emplace(pseudo->name, GraphData{ });
-                    it->second.spill_cost += 1.0;
+                    graph.try_emplace(pseudo->name, GraphData{});
+                }
+            });
+        }
+    }
+}
+
+static inline void addSpillCosts(
+    std::list<CFGBlock> &blocks,
+    std::map<GraphKey, GraphData> &graph,
+    bool processing_floating_points,
+    ASMSymbolTable *asm_symbol_table)
+{
+    for (auto &block : blocks) {
+        for (auto &instruction : block.instructions) {
+            ForEachOperand(instruction, [&](const Operand &operand) {
+                if (const Pseudo *pseudo = std::get_if<Pseudo>(&operand)) {
+                    ObjEntry *entry = asm_symbol_table->getAs<ObjEntry>(pseudo->name);
+                    if (!entry)
+                        return;
+                    if (processing_floating_points != entry->type.isWord(Doubleword))
+                        return;
+                    auto it = graph.find(pseudo->name);
+                    if (it != graph.end())
+                        it->second.spill_cost += 1.0;
                 }
             });
         }
@@ -510,6 +534,12 @@ std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
         } else if constexpr (std::is_same_v<T, Call>) {
             const FunEntry *entry = asm_symbol_table->getAs<FunEntry>(i.identifier);
             assert(entry);
+
+            std::cout << "Call " << i.identifier << " arg_registers: ";
+            for (Register reg : entry->arg_registers)
+                std::cout << getEightByteName(reg) << " ";
+            std::cout << std::endl;
+
             std::vector<Operand> used;
             for (Register reg : entry->arg_registers)
                 used.push_back(Reg{ reg });
@@ -749,36 +779,35 @@ static std::map<GraphKey, GraphData> buildInterferenceGraph(
 {
     uint8_t k = static_cast<uint8_t>(registers.size());
     bool processing_floating_points = registers[0] >= XMM0;
-
     std::map<GraphKey, GraphData> interference_graph;
-    // A fully connected base graph of the physical registers
-    interference_graph = buildBaseGraph(registers);
-    // Extend it with pseudo-registers
-    addPseudoRegisters(
-        blocks,
-        interference_graph,
-        processing_floating_points,
-        function_entry->aliased_vars,
-        asm_symbol_table);
-    // Finish the control flow graph before performing liveness analysis
-    addControlFlowEdges(blocks);
-    // Liveness analysis
-    s_instructionAnnotations.clear();
-    s_blockAnnotations.clear();
-    s_exitId = blocks.back().id;
-    findLiveRegisters(blocks, function_entry, asm_symbol_table);
-    // We add edges to the interference graph using the liveness information
-    addInterferenceEdges(blocks, interference_graph, asm_symbol_table);
+
+    while (true) {
+        interference_graph = buildBaseGraph(registers);
+        addPseudoRegisters(
+            blocks, interference_graph,
+            processing_floating_points,
+            function_entry->aliased_vars,
+            asm_symbol_table);
+        addControlFlowEdges(blocks);
+        s_instructionAnnotations.clear();
+        s_blockAnnotations.clear();
+        s_exitId = blocks.back().id;
+        findLiveRegisters(blocks, function_entry, asm_symbol_table);
+        addInterferenceEdges(blocks, interference_graph, asm_symbol_table);
 
 #if REGISTER_COALESCATION
-    auto coalesced = coalesce(blocks, interference_graph, k);
-    if (!coalesced.empty())
+        auto coalesced = coalesce(blocks, interference_graph, k);
+        if (coalesced.empty())
+            break;
         rewriteCoalesced(blocks, coalesced);
+#else
+        break;
 #endif
+    }
 
-    // Color the graph
+    addSpillCosts(blocks, interference_graph, processing_floating_points, asm_symbol_table);
+
     colorGraph(interference_graph, k);
-
     return interference_graph;
 }
 

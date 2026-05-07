@@ -8,123 +8,6 @@
 
 namespace assembly {
 
-static inline bool replacePseudo(
-    Operand &op,
-    const std::map<std::string, Register> &register_map,
-    WordType type)
-{
-    return std::visit([&](auto &obj) {
-        using T = std::decay_t<decltype(obj)>;
-        if constexpr (std::is_same_v<T, Pseudo>) {
-            if (auto it = register_map.find(obj.name); it != register_map.end()) {
-                op.emplace<Reg>(it->second, GetBytesOfWordType(type));
-                return true;
-            }
-        }
-        return false;
-    }, op);
-}
-
-static inline std::list<Instruction>::iterator removeIfNeeded(
-    std::list<Instruction> &instructions,
-    std::list<Instruction>::iterator it,
-    const Operand &a,
-    const Operand &b,
-    bool changed)
-{
-    if (!changed)
-        return std::next(it);
-    const Reg *ra = std::get_if<Reg>(&a);
-    const Reg *rb = std::get_if<Reg>(&b);
-    if (ra && rb && ra->reg == rb->reg && ra->bytes == rb->bytes) {
-        std::cout << "---- Removing instruction with duplicate register: " << getEightByteName(ra->reg) << std::endl;
-        return instructions.erase(it);
-    }
-    return std::next(it);
-}
-
-void replacePseudoRegisters(
-    std::list<CFGBlock> &blocks,
-    const std::map<std::string, Register> &reg_map,
-    const std::set<Register> &callee_saved_registers)
-{
-    std::cout << "Replace pseudoregisters in a function" << std::endl;
-
-    if (!callee_saved_registers.empty()) {
-        CFGBlock &first_block = blocks.front();
-        for (const Register &reg : callee_saved_registers)
-            first_block.instructions.emplace_front(Push{ Reg{ reg, 8 } });
-        first_block.instructions.emplace_front(Comment{ "Pushing callee-saved registers" });
-    }
-
-    for (auto &block : blocks) {
-        for (auto it = block.instructions.begin(); it != block.instructions.end();) {
-            it = std::visit([&](auto &obj) {
-                bool changed = false;
-                using T = std::decay_t<decltype(obj)>;
-                if constexpr (std::is_same_v<T, Mov>) {
-                    std::cout << "--- Mov " << std::endl;
-                    changed |= replacePseudo(obj.src, reg_map, obj.type);
-                    changed |= replacePseudo(obj.dst, reg_map, obj.type);
-                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
-                } else if constexpr (std::is_same_v<T, Movsx>) {
-                    std::cout << "--- Movsx " << std::endl;
-                    changed |= replacePseudo(obj.src, reg_map, obj.src_type);
-                    changed |= replacePseudo(obj.dst, reg_map, obj.dst_type);
-                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
-                } else if constexpr (std::is_same_v<T, MovZeroExtend>) {
-                    std::cout << "--- MovZeroExtend " << std::endl;
-                    changed |= replacePseudo(obj.src, reg_map, obj.src_type);
-                    changed |= replacePseudo(obj.dst, reg_map, obj.dst_type);
-                    return removeIfNeeded(block.instructions, it, obj.src, obj.dst, changed);
-                } else if constexpr (std::is_same_v<T, Lea>) {
-                    std::cout << "--- Lea " << std::endl;
-                    // The loaded address is always 8-bytes
-                    changed |= replacePseudo(obj.src, reg_map, Quadword);
-                    changed |= replacePseudo(obj.dst, reg_map, Quadword);
-                } else if constexpr (std::is_same_v<T, Cvttsd2si>) {
-                    std::cout << "--- Cvttsd2si " << std::endl;
-                    changed |= replacePseudo(obj.src, reg_map, obj.type);
-                    changed |= replacePseudo(obj.dst, reg_map, obj.type);
-                } else if constexpr (std::is_same_v<T, Cvtsi2sd>) {
-                    std::cout << "--- Cvtsi2sd " << std::endl;
-                    changed |= replacePseudo(obj.src, reg_map, obj.type);
-                    changed |= replacePseudo(obj.dst, reg_map, obj.type);
-                } else if constexpr (std::is_same_v<T, Unary>) {
-                    std::cout << "--- Unary " << std::endl;
-                    replacePseudo(obj.src, reg_map, obj.type);
-                } else if constexpr (std::is_same_v<T, Binary>) {
-                    std::cout << "--- Binary " << std::endl;
-                    changed |= replacePseudo(obj.src, reg_map, obj.type);
-                    changed |= replacePseudo(obj.dst, reg_map, obj.type);
-                } else if constexpr (std::is_same_v<T, Idiv>) {
-                    std::cout << "--- Idiv " << std::endl;
-                    replacePseudo(obj.src, reg_map, obj.type);
-                } else if constexpr (std::is_same_v<T, Div>) {
-                    std::cout << "--- Div " << std::endl;
-                    replacePseudo(obj.src, reg_map, obj.type);
-                } else if constexpr (std::is_same_v<T, Cmp>) {
-                    std::cout << "--- Cmp " << std::endl;
-                    changed |= replacePseudo(obj.lhs, reg_map, obj.type);
-                    changed |= replacePseudo(obj.rhs, reg_map, obj.type);
-                } else if constexpr (std::is_same_v<T, SetCC>) {
-                    std::cout << "--- SetCC " << std::endl;
-                    // SetCC always uses the 1-byte version of the registers
-                    replacePseudo(obj.op, reg_map, Byte);
-                } else if constexpr (std::is_same_v<T, Push>) {
-                    std::cout << "--- Push " << std::endl;
-                    // The operand is always an 8-bytes register
-                    replacePseudo(obj.op, reg_map, Quadword);
-                } else if constexpr (std::is_same_v<T, Ret>) {
-                    for (const Register &reg : callee_saved_registers)
-                        block.instructions.emplace(it, Pop{ reg });
-                }
-                return std::next(it);
-            }, *it);
-        }
-    }
-}
-
 // Replace each pseudo-register with proper stack offsets or static variables;
 // calculates the overall stack size needed to store all local variables.
 static int postprocessPseudoRegisters(
@@ -167,6 +50,7 @@ static int postprocessPseudoRegisters(
         op.emplace<Memory>(BP, pseudo_offset[name] + static_cast<int>(extra_offset));
     };
 
+    // TODO: ForEachOperand?
     for (auto &block : blocks) {
         for (auto &inst : block.instructions) {
             std::visit([&](auto &obj) {

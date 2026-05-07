@@ -29,6 +29,7 @@ class ASMSymbolTable {
 public:
     void InsertSymbols(Context *context);
     void InsertConstants(std::shared_ptr<ConstantMap> constants);
+    bool Contains(const std::string &name);
 
     template<typename T> ASMSymbolEntry &Insert(const std::string &name, T &&entry)
     {

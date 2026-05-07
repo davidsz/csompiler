@@ -17,14 +17,7 @@ void ASMSymbolTable::InsertSymbols(Context *context)
                 .is_constant = false
             });
         } else if (entry.type.getAs<FunctionType>()) {
-            // Defined functions are already added in the ASMBuilder
-            // We only add placeholders here for the undefined ones
-            if (!entry.attrs.defined) {
-                Insert(name, FunEntry{
-                    .defined = false,
-                    .return_on_stack = false
-                });
-            }
+            // We already added functions in ASMBuilder::FunctionDefinition / FunctionCall
         } else if (entry.type.getAs<PointerType>()) {
             Insert(name, ObjEntry{
                 .type = AssemblyType{ Quadword },
@@ -65,6 +58,11 @@ void ASMSymbolTable::InsertConstants(std::shared_ptr<ConstantMap> constants)
             .is_constant = true
         });
     }
+}
+
+bool ASMSymbolTable::Contains(const std::string &name)
+{
+    return m_table.contains(name);
 }
 
 }; // assembly
