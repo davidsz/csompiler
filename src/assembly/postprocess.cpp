@@ -118,10 +118,6 @@ void postprocessPseudoRegisters(
                 int locals_size = postprocessPseudoRegisters(obj.blocks, stack_start, asm_symbol_table);
                 // Callee-saved registers pushed to the stack
                 int callee_saved_bytes = 8 * static_cast<int>(entry->callee_saved_registers.size());
-
-                std::cout << "Function " << obj.name << " local size: " << locals_size << std::endl;
-                std::cout << "Function " << obj.name << " callee_saved size: " << callee_saved_bytes << std::endl;
-
                 int total_stack_bytes = locals_size + callee_saved_bytes;
                 int adjusted_stack_bytes = (total_stack_bytes + 15) & ~15;
                 obj.stack_size = adjusted_stack_bytes - callee_saved_bytes;

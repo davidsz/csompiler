@@ -90,24 +90,6 @@ static const std::set<Register> s_allCalleeSavedRegisters = {
     BX, BP, R12, R13, R14, R15
 };
 
-#if REGISTER_COALESCATION
-/*
-auto printKey = [](const GraphKey &k) -> std::string {
-    return std::visit([](const auto &v) -> std::string {
-        using T = std::decay_t<decltype(v)>;
-
-        if constexpr (std::is_same_v<T, std::string>) {
-            return v;
-        } else if constexpr (std::is_same_v<T, Register>) {
-            return getEightByteName(v);
-        } else {
-            return "<unknown>";
-        }
-    }, k);
-};
-*/
-#endif
-
 template <typename Fn>
 static void ForEachOperand(Instruction &instr, Fn &&fn)
 {
@@ -488,7 +470,7 @@ static void collectUpdatedRegs(const Operand &op, std::vector<Operand> &read_out
 
 static std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
     const Instruction &instr,
-    ASMSymbolTable *asm_symbol_table)
+    FunEntry *function_entry)
 {
     auto [raw_used, raw_updated] = std::visit([&](const auto &i) -> std::pair<std::vector<Operand>, std::vector<Operand>> {
         using T = std::decay_t<decltype(i)>;
@@ -529,16 +511,8 @@ static std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
             return { { i.op }, { } };
         } else if constexpr (std::is_same_v<T, Pop>) {
         } else if constexpr (std::is_same_v<T, Call>) {
-            const FunEntry *entry = asm_symbol_table->getAs<FunEntry>(i.identifier);
-            assert(entry);
-
-            std::cout << "Call " << i.identifier << " arg_registers: ";
-            for (Register reg : entry->arg_registers)
-                std::cout << getEightByteName(reg) << " ";
-            std::cout << std::endl;
-
             std::vector<Operand> used;
-            for (Register reg : entry->arg_registers)
+            for (Register reg : function_entry->arg_registers)
                 used.push_back(Reg{ reg });
             return {
                 std::move(used),
@@ -566,13 +540,13 @@ static std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
 static void transfer(
     const CFGBlock *block,
     const std::set<GraphKey> &end_live_registers,
-    ASMSymbolTable *asm_symbol_table)
+    FunEntry *function_entry)
 {
     std::set<GraphKey> current_live_registers = end_live_registers;
     for (auto it = block->instructions.rbegin(); it != block->instructions.rend(); ++it) {
         const Instruction &instruction = *it;
         s_instructionAnnotations[&instruction] = current_live_registers;
-        auto [used, updated] = findUsedAndUpdated(instruction, asm_symbol_table);
+        auto [used, updated] = findUsedAndUpdated(instruction, function_entry);
         for (auto &v : updated) {
             if (auto key = operandToKey(v))
                 current_live_registers.erase(*key);
@@ -609,8 +583,7 @@ static std::set<GraphKey> meet(
 // Iterative algorithm: implements a backward (liveness) analysis
 static void findLiveRegisters(
     const std::list<CFGBlock> &blocks,
-    FunEntry *function_entry,
-    ASMSymbolTable *asm_symbol_table)
+    FunEntry *function_entry)
 {
     // TODO: Can be optimized by postordering
     std::list<const CFGBlock *> worklist;
@@ -626,7 +599,7 @@ static void findLiveRegisters(
         worklist.pop_front();
         std::set<GraphKey> old_annotations = s_blockAnnotations[block];
         std::set<GraphKey> end_live = meet(block, function_entry);
-        transfer(block, end_live, asm_symbol_table);
+        transfer(block, end_live, function_entry);
         if (old_annotations != s_blockAnnotations[block]) {
             for (auto pred : block->predecessors) {
                 if (pred->id == 0 || pred->id == s_exitId)
@@ -641,13 +614,13 @@ static void findLiveRegisters(
 static void addInterferenceEdges(
     std::list<CFGBlock> &blocks,
     std::map<GraphKey, GraphData> &interference_graph,
-    ASMSymbolTable *asm_symbol_table)
+    FunEntry *function_entry)
 {
     for (auto &block : blocks) {
         if (block.id == 0 || block.id == s_exitId)
             continue;
         for (auto &instr : block.instructions) {
-            auto [used, updated] = findUsedAndUpdated(instr, asm_symbol_table);
+            auto [used, updated] = findUsedAndUpdated(instr, function_entry);
             std::optional<GraphKey> mov_src;
             if (const Mov *mov = std::get_if<Mov>(&instr))
                 mov_src = operandToKey(mov->src);
@@ -661,29 +634,9 @@ static void addInterferenceEdges(
                         continue;
                     if (interference_graph.contains(live_key) && interference_graph.contains(*updated_key)) {
                         if (live_key != *updated_key) {
-
-/*
-                            std::visit([&](auto&& k1, auto&& k2) {
-                                auto printKey = [](const auto& k) -> std::string {
-                                    using T = std::decay_t<decltype(k)>;
-                                    if constexpr (std::is_same_v<T, std::string>) {
-                                        return k;
-                                    } else if constexpr (std::is_same_v<T, Register>) {
-                                        return getEightByteName(k);
-                                    }
-                                };
-
-                                std::cout << "Interference: "
-                                          << printKey(k1) << " <-> " << printKey(k2)
-                                          << std::endl;
-                            }, live_key, *updated_key);
-*/
-
                             interference_graph[live_key].neighbors.insert(*updated_key);
                             interference_graph[*updated_key].neighbors.insert(live_key);
                         }
-                    } else {
-                        // std::cout << "Something is live in the instruction, but it's not in the graph." << std::endl;
                     }
                 }
             }
@@ -789,8 +742,8 @@ static std::map<GraphKey, GraphData> buildInterferenceGraph(
         s_instructionAnnotations.clear();
         s_blockAnnotations.clear();
         s_exitId = blocks.back().id;
-        findLiveRegisters(blocks, function_entry, asm_symbol_table);
-        addInterferenceEdges(blocks, interference_graph, asm_symbol_table);
+        findLiveRegisters(blocks, function_entry);
+        addInterferenceEdges(blocks, interference_graph, function_entry);
 
 #if REGISTER_COALESCATION
         auto coalesced = coalesce(blocks, interference_graph, k);
@@ -839,11 +792,6 @@ void allocateRegisters(
     // Mapping pseudo registers to physical registers
     std::map<std::string, Register> register_map;
 
-    std::cout << std::endl << "Aliased vars for function:" << std::endl;
-    for (auto &var_name : function_entry->aliased_vars)
-        std::cout << var_name << std::endl;
-    std::cout << std::endl;
-
     std::map<GraphKey, GraphData> int_graph
         = buildInterferenceGraph(blocks, function_entry, asm_symbol_table, s_integerRegisters);
     addToRegisterMap(int_graph, register_map, function_entry);
@@ -851,11 +799,6 @@ void allocateRegisters(
     std::map<GraphKey, GraphData> xmm_graph
         = buildInterferenceGraph(blocks, function_entry, asm_symbol_table, s_floatingPointRegisters);
     addToRegisterMap(xmm_graph, register_map, function_entry);
-
-    std::cout << std::endl << "Register map for function:" << std::endl;
-    for (auto &[name, reg] : register_map)
-        std::cout << name << " -> " << getEightByteName(reg) << std::endl;
-    std::cout << std::endl;
 
     replacePseudoRegisters(blocks, register_map, function_entry->callee_saved_registers);
 }
