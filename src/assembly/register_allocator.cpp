@@ -470,7 +470,7 @@ static void collectUpdatedRegs(const Operand &op, std::vector<Operand> &read_out
 
 static std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
     const Instruction &instr,
-    FunEntry *function_entry)
+    ASMSymbolTable *asm_symbol_table)
 {
     auto [raw_used, raw_updated] = std::visit([&](const auto &i) -> std::pair<std::vector<Operand>, std::vector<Operand>> {
         using T = std::decay_t<decltype(i)>;
@@ -511,8 +511,10 @@ static std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
             return { { i.op }, { } };
         } else if constexpr (std::is_same_v<T, Pop>) {
         } else if constexpr (std::is_same_v<T, Call>) {
+            const FunEntry *entry = asm_symbol_table->getAs<FunEntry>(i.identifier);
+            assert(entry);
             std::vector<Operand> used;
-            for (Register reg : function_entry->arg_registers)
+            for (Register reg : entry->arg_registers)
                 used.push_back(Reg{ reg });
             return {
                 std::move(used),
@@ -540,13 +542,13 @@ static std::pair<std::vector<Operand>, std::vector<Operand>> findUsedAndUpdated(
 static void transfer(
     const CFGBlock *block,
     const std::set<GraphKey> &end_live_registers,
-    FunEntry *function_entry)
+    ASMSymbolTable *asm_symbol_table)
 {
     std::set<GraphKey> current_live_registers = end_live_registers;
     for (auto it = block->instructions.rbegin(); it != block->instructions.rend(); ++it) {
         const Instruction &instruction = *it;
         s_instructionAnnotations[&instruction] = current_live_registers;
-        auto [used, updated] = findUsedAndUpdated(instruction, function_entry);
+        auto [used, updated] = findUsedAndUpdated(instruction, asm_symbol_table);
         for (auto &v : updated) {
             if (auto key = operandToKey(v))
                 current_live_registers.erase(*key);
@@ -583,7 +585,8 @@ static std::set<GraphKey> meet(
 // Iterative algorithm: implements a backward (liveness) analysis
 static void findLiveRegisters(
     const std::list<CFGBlock> &blocks,
-    FunEntry *function_entry)
+    FunEntry *function_entry,
+    ASMSymbolTable *asm_symbol_table)
 {
     // TODO: Can be optimized by postordering
     std::list<const CFGBlock *> worklist;
@@ -599,7 +602,7 @@ static void findLiveRegisters(
         worklist.pop_front();
         std::set<GraphKey> old_annotations = s_blockAnnotations[block];
         std::set<GraphKey> end_live = meet(block, function_entry);
-        transfer(block, end_live, function_entry);
+        transfer(block, end_live, asm_symbol_table);
         if (old_annotations != s_blockAnnotations[block]) {
             for (auto pred : block->predecessors) {
                 if (pred->id == 0 || pred->id == s_exitId)
@@ -614,13 +617,13 @@ static void findLiveRegisters(
 static void addInterferenceEdges(
     std::list<CFGBlock> &blocks,
     std::map<GraphKey, GraphData> &interference_graph,
-    FunEntry *function_entry)
+    ASMSymbolTable *asm_symbol_table)
 {
     for (auto &block : blocks) {
         if (block.id == 0 || block.id == s_exitId)
             continue;
         for (auto &instr : block.instructions) {
-            auto [used, updated] = findUsedAndUpdated(instr, function_entry);
+            auto [used, updated] = findUsedAndUpdated(instr, asm_symbol_table);
             std::optional<GraphKey> mov_src;
             if (const Mov *mov = std::get_if<Mov>(&instr))
                 mov_src = operandToKey(mov->src);
@@ -742,8 +745,8 @@ static std::map<GraphKey, GraphData> buildInterferenceGraph(
         s_instructionAnnotations.clear();
         s_blockAnnotations.clear();
         s_exitId = blocks.back().id;
-        findLiveRegisters(blocks, function_entry);
-        addInterferenceEdges(blocks, interference_graph, function_entry);
+        findLiveRegisters(blocks, function_entry, asm_symbol_table);
+        addInterferenceEdges(blocks, interference_graph, asm_symbol_table);
 
 #if REGISTER_COALESCATION
         auto coalesced = coalesce(blocks, interference_graph, k);
