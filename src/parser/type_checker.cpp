@@ -72,25 +72,6 @@ static std::unique_ptr<Expression> convertByAssignment(
     return nullptr;
 }
 
-// This is a terrible hack. When a double value stands as a conditional
-// expression, we double-negate it just to wrap it into an expression, which
-// can be processed during the assembly generation. There are logics implemented
-// in ASM to handle that case where the double is a NaN value.
-// TODO: Maybe wrap it into a "pseudo-expression" to optimize it out in assembly?
-static std::unique_ptr<Expression> notNot(std::unique_ptr<Expression> expr)
-{
-    auto ret = std::make_unique<Expression>(UnaryExpression{
-        .op = UnaryOperator::Not,
-        .expr = std::make_unique<Expression>(UnaryExpression{
-            .op = UnaryOperator::Not,
-            .expr = std::move(expr),
-            .type = Type{ BasicType::Int }
-        }),
-        .type = Type{ BasicType::Int }
-    });
-    return ret;
-}
-
 static bool isLvalue(const Expression &expr, const Type &type)
 {
     if (const PointerType *pointer_type = type.getAs<PointerType>()) {
@@ -605,11 +586,8 @@ Type TypeChecker::operator()(ConditionalExpression &c)
     if (!condition_type.isScalar())
         Abort("Conditional expression must have a scalar type condition");
 
-    if (condition_type.isBasic(Double))
-        c.condition = notNot(std::move(c.condition));
     Type true_type = VisitAndConvert(c.trueBranch);
     Type false_type = VisitAndConvert(c.falseBranch);
-
     Type common_type;
     if (true_type.isVoid() || false_type.isVoid()) {
         if (true_type != false_type)
@@ -765,8 +743,6 @@ Type TypeChecker::operator()(IfStatement &i)
     Type condition_type = VisitAndConvert(i.condition);
     if (!condition_type.isScalar())
         Abort("The if statement should have a scalar condition type");
-    if (condition_type.isBasic(Double))
-        i.condition = notNot(std::move(i.condition));
     std::visit(*this, *i.trueBranch);
     if (i.falseBranch)
         std::visit(*this, *i.falseBranch);
@@ -817,8 +793,6 @@ Type TypeChecker::operator()(WhileStatement &w)
     Type condition_type = VisitAndConvert(w.condition);
     if (!condition_type.isScalar())
         Abort("While loop should have a scalar condition type");
-    if (condition_type.isBasic(Double))
-        w.condition = notNot(std::move(w.condition));
     std::visit(*this, *w.body);
     return Type{ std::monostate() };
 }
@@ -829,8 +803,6 @@ Type TypeChecker::operator()(DoWhileStatement &d)
     Type condition_type = VisitAndConvert(d.condition);
     if (!condition_type.isScalar())
         Abort("Do-while loop should have a scalar condition type");
-    if (condition_type.isBasic(Double))
-        d.condition = notNot(std::move(d.condition));
     return Type{ std::monostate() };
 }
 
@@ -849,8 +821,6 @@ Type TypeChecker::operator()(ForStatement &f)
         Type condition_type = VisitAndConvert(f.condition);
         if (!condition_type.isScalar())
             Abort("For loop should have a scalar condition type");
-        if (condition_type.isBasic(Double))
-            f.condition = notNot(std::move(f.condition));
     }
     if (f.update)
         VisitAndConvert(f.update);

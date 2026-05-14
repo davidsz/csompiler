@@ -409,28 +409,19 @@ Operand ASMBuilder::operator()(const tac::JumpIfZero &j)
     Comment(m_instructions, "Jump if zero");
     WordType wordType = GetWordType(j.condition);
     if (wordType == Doubleword) {
+        std::string not_nan_label = MakeNameUnique("not_nan");
         // Zero out the XMMO register
-        AddInstruction(Binary{
-             BWXor_AB,
-             Reg{ XMM0 },
-             Reg{ XMM0 },
-             Doubleword
-        });
+        AddInstruction(Binary{ BWXor_AB, Reg{ XMM0 }, Reg{ XMM0 }, Doubleword });
         // Compare with zero
-        AddInstruction(Cmp{
-            std::visit(*this, j.condition),
-            Reg{ XMM0 },
-            Doubleword
-        });
+        AddInstruction(Cmp{ Reg{ XMM0 }, std::visit(*this, j.condition), Doubleword });
+        AddInstruction(JmpCC{ "p", not_nan_label });  // NaN: skip the zero-jump
+        AddInstruction(JmpCC{ "e", j.target });       // Jump if zero (non-NaN)
+        AddInstruction(Label{ not_nan_label });
     } else {
         // Compare with zero
-        AddInstruction(Cmp{
-            Imm{ 0 },
-            std::visit(*this, j.condition),
-            wordType
-        });
+        AddInstruction(Cmp{ Imm{ 0 }, std::visit(*this, j.condition), wordType });
+        AddInstruction(JmpCC{ "e", j.target });
     }
-    AddInstruction(JmpCC{ "e", j.target });
     Comment(m_instructions, "---");
     return std::monostate();
 }
@@ -441,27 +432,15 @@ Operand ASMBuilder::operator()(const tac::JumpIfNotZero &j)
     WordType wordType = GetWordType(j.condition);
     if (wordType == Doubleword) {
         // Zero out the XMMO register
-        AddInstruction(Binary{
-             BWXor_AB,
-             Reg{ XMM0 },
-             Reg{ XMM0 },
-             Doubleword
-        });
+        AddInstruction(Binary{ BWXor_AB, Reg{ XMM0 }, Reg{ XMM0 }, Doubleword });
         // Compare with zero
-        AddInstruction(Cmp{
-            std::visit(*this, j.condition),
-            Reg{ XMM0 },
-            Doubleword
-        });
+        AddInstruction(Cmp{ Reg{ XMM0 }, std::visit(*this, j.condition), Doubleword });
+        AddInstruction(JmpCC{ "p", j.target });   // Jump if NaN
     } else {
         // Compare with zero
-        AddInstruction(Cmp{
-            Imm{ 0 },
-            std::visit(*this, j.condition),
-            wordType
-        });
+        AddInstruction(Cmp{ Imm{ 0 }, std::visit(*this, j.condition), wordType });
     }
-    AddInstruction(JmpCC{ "ne", j.target });
+    AddInstruction(JmpCC{ "ne", j.target });   // Jump if not zero
     Comment(m_instructions, "---");
     return std::monostate();
 }
