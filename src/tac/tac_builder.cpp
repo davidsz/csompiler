@@ -71,6 +71,29 @@ std::pair<ExpResult, Type> TACBuilder::VisitLHS(const parser::Expression &expr)
     assert(false);
 }
 
+void TACBuilder::EmitZeroBytes(const std::string &base, size_t &offset, size_t size)
+{
+    while (size >= 4 && offset % 4 == 0) {
+        AddInstruction(CopyToOffset{
+            Constant{ MakeConstantValue(uint32_t(0), Type{ BasicType::UInt }) },
+            base,
+            offset
+        });
+        offset += 4;
+        size -= 4;
+    }
+
+    while (size > 0) {
+        AddInstruction(CopyToOffset{
+            Constant{ MakeConstantValue(0, Type{ BasicType::Char }) },
+            base,
+            offset
+        });
+        offset++;
+        size--;
+    }
+}
+
 void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, size_t &offset)
 {
     if (const ArrayType *array = type.getAs<ArrayType>()) {
@@ -89,12 +112,9 @@ void TACBuilder::EmitZeroInit(const Type &type, const std::string &base, size_t 
         return;
     }
 
-    AddInstruction(CopyToOffset{
-        Constant{ MakeConstantValue(0, type) },
-        base,
-        offset
-    });
-    offset += type.storedType().size(m_typeTable);
+    // Don't emit one by one, pack them into four bytes until it's possible
+    size_t bytes = type.storedType().size(m_typeTable);
+    EmitZeroBytes(base, offset, bytes);
 }
 
 void TACBuilder::EmitRuntimeInitNested(

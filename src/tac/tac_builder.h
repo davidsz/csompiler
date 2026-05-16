@@ -108,6 +108,7 @@ private:
     }
 
     std::pair<ExpResult, Type> VisitLHS(const parser::Expression &expr);
+    void EmitZeroBytes(const std::string &base, size_t &offset, size_t size);
     void EmitZeroInit(const Type &type, const std::string &base, size_t &offset);
     void EmitRuntimeInitNested(
         const parser::Initializer *init,
